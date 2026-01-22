@@ -65,39 +65,41 @@ class _SearchPageState extends State<SearchPage> {
     final textTheme = Theme.of(context).textTheme;
 
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                color: colorScheme.primaryContainer.withAlpha(77),
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: colorScheme.primaryContainer.withAlpha(77),
+                ),
+                child: Icon(Icons.search, size: 64, color: colorScheme.primary),
               ),
-              child: Icon(Icons.search, size: 64, color: colorScheme.primary),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Search for music',
-              style: textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
+              const SizedBox(height: 24),
+              Text(
+                'Search for music',
+                style: textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurface,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Tap the search bar above to find songs, albums, and artists',
-              style: textTheme.bodyLarge?.copyWith(
-                color: colorScheme.onSurface.withAlpha(179),
+              const SizedBox(height: 12),
+              Text(
+                'Tap the search bar above to find songs, albums, and artists',
+                style: textTheme.bodyLarge?.copyWith(
+                  color: colorScheme.onSurface.withAlpha(179),
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            _buildSearchTipsSection(colorScheme, textTheme),
-          ],
+              const SizedBox(height: 32),
+              _buildSearchTipsSection(colorScheme, textTheme),
+            ],
+          ),
         ),
       ),
     );
@@ -109,7 +111,6 @@ class _SearchPageState extends State<SearchPage> {
       {'icon': Icons.trending_up, 'text': 'Try trending tracks'},
       {'icon': Icons.album, 'text': 'Search by album'},
       {'icon': Icons.person, 'text': 'Find your favorite artists'},
-      {'icon': Icons.music_note, 'text': 'Filter by song title'},
     ];
 
     return Column(

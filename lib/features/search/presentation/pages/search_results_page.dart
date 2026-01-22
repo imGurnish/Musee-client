@@ -2,6 +2,10 @@ import 'package:musee/core/common/widgets/loader.dart';
 import 'package:musee/features/search/domain/entities/catalog_search.dart';
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
 import 'package:musee/features/search/presentation/pages/search_suggestions_page.dart';
+import 'package:musee/features/search/presentation/widgets/external_badge.dart';
+import 'package:musee/features/search/data/datasources/external_music_data_source.dart';
+import 'package:musee/features/search/presentation/pages/external_album_page.dart';
+import 'package:musee/features/search/presentation/pages/external_artist_page.dart';
 import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -12,7 +16,7 @@ import 'package:dio/dio.dart' as dio;
 import 'package:get_it/get_it.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart'
-    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+    show kIsWeb, kDebugMode, defaultTargetPlatform, TargetPlatform;
 import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
@@ -412,14 +416,31 @@ class _TrackTile extends StatelessWidget {
   final CatalogTrack track;
   const _TrackTile({required this.track});
 
+  bool get _isExternal => track.source == SearchSource.external;
+
   @override
   Widget build(BuildContext context) {
     final artistNames = track.artists
         .map((a) => a.name ?? a.artistId)
         .join(', ');
+
     return ListTile(
-      leading: const Icon(Icons.music_note),
-      title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      leading: _buildLeading(),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              track.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (_isExternal) ...[
+            const SizedBox(width: 8),
+            const ExternalInlineBadge(),
+          ],
+        ],
+      ),
       subtitle: Text(artistNames, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -433,60 +454,68 @@ class _TrackTile extends StatelessWidget {
                 title: track.title,
                 artist: artistNames,
                 album: null,
-                imageUrl: null,
+                imageUrl: track.imageUrl,
                 durationSeconds: track.duration,
               );
               await GetIt.I<PlayerCubit>().addToQueue([item]);
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Added to queue')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('Added to queue')));
               }
             },
           ),
           IconButton(
             tooltip: 'Play',
             icon: const Icon(Icons.play_arrow_rounded),
-            onPressed: () async {
-              final url = await _fetchPlayableUrl(track.trackId);
-              if (url == null) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Unable to load stream URL')),
-                  );
-                }
-                return;
-              }
-              await showPlayerBottomSheet(
-                context,
-                audioUrl: url,
-                title: track.title,
-                artist: artistNames,
-                album: null,
-                imageUrl: null,
-              );
-            },
+            onPressed: () => _playTrack(context, artistNames),
           ),
         ],
       ),
-      onTap: () async {
-        final url = await _fetchPlayableUrl(track.trackId);
-        if (url == null) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Unable to load stream URL')),
-            );
-          }
-          return;
-        }
-        await showPlayerBottomSheet(
-          context,
-          audioUrl: url,
-          title: track.title,
-          artist: artistNames,
-          // album and image unknown here from search results
+      onTap: () => _playTrack(context, artistNames),
+    );
+  }
+
+  Widget _buildLeading() {
+    if (track.imageUrl != null && track.imageUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.network(
+          track.imageUrl!,
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(Icons.music_note),
+        ),
+      );
+    }
+    return const Icon(Icons.music_note);
+  }
+
+  Future<void> _playTrack(BuildContext context, String artistNames) async {
+    String? url;
+
+    if (_isExternal) {
+      url = await _fetchExternalPlayableUrl(track.trackId);
+    } else {
+      url = await _fetchPlayableUrl(track.trackId);
+    }
+
+    if (url == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to load stream URL')),
         );
-      },
+      }
+      return;
+    }
+
+    await showPlayerBottomSheet(
+      context,
+      audioUrl: url,
+      title: track.title,
+      artist: artistNames,
+      imageUrl: track.imageUrl,
     );
   }
 }
@@ -494,6 +523,8 @@ class _TrackTile extends StatelessWidget {
 class _ArtistTile extends StatelessWidget {
   final CatalogArtist artist;
   const _ArtistTile({required this.artist});
+
+  bool get _isExternal => artist.source == SearchSource.external;
 
   @override
   Widget build(BuildContext context) {
@@ -504,9 +535,38 @@ class _ArtistTile extends StatelessWidget {
             : null,
         child: artist.avatarUrl == null ? const Icon(Icons.person) : null,
       ),
-      title: Text(artist.name ?? 'Artist'),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              artist.name ?? 'Artist',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (_isExternal) ...[
+            const SizedBox(width: 8),
+            const ExternalInlineBadge(),
+          ],
+        ],
+      ),
       trailing: const _TypeChip(label: 'Artist'),
-      onTap: () => context.push('/artists/${artist.artistId}'),
+      onTap: () {
+        if (!_isExternal) {
+          context.push('/artists/${artist.artistId}');
+        } else {
+          // Navigate to External artist page
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => ExternalArtistPage(
+                artistId: artist.artistId,
+                artistName: artist.name ?? 'Artist',
+                initialImageUrl: artist.avatarUrl,
+              ),
+            ),
+          );
+        }
+      },
     );
   }
 }
@@ -514,6 +574,8 @@ class _ArtistTile extends StatelessWidget {
 class _AlbumTile extends StatelessWidget {
   final CatalogAlbum album;
   const _AlbumTile({required this.album});
+
+  bool get _isExternal => album.source == SearchSource.external;
 
   @override
   Widget build(BuildContext context) {
@@ -529,15 +591,42 @@ class _AlbumTile extends StatelessWidget {
                 width: 48,
                 height: 48,
                 fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(Icons.album),
               )
             : const Icon(Icons.album),
       ),
-      title: Text(album.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              album.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (_isExternal) ...[
+            const SizedBox(width: 8),
+            const ExternalInlineBadge(),
+          ],
+        ],
+      ),
       subtitle: Text(artistNames, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: const _TypeChip(label: 'Album'),
       onTap: () {
-        // Navigate to album details
-        context.push('/albums/${album.albumId}');
+        if (!_isExternal) {
+          context.push('/albums/${album.albumId}');
+        } else {
+          // Navigate to External album page
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => ExternalAlbumPage(
+                albumId: album.albumId,
+                initialTitle: album.title,
+                initialImageUrl: album.coverUrl,
+              ),
+            ),
+          );
+        }
       },
     );
   }
@@ -585,6 +674,34 @@ Future<String?> _fetchPlayableUrl(String trackId) async {
     // Other native platforms: use HLS master
     return master;
   } catch (_) {
+    return null;
+  }
+}
+
+// Fetch a playable URL for a External track.
+Future<String?> _fetchExternalPlayableUrl(String trackId) async {
+  try {
+    // Extract the actual song ID from the prefixed trackId (e.g., "external:abc123")
+    final songId = trackId.startsWith('external:')
+        ? trackId.substring('external:'.length)
+        : trackId;
+
+    final dataSource = ExternalMusicDataSource();
+    final songDetail = await dataSource.getSongById(songId);
+
+    if (songDetail == null) {
+      if (kDebugMode) {
+        print('External: Could not fetch song details for $songId');
+      }
+      return null;
+    }
+
+    // Get playable URL (preview URL)
+    return dataSource.getPlayableUrl(songDetail);
+  } catch (e) {
+    if (kDebugMode) {
+      print('External playback error: $e');
+    }
     return null;
   }
 }

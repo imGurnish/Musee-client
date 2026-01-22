@@ -41,7 +41,6 @@ class _UserDashboardState extends State<UserDashboard> {
               final width = constraints.maxWidth;
               final isCompact = width < 700;
 
-
               return BlocBuilder<UserDashboardCubit, UserDashboardState>(
                 builder: (context, state) {
                   final madeForYouItems = state.madeForYou
@@ -53,7 +52,7 @@ class _UserDashboardState extends State<UserDashboard> {
                               : 'Album',
                           imageUrl: a.coverUrl,
                           icon: Icons.album,
-                          onTap: () => context.go('/albums/${a.albumId}'),
+                          onTap: () => context.push('/albums/${a.albumId}'),
                         ),
                       )
                       .toList();
@@ -66,7 +65,7 @@ class _UserDashboardState extends State<UserDashboard> {
                               : 'Album',
                           imageUrl: a.coverUrl,
                           icon: Icons.trending_up,
-                          onTap: () => context.go('/albums/${a.albumId}'),
+                          onTap: () => context.push('/albums/${a.albumId}'),
                         ),
                       )
                       .toList();
@@ -94,15 +93,21 @@ class _UserDashboardState extends State<UserDashboard> {
                             final source = state.madeForYou.isNotEmpty
                                 ? state.madeForYou
                                 : state.trending;
-                            return source.take(6).map((a) => MediaItem(
-                                  title: a.title,
-                                  subtitle: a.artists.isNotEmpty
-                                      ? a.artists.first.name
-                                      : 'Album',
-                                  imageUrl: a.coverUrl,
-                                  icon: Icons.album,
-                                  onTap: () => context.go('/albums/${a.albumId}'),
-                                )).toList();
+                            return source
+                                .take(6)
+                                .map(
+                                  (a) => MediaItem(
+                                    title: a.title,
+                                    subtitle: a.artists.isNotEmpty
+                                        ? a.artists.first.name
+                                        : 'Album',
+                                    imageUrl: a.coverUrl,
+                                    icon: Icons.album,
+                                    onTap: () =>
+                                        context.push('/albums/${a.albumId}'),
+                                  ),
+                                )
+                                .toList();
                           })(),
                           onSeeAll: () {},
                           cardWidth: isCompact ? 140 : 160,
@@ -227,7 +232,7 @@ class _HeaderBar extends StatelessWidget {
             if (!isAdmin) return const SizedBox.shrink();
             return IconButton.filledTonal(
               tooltip: 'Admin home',
-              onPressed: () => context.go(Routes.adminDashboard),
+              onPressed: () => context.push(Routes.adminDashboard),
               icon: const Icon(Icons.admin_panel_settings),
             );
           },
@@ -243,7 +248,7 @@ class _HeaderBar extends StatelessWidget {
               onSelected: (value) {
                 switch (value) {
                   case 'admin':
-                    context.go(Routes.adminDashboard);
+                    context.push(Routes.adminDashboard);
                     break;
                   case 'logout':
                     context.read<AuthBloc>().add(AuthLogout());

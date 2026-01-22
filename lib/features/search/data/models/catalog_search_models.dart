@@ -1,7 +1,12 @@
 import 'package:musee/features/search/domain/entities/catalog_search.dart';
 
 class CatalogArtistModel extends CatalogArtist {
-  CatalogArtistModel({required super.artistId, super.name, super.avatarUrl});
+  CatalogArtistModel({
+    required super.artistId,
+    super.name,
+    super.avatarUrl,
+    super.source,
+  });
 
   factory CatalogArtistModel.fromJson(Map<String, dynamic> json) {
     String? name = json['name'] as String?;
@@ -28,6 +33,7 @@ class CatalogAlbumModel extends CatalogAlbum {
     required super.title,
     super.coverUrl,
     super.artists = const [],
+    super.source,
   });
 
   factory CatalogAlbumModel.fromJson(Map<String, dynamic> json) {
@@ -55,6 +61,8 @@ class CatalogTrackModel extends CatalogTrack {
     required super.title,
     super.duration,
     super.artists = const [],
+    super.imageUrl,
+    super.source,
   });
 
   factory CatalogTrackModel.fromJson(Map<String, dynamic> json) {
@@ -74,6 +82,7 @@ class CatalogTrackModel extends CatalogTrack {
           ? json['duration'] as int
           : int.tryParse(json['duration']?.toString() ?? ''),
       artists: artists,
+      imageUrl: json['image_url'] as String?,
     );
   }
 }

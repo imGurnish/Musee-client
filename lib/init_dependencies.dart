@@ -89,10 +89,16 @@ import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.d
 import 'package:musee/features/player/data/datasources/player_remote_data_source.dart';
 import 'package:musee/features/player/data/repositories/player_repository_impl.dart';
 import 'package:musee/features/player/domain/repository/player_repository.dart';
+import 'package:musee/core/cache/services/track_cache_service.dart';
+import 'package:musee/core/cache/services/audio_cache_service.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 final serviceLocator = GetIt.instance;
 
 Future<void> initDependencies() async {
+  // Initialize Hive for local caching
+  await Hive.initFlutter();
+
   // Initialize external dependencies first
   final supabase = await Supabase.initialize(
     url: AppSecrets.supabaseUrl,
@@ -105,7 +111,21 @@ Future<void> initDependencies() async {
 
   //core
   serviceLocator.registerLazySingleton(() => AppUserCubit());
-  // Register player with repository
+
+  // Initialize cache services
+  final trackCacheService = TrackCacheServiceImpl();
+  await trackCacheService.init();
+  serviceLocator.registerLazySingleton<TrackCacheService>(
+    () => trackCacheService,
+  );
+
+  final audioCacheService = AudioCacheServiceImpl(serviceLocator<Dio>());
+  await audioCacheService.init();
+  serviceLocator.registerLazySingleton<AudioCacheService>(
+    () => audioCacheService,
+  );
+
+  // Register player with repository and cache services
   serviceLocator
     ..registerLazySingleton<PlayerDataSource>(
       () => PlayerDataSourceImpl(serviceLocator(), serviceLocator()),
@@ -113,8 +133,13 @@ Future<void> initDependencies() async {
     ..registerLazySingleton<PlayerRepository>(
       () => PlayerRepositoryImpl(serviceLocator()),
     )
-    ..registerLazySingleton(() => PlayerCubit(repository: serviceLocator()))
-  ;
+    ..registerLazySingleton(
+      () => PlayerCubit(
+        repository: serviceLocator(),
+        trackCache: serviceLocator<TrackCacheService>(),
+        audioCache: serviceLocator<AudioCacheService>(),
+      ),
+    );
 
   //auth
   _initAuth();
