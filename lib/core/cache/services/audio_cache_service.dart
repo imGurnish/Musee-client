@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:musee/core/cache/cache_config.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
@@ -43,6 +44,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
 
   @override
   Future<void> init() async {
+    if (kIsWeb) return;
     final appDir = await getApplicationDocumentsDirectory();
     _cacheDir = Directory('${appDir.path}/audio_cache');
     if (!await _cacheDir!.exists()) {
@@ -51,6 +53,9 @@ class AudioCacheServiceImpl implements AudioCacheService {
   }
 
   Directory get _dir {
+    if (kIsWeb) {
+      throw UnsupportedError('Audio caching is not supported on web');
+    }
     if (_cacheDir == null) {
       throw StateError('AudioCacheService not initialized. Call init() first.');
     }
@@ -63,6 +68,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
 
   @override
   Future<String?> getLocalAudioPath(String trackId) async {
+    if (kIsWeb) return null;
     // Check for common audio extensions
     for (final ext in ['mp3', 'm4a', 'aac', 'flac']) {
       final file = File(_getFilePath(trackId, ext));
@@ -79,6 +85,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
     required String remoteUrl,
     required TrackCacheService trackCache,
   }) async {
+    if (kIsWeb) return null;
     try {
       // Determine file extension from URL
       final uri = Uri.parse(remoteUrl);
@@ -121,6 +128,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
 
   @override
   Future<void> deleteAudio(String trackId) async {
+    if (kIsWeb) return;
     for (final ext in ['mp3', 'm4a', 'aac', 'flac']) {
       final file = File(_getFilePath(trackId, ext));
       if (await file.exists()) {
@@ -132,6 +140,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
 
   @override
   Future<int> getTotalCacheSize() async {
+    if (kIsWeb) return 0;
     int totalSize = 0;
     if (await _dir.exists()) {
       await for (final entity in _dir.list()) {
@@ -145,6 +154,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
 
   @override
   Future<void> enforceMaxSize(TrackCacheService trackCache) async {
+    if (kIsWeb) return;
     final currentSize = await getTotalCacheSize();
     if (currentSize <= CacheConfig.maxAudioCacheSizeBytes) return;
 
@@ -171,6 +181,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
 
   @override
   Future<void> clearAll() async {
+    if (kIsWeb) return;
     if (await _dir.exists()) {
       await for (final entity in _dir.list()) {
         if (entity is File) {
