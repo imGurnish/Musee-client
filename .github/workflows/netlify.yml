@@ -38,6 +38,12 @@ jobs:
             static const String supabaseUrl = "${{ secrets.SUPABASE_URL }}";
             static const String supabaseAnonKey = "${{ secrets.SUPABASE_ANON_KEY }}";
             static const String backendUrl = "${{ secrets.BACKEND_URL }}";
+
+            // External Music API
+            static const String externalMusicBaseUrl = "${{ secrets.EXTERNAL_MUSIC_BASE_URL }}";
+            static const String externalMusicDecryptionKey = "${{ secrets.EXTERNAL_MUSIC_DECRYPTION_KEY }}";
+            static const String externalMusicOrigin = "${{ secrets.EXTERNAL_MUSIC_ORIGIN }}";
+            static const String externalMusicReferer = "${{ secrets.EXTERNAL_MUSIC_REFERER }}";
           }
           EOF
 
