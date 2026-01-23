@@ -41,7 +41,7 @@ class HorizontalMediaSection extends StatelessWidget {
                 ),
               );
             },
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemCount: items.length,
           ),
         ),

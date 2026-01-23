@@ -2,6 +2,8 @@
 /// Provides user-friendly error messages and structured error information
 /// for logging and debugging.
 
+library;
+
 import 'package:dio/dio.dart' as dio;
 import 'dart:io';
 

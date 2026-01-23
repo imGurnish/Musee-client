@@ -57,7 +57,7 @@ class QueueItem extends Equatable {
             .where((s) => s.isNotEmpty)
             .join(', ') ??
         '';
-    final hls = (json['hls'] as Map?)?.cast<String, dynamic>();
+    // final hls = (json['hls'] as Map?)?.cast<String, dynamic>();
     final imageUrl =
         (json['album']?['cover_url'] ?? json['image_url'] ?? json['cover_url'])
             ?.toString();

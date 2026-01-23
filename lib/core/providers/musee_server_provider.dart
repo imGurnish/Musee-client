@@ -1,6 +1,8 @@
 /// Music provider implementation for the Musee backend server.
 /// Wraps existing API calls to the Musee server endpoints.
 
+library;
+
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -50,7 +52,9 @@ class MuseeServerProvider implements MusicProvider {
       final data = json.decode(response.body) as Map<String, dynamic>;
       return _parseTrack(data);
     } catch (e) {
-      if (kDebugMode) print('[MuseeServerProvider] getTrack error: $e');
+      if (kDebugMode) {
+        debugPrint('[MuseeServerProvider] getTrack error: $e');
+      }
       return null;
     }
   }
@@ -66,7 +70,9 @@ class MuseeServerProvider implements MusicProvider {
       final data = json.decode(response.body) as Map<String, dynamic>;
       return _parseAlbum(data);
     } catch (e) {
-      if (kDebugMode) print('[MuseeServerProvider] getAlbum error: $e');
+      if (kDebugMode) {
+        debugPrint('[MuseeServerProvider] getAlbum error: $e');
+      }
       return null;
     }
   }
@@ -83,7 +89,7 @@ class MuseeServerProvider implements MusicProvider {
       return _parseAlbum(data, includeTracks: true);
     } catch (e) {
       if (kDebugMode) {
-        print('[MuseeServerProvider] getAlbumWithTracks error: $e');
+        debugPrint('[MuseeServerProvider] getAlbumWithTracks error: $e');
       }
       return null;
     }
@@ -100,7 +106,9 @@ class MuseeServerProvider implements MusicProvider {
       final data = json.decode(response.body) as Map<String, dynamic>;
       return _parseArtist(data);
     } catch (e) {
-      if (kDebugMode) print('[MuseeServerProvider] getArtist error: $e');
+      if (kDebugMode) {
+        debugPrint('[MuseeServerProvider] getArtist error: $e');
+      }
       return null;
     }
   }
@@ -139,7 +147,9 @@ class MuseeServerProvider implements MusicProvider {
 
       return master;
     } catch (e) {
-      if (kDebugMode) print('[MuseeServerProvider] getStreamUrl error: $e');
+      if (kDebugMode) {
+        debugPrint('[MuseeServerProvider] getStreamUrl error: $e');
+      }
       return null;
     }
   }
@@ -201,7 +211,9 @@ class MuseeServerProvider implements MusicProvider {
         artists: artists,
       );
     } catch (e) {
-      if (kDebugMode) print('[MuseeServerProvider] search error: $e');
+      if (kDebugMode) {
+        debugPrint('[MuseeServerProvider] search error: $e');
+      }
       return const ProviderSearchResults();
     }
   }
@@ -224,8 +236,9 @@ class MuseeServerProvider implements MusicProvider {
           .whereType<ProviderTrack>()
           .toList();
     } catch (e) {
-      if (kDebugMode)
-        print('[MuseeServerProvider] getTrendingTracks error: $e');
+      if (kDebugMode) {
+        debugPrint('[MuseeServerProvider] getTrendingTracks error: $e');
+      }
       return const [];
     }
   }
@@ -248,7 +261,9 @@ class MuseeServerProvider implements MusicProvider {
           .whereType<ProviderAlbum>()
           .toList();
     } catch (e) {
-      if (kDebugMode) print('[MuseeServerProvider] getNewReleases error: $e');
+      if (kDebugMode) {
+        debugPrint('[MuseeServerProvider] getNewReleases error: $e');
+      }
       return const [];
     }
   }

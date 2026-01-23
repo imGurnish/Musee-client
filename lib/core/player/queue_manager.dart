@@ -1,6 +1,8 @@
 /// Queue manager for handling queue operations with proper index synchronization.
 /// Encapsulates all queue logic to ensure consistent state management.
 
+library;
+
 import 'package:equatable/equatable.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 

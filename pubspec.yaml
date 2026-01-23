@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
     
   flutter_bloc: ^9.1.1
   get_it: ^8.2.0

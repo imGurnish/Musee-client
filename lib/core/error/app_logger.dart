@@ -1,6 +1,8 @@
 /// Structured logging service for the Musee app.
 /// Provides consistent logging with context and proper formatting.
 
+library;
+
 import 'package:flutter/foundation.dart';
 
 /// Log levels
@@ -105,9 +107,6 @@ class AppLogger {
           debugPrint('❌ ${buffer.toString()}');
       }
     }
-
-    // TODO: In production, send to remote logging service
-    // Example: Sentry.captureMessage(message, level: level);
   }
 }
 

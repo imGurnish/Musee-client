@@ -1,6 +1,8 @@
 /// Unified models for music providers, enabling seamless integration
 /// of multiple music sources (Musee server, external APIs) with source tracking.
 
+library;
+
 import 'package:equatable/equatable.dart';
 
 /// Enum to identify the source of music content

@@ -69,7 +69,7 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
 
   /// Builds search input field with proper styling
   Widget _buildSearchField() {
-    return Container(
+    return SizedBox(
       height: 40,
       child: TextField(
         controller: _searchController,

@@ -6,7 +6,7 @@ import 'package:bloc/bloc.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/features/player/domain/repository/player_repository.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
@@ -81,7 +81,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       final localPath = await _audioCache.getLocalAudioPath(trackId);
       if (localPath != null && await File(localPath).exists()) {
         if (kDebugMode) {
-          print('[PlayerCubit] Playing from local cache: $localPath');
+          debugPrint('[PlayerCubit] Playing from local cache: $localPath');
         }
         // Update last played timestamp for LRU
         _trackCache?.updateLastPlayed(trackId);
@@ -94,7 +94,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (cachedTrack?.streamingUrl != null) {
       // NOTE: We could add expiry check here if needed
       if (kDebugMode) {
-        print('[PlayerCubit] Using cached streaming URL for track: $trackId');
+        debugPrint(
+          '[PlayerCubit] Using cached streaming URL for track: $trackId',
+        );
       }
       return cachedTrack!.streamingUrl;
     }
@@ -113,7 +115,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           return url;
         }
       } catch (e) {
-        if (kDebugMode) print('[PlayerCubit] Error fetching stream URL: $e');
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] Error fetching stream URL: $e');
+        }
       }
     }
 
@@ -135,12 +139,15 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
       // If remote fetch fails, try to use fallback data
       if (track == null && fallback != null) {
-        if (kDebugMode)
-          print('[PlayerCubit] getTrack failed, using fallback for $trackId');
+        if (kDebugMode) {
+          debugPrint(
+            '[PlayerCubit] getTrack failed, using fallback for $trackId',
+          );
+        }
         // Fallback available, will use it below
       } else if (track == null) {
         if (kDebugMode) {
-          print(
+          debugPrint(
             '[PlayerCubit] getTrack returned null for $trackId and no fallback',
           );
         }
@@ -148,7 +155,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       }
 
       if (kDebugMode && track != null) {
-        print('[PlayerCubit] caching track: ${track.title}');
+        debugPrint('[PlayerCubit] caching track: ${track.title}');
       }
 
       // Download album artwork (if we have a URL from track or fallback)
@@ -195,7 +202,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         );
       }
     } catch (e) {
-      if (kDebugMode) print('[PlayerCubit] Failed to cache track metadata: $e');
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Failed to cache track metadata: $e');
+      }
     }
   }
 

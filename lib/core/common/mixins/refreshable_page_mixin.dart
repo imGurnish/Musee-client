@@ -1,6 +1,8 @@
 /// Pull-to-refresh and auto-refresh mixin for pages.
 /// Provides common refresh functionality with connectivity awareness.
 
+library;
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';

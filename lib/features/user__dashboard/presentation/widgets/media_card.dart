@@ -61,7 +61,9 @@ class MediaCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.textTheme.bodySmall?.color?.withOpacity(0.8),
+                  color: theme.textTheme.bodySmall?.color?.withValues(
+                    alpha: 0.8,
+                  ),
                 ),
               ),
             ],
@@ -76,7 +78,7 @@ class MediaCard extends StatelessWidget {
       return Image.file(
         File(localImagePath!),
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _buildNetworkOrPlaceholder(color),
+        errorBuilder: (_, _, _) => _buildNetworkOrPlaceholder(color),
       );
     }
     return _buildNetworkOrPlaceholder(color);
@@ -87,7 +89,7 @@ class MediaCard extends StatelessWidget {
       return Image.network(imageUrl!, fit: BoxFit.cover);
     }
     return Container(
-      color: color.primaryContainer.withOpacity(0.4),
+      color: color.primaryContainer.withValues(alpha: 0.4),
       child: Center(child: Icon(fallbackIcon, size: 36)),
     );
   }

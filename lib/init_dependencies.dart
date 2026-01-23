@@ -97,7 +97,6 @@ import 'package:hive_flutter/hive_flutter.dart';
 // New infrastructure services
 import 'package:musee/core/providers/providers.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';
-import 'package:musee/core/error/app_logger.dart';
 
 final serviceLocator = GetIt.instance;
 

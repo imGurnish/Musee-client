@@ -171,6 +171,7 @@ class _UserAlbumView extends StatelessWidget {
                                     }
                                     return;
                                   }
+                                  if (!context.mounted) return;
                                   await showPlayerBottomSheet(
                                     context,
                                     audioUrl: url,
@@ -243,9 +244,7 @@ class _UserAlbumView extends StatelessWidget {
                                 icon: const Icon(Icons.play_arrow_rounded),
                                 tooltip: 'Play',
                                 onPressed: () async {
-                                  final url = await fetchPlayableUrl(
-                                    t.trackId,
-                                  );
+                                  final url = await fetchPlayableUrl(t.trackId);
                                   if (url == null) {
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(
@@ -260,6 +259,7 @@ class _UserAlbumView extends StatelessWidget {
                                     }
                                     return;
                                   }
+                                  if (!context.mounted) return;
                                   await showPlayerBottomSheet(
                                     context,
                                     audioUrl: url,
@@ -275,9 +275,17 @@ class _UserAlbumView extends StatelessWidget {
                                 onPressed: () async {
                                   final action = await showMenu<String>(
                                     context: context,
-                                    position: const RelativeRect.fromLTRB(100, 100, 0, 0),
+                                    position: const RelativeRect.fromLTRB(
+                                      100,
+                                      100,
+                                      0,
+                                      0,
+                                    ),
                                     items: const [
-                                      PopupMenuItem(value: 'queue', child: Text('Add to queue')),
+                                      PopupMenuItem(
+                                        value: 'queue',
+                                        child: Text('Add to queue'),
+                                      ),
                                     ],
                                   );
                                   if (action == 'queue') {
@@ -289,10 +297,16 @@ class _UserAlbumView extends StatelessWidget {
                                       imageUrl: album.coverUrl,
                                       durationSeconds: t.duration,
                                     );
-                                    await GetIt.I<PlayerCubit>().addToQueue([item]);
+                                    await GetIt.I<PlayerCubit>().addToQueue([
+                                      item,
+                                    ]);
                                     if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Added to queue')),
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Added to queue'),
+                                        ),
                                       );
                                     }
                                   }
@@ -312,6 +326,7 @@ class _UserAlbumView extends StatelessWidget {
                               }
                               return;
                             }
+                            if (!context.mounted) return;
                             await showPlayerBottomSheet(
                               context,
                               audioUrl: url,

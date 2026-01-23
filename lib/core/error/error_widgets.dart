@@ -1,5 +1,6 @@
 /// User-friendly error display widgets for consistent error presentation.
 /// Shows errors as snackbars, dialogs, or inline banners without raw exception details.
+library;
 
 import 'package:flutter/material.dart';
 import 'app_errors.dart';
@@ -101,7 +102,7 @@ class ErrorView extends StatelessWidget {
             Icon(
               icon,
               size: 64,
-              color: theme.colorScheme.error.withOpacity(0.6),
+              color: theme.colorScheme.error.withValues(alpha: 0.6),
             ),
             const SizedBox(height: 16),
             Text(

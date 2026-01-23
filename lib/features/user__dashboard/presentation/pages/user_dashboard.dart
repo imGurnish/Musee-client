@@ -264,7 +264,9 @@ class _HeaderBar extends StatelessWidget {
               Text(
                 'Let\'s discover some music for you',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.textTheme.bodyMedium?.color?.withOpacity(0.8),
+                  color: theme.textTheme.bodyMedium?.color?.withValues(
+                    alpha: 0.8,
+                  ),
                 ),
               ),
             ],
@@ -333,8 +335,8 @@ class _HeroBanner extends StatelessWidget {
     final theme = Theme.of(context);
     final gradient = LinearGradient(
       colors: [
-        theme.colorScheme.primary.withOpacity(0.18),
-        theme.colorScheme.secondary.withOpacity(0.12),
+        theme.colorScheme.primary.withValues(alpha: 0.18),
+        theme.colorScheme.secondary.withValues(alpha: 0.12),
       ],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
@@ -383,7 +385,7 @@ class _HeroBanner extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Container(
-                color: theme.colorScheme.primary.withOpacity(0.15),
+                color: theme.colorScheme.primary.withValues(alpha: 0.15),
                 child: const Icon(Icons.graphic_eq, size: 48),
               ),
             ),

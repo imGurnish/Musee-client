@@ -357,7 +357,7 @@ class _KeyValueCopy extends StatelessWidget {
             icon: const Icon(Icons.copy, size: 18),
             onPressed: () async {
               await Clipboard.setData(ClipboardData(text: value));
-              // ignore: use_build_context_synchronously
+              if (!context.mounted) return;
               ScaffoldMessenger.of(
                 context,
               ).showSnackBar(const SnackBar(content: Text('Copied')));
@@ -639,7 +639,7 @@ class _PlanAutocompleteState extends State<_PlanAutocomplete> {
                   icon: const Icon(Icons.copy, size: 18),
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: _value!.id));
-                    if (!mounted) return;
+                    if (!context.mounted) return;
                     ScaffoldMessenger.of(
                       context,
                     ).showSnackBar(const SnackBar(content: Text('Copied')));
