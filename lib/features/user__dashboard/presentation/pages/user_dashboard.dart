@@ -168,6 +168,31 @@ class _UserDashboardState extends State<UserDashboard> {
                           SliverToBoxAdapter(
                             child: SizedBox(height: isCompact ? 4 : 8),
                           ),
+                        if (state.recommendations.isNotEmpty &&
+                            state.recommendationTitle != null)
+                          SliverToBoxAdapter(
+                            child: HorizontalMediaSection(
+                              title: state.recommendationTitle!,
+                              items: state.recommendations
+                                  .map(
+                                    (item) => MediaItem(
+                                      title: item.title,
+                                      subtitle: _getSubtitle(item),
+                                      imageUrl: item.coverUrl,
+                                      icon: _getIcon(item.type),
+                                      onTap: () =>
+                                          _handleItemTap(context, item),
+                                    ),
+                                  )
+                                  .toList(),
+                              onSeeAll: () {},
+                              cardWidth: isCompact ? 140 : 160,
+                            ),
+                          ),
+                        if (state.recommendations.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: SizedBox(height: isCompact ? 4 : 8),
+                          ),
                         SliverToBoxAdapter(
                           child: SectionHeader(
                             title: 'Made for you',

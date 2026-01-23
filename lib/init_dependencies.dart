@@ -456,6 +456,7 @@ void _initUserDashboard() {
         serviceLocator<ListMadeForYou>(),
         serviceLocator<ListTrending>(),
         trackCache: serviceLocator<TrackCacheService>(),
+        musicProviderRegistry: serviceLocator<MusicProviderRegistry>(),
       ),
     );
 }
