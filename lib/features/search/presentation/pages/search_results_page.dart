@@ -3,7 +3,6 @@ import 'package:musee/features/search/domain/entities/catalog_search.dart';
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
 import 'package:musee/features/search/presentation/pages/search_suggestions_page.dart';
 import 'package:musee/features/search/presentation/widgets/external_badge.dart';
-import 'package:musee/features/search/data/datasources/external_music_data_source.dart';
 import 'package:musee/features/search/presentation/pages/external_album_page.dart';
 import 'package:musee/features/search/presentation/pages/external_artist_page.dart';
 import 'package:musee/init_dependencies.dart';
@@ -12,12 +11,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
-import 'package:dio/dio.dart' as dio;
 import 'package:get_it/get_it.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter/foundation.dart'
-    show kIsWeb, kDebugMode, defaultTargetPlatform, TargetPlatform;
-import 'package:musee/core/secrets/app_secrets.dart';
+
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 
@@ -485,7 +480,8 @@ class _TrackTile extends StatelessWidget {
           width: 48,
           height: 48,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const Icon(Icons.music_note),
+          errorBuilder: (context, error, stackTrace) =>
+              const Icon(Icons.music_note),
         ),
       );
     }
@@ -493,26 +489,10 @@ class _TrackTile extends StatelessWidget {
   }
 
   Future<void> _playTrack(BuildContext context, String artistNames) async {
-    String? url;
-
-    if (_isExternal) {
-      url = await _fetchExternalPlayableUrl(track.trackId);
-    } else {
-      url = await _fetchPlayableUrl(track.trackId);
-    }
-
-    if (url == null) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to load stream URL')),
-        );
-      }
-      return;
-    }
-
     await showPlayerBottomSheet(
       context,
-      audioUrl: url,
+      trackId: track.trackId,
+      audioUrl: null, // Let the cubit resolve it
       title: track.title,
       artist: artistNames,
       imageUrl: track.imageUrl,
@@ -591,7 +571,8 @@ class _AlbumTile extends StatelessWidget {
                 width: 48,
                 height: 48,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(Icons.album),
+                errorBuilder: (context, error, stackTrace) =>
+                    const Icon(Icons.album),
               )
             : const Icon(Icons.album),
       ),
@@ -632,79 +613,7 @@ class _AlbumTile extends StatelessWidget {
   }
 }
 
-// Fetch a playable URL for a given track, selecting the best URL for platform.
-Future<String?> _fetchPlayableUrl(String trackId) async {
-  try {
-    final client = GetIt.I<dio.Dio>();
-    final token = Supabase.instance.client.auth.currentSession?.accessToken;
-    final res = await client.get(
-      '${AppSecrets.backendUrl}/api/user/tracks/$trackId',
-      options: dio.Options(
-        headers: token != null
-            ? {'Authorization': 'Bearer $token', 'Accept': 'application/json'}
-            : {'Accept': 'application/json'},
-      ),
-    );
-    final data = (res.data as Map).cast<String, dynamic>();
-    final hls = (data['hls'] as Map?)?.cast<String, dynamic>();
-    final master = hls?['master'] as String?;
-
-    // Prefer progressive MP3 on web and Windows for widest support
-    final isWindows =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-    if (kIsWeb || isWindows) {
-      final audios = (data['audios'] as List?)?.cast<dynamic>() ?? const [];
-      String? bestMp3;
-      int bestBitrate = -1;
-      for (final item in audios) {
-        final m = (item as Map).cast<String, dynamic>();
-        final ext = (m['ext'] as String?)?.toLowerCase();
-        final path = m['path'] as String?;
-        final br = (m['bitrate'] as num?)?.toInt() ?? 0;
-        if (ext == 'mp3' && path != null && path.isNotEmpty) {
-          if (br > bestBitrate) {
-            bestBitrate = br;
-            bestMp3 = path;
-          }
-        }
-      }
-      return bestMp3 ?? master;
-    }
-
-    // Other native platforms: use HLS master
-    return master;
-  } catch (_) {
-    return null;
-  }
-}
-
-// Fetch a playable URL for a External track.
-Future<String?> _fetchExternalPlayableUrl(String trackId) async {
-  try {
-    // Extract the actual song ID from the prefixed trackId (e.g., "external:abc123")
-    final songId = trackId.startsWith('external:')
-        ? trackId.substring('external:'.length)
-        : trackId;
-
-    final dataSource = ExternalMusicDataSource();
-    final songDetail = await dataSource.getSongById(songId);
-
-    if (songDetail == null) {
-      if (kDebugMode) {
-        print('External: Could not fetch song details for $songId');
-      }
-      return null;
-    }
-
-    // Get playable URL (preview URL)
-    return dataSource.getPlayableUrl(songDetail);
-  } catch (e) {
-    if (kDebugMode) {
-      print('External playback error: $e');
-    }
-    return null;
-  }
-}
+// Fetch methods removed as they are now handled by PlayerCubit
 
 class _TypeChip extends StatelessWidget {
   final String label;

@@ -5,7 +5,6 @@ import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:pointycastle/api.dart';
 import 'package:pointycastle/block/modes/ecb.dart';
 import 'package:pointycastle/block/des_base.dart';
-import 'dart:typed_data';
 
 /// External Music API data source for searching songs, albums, and artists.
 /// Calls the external PHP API directly without requiring yt-dlp.
@@ -115,8 +114,9 @@ class ExternalMusicDataSource {
         }
       }
 
-      if (kDebugMode)
+      if (kDebugMode) {
         print('External webapi.get failed for $songId, trying fallback...');
+      }
     } catch (e) {
       if (kDebugMode) print('External webapi.get error: $e');
     }
@@ -523,7 +523,6 @@ class ExternalMusicAlbumDetail {
 class DESEngine extends DesBase implements BlockCipher {
   static const int _blockSize = 8;
   List<int>? _workingKey;
-  bool _encrypting = false;
 
   @override
   String get algorithmName => 'DES';
@@ -534,7 +533,6 @@ class DESEngine extends DesBase implements BlockCipher {
   @override
   void init(bool forEncryption, CipherParameters? params) {
     if (params is KeyParameter) {
-      _encrypting = forEncryption;
       _workingKey = generateWorkingKey(forEncryption, params.key);
     }
   }

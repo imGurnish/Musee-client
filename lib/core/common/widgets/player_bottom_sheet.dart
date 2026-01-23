@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
@@ -7,30 +8,54 @@ import 'package:musee/core/player/player_state.dart';
 /// Shows the full-screen player bottom sheet, styled similar to Spotify.
 Future<void> showPlayerBottomSheet(
   BuildContext context, {
-  required String audioUrl,
-  String? title,
-  String? artist,
+  String? audioUrl,
+  required String title,
+  required String artist,
   String? album,
   String? imageUrl,
+  String? localImagePath,
   Map<String, String>? headers,
+  String? trackId,
 }) async {
-  final track = PlayerTrack(
-    url: audioUrl,
-    title: title ?? 'Unknown Title',
-    artist: artist ?? 'Unknown Artist',
-    album: album,
-    imageUrl: imageUrl,
-    headers: headers,
-  );
-  // Avoid restarting playback when opening the sheet from the mini-player
-  // if the same track is already loaded. Only start playback when it's
-  // a different track (e.g., starting from album list).
   final cubit = GetIt.I<PlayerCubit>();
-  final currentUrl = cubit.state.track?.url;
-  final isDifferentTrack = currentUrl == null || currentUrl != audioUrl;
-  if (isDifferentTrack) {
-    await cubit.playTrack(track);
+
+  if (trackId != null && (audioUrl == null || audioUrl.isEmpty)) {
+    // Play by ID (resolves URL and caches metadata)
+    // We don't check for "different track" here because playTrackById handles resolution
+    // and we want to ensure latest metadata/URL is used.
+    // However, if it's the exact same currently playing track ID, we might skip re-loading?
+    // PlayerCubit.playTrack checks URL. playTrackById fetches URL.
+    // Let's let playTrackById handle it, or add a check here.
+    final currentTrackId = cubit.state.track?.trackId;
+    if (currentTrackId != trackId) {
+      await cubit.playTrackById(
+        trackId: trackId,
+        title: title,
+        artist: artist,
+        album: album,
+        imageUrl: imageUrl,
+      );
+    }
+  } else if (audioUrl != null && audioUrl.isNotEmpty) {
+    final track = PlayerTrack(
+      url: audioUrl,
+      title: title,
+      artist: artist,
+      album: album,
+      imageUrl: imageUrl,
+      localImagePath: localImagePath,
+      headers: headers,
+      trackId: trackId,
+    );
+
+    final currentUrl = cubit.state.track?.url;
+    final isDifferentTrack = currentUrl == null || currentUrl != audioUrl;
+    if (isDifferentTrack) {
+      await cubit.playTrack(track);
+    }
   }
+
+  if (!context.mounted) return;
 
   await showModalBottomSheet(
     context: context,
@@ -56,8 +81,14 @@ class _PlayerBackdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final top = Color.alphaBlend(cs.primary.withValues(alpha: 0.08), cs.surface);
-    final mid = Color.alphaBlend(cs.secondary.withValues(alpha: 0.06), cs.surface);
+    final top = Color.alphaBlend(
+      cs.primary.withValues(alpha: 0.08),
+      cs.surface,
+    );
+    final mid = Color.alphaBlend(
+      cs.secondary.withValues(alpha: 0.06),
+      cs.surface,
+    );
     final bottom = cs.surface;
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -161,51 +192,11 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
                     aspectRatio: 1,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: (imageUrl?.isNotEmpty ?? false)
-                          ? Image.network(
-                              imageUrl!,
-                              fit: BoxFit.cover,
-                              filterQuality: FilterQuality.medium,
-                              headers: state.track?.headers,
-                              loadingBuilder: (context, child, progress) {
-                                if (progress == null) return child;
-                                return Container(
-                                  color:
-                                      theme.colorScheme.surfaceContainerHighest,
-                                  alignment: Alignment.center,
-                                  child: SizedBox(
-                                    width: 36,
-                                    height: 36,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.6,
-                                      value: progress.expectedTotalBytes != null
-                                          ? progress.cumulativeBytesLoaded /
-                                                (progress.expectedTotalBytes!)
-                                          : null,
-                                    ),
-                                  ),
-                                );
-                              },
-                              errorBuilder: (context, error, stack) {
-                                return Container(
-                                  color:
-                                      theme.colorScheme.surfaceContainerHighest,
-                                  alignment: Alignment.center,
-                                  child: const Icon(
-                                    Icons.music_note_rounded,
-                                    size: 64,
-                                  ),
-                                );
-                              },
-                            )
-                          : Container(
-                              color: theme.colorScheme.surfaceContainerHighest,
-                              alignment: Alignment.center,
-                              child: const Icon(
-                                Icons.music_note_rounded,
-                                size: 64,
-                              ),
-                            ),
+                      child: _buildArtwork(
+                        imageUrl: imageUrl,
+                        localPath: state.track?.localImagePath,
+                        theme: theme,
+                      ),
                     ),
                   ),
                 ),
@@ -233,8 +224,9 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
                         Text(
                           artist,
                           style: theme.textTheme.bodyLarge?.copyWith(
-                            color: theme.textTheme.bodyLarge?.color
-                                ?.withValues(alpha: 0.85),
+                            color: theme.textTheme.bodyLarge?.color?.withValues(
+                              alpha: 0.85,
+                            ),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -322,7 +314,8 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
                   const SizedBox(width: 8),
                   IconButton(
                     tooltip: 'Next',
-                    onPressed: () => context.read<PlayerCubit>().next(userInitiated: true),
+                    onPressed: () =>
+                        context.read<PlayerCubit>().next(userInitiated: true),
                     icon: const Icon(Icons.skip_next_rounded),
                   ),
                   const Spacer(),
@@ -401,7 +394,12 @@ class _QueueSheet extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text('Queue', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                      child: Text(
+                        'Queue',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
                     IconButton(
                       tooltip: 'Clear queue',
@@ -424,30 +422,76 @@ class _QueueSheet extends StatelessWidget {
                         onReorder: (from, to) {
                           // Flutter uses a different insertion index when moving down
                           final newIndex = to > from ? to - 1 : to;
-                          context.read<PlayerCubit>().reorderQueue(from, newIndex);
+                          context.read<PlayerCubit>().reorderQueue(
+                            from,
+                            newIndex,
+                          );
                         },
                         itemBuilder: (context, index) {
                           final q = items[index];
                           final playing = index == state.currentIndex;
                           return ListTile(
                             key: ValueKey(q.trackId),
-                            leading: playing
-                                ? const Icon(Icons.volume_up_rounded)
-                                : Text('${index + 1}', style: theme.textTheme.labelLarge),
-                            title: Text(q.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(q.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+                            contentPadding: EdgeInsets.zero,
+                            leading: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (playing)
+                                  const SizedBox(
+                                    width: 40,
+                                    child: Icon(Icons.volume_up_rounded),
+                                  )
+                                else
+                                  SizedBox(
+                                    width: 40,
+                                    child: Center(
+                                      child: Text(
+                                        '${index + 1}',
+                                        style: theme.textTheme.labelLarge,
+                                      ),
+                                    ),
+                                  ),
+                                const SizedBox(width: 8),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: SizedBox(
+                                    width: 40,
+                                    height: 40,
+                                    child: _buildSmallArtwork(
+                                      q.imageUrl,
+                                      q.localImagePath,
+                                      theme,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            title: Text(
+                              q.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              q.artist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
                                   tooltip: 'Remove',
                                   icon: const Icon(Icons.close_rounded),
-                                  onPressed: () => context.read<PlayerCubit>().removeFromQueue(q.trackId),
+                                  onPressed: () => context
+                                      .read<PlayerCubit>()
+                                      .removeFromQueue(q.trackId),
                                 ),
                                 const Icon(Icons.drag_handle_rounded),
                               ],
                             ),
-                            onTap: () => context.read<PlayerCubit>().playFromQueueTrackId(q.trackId),
+                            onTap: () => context
+                                .read<PlayerCubit>()
+                                .playFromQueueTrackId(q.trackId),
                           );
                         },
                       );
@@ -461,4 +505,43 @@ class _QueueSheet extends StatelessWidget {
       },
     );
   }
+}
+
+Widget _buildSmallArtwork(String? url, String? localPath, ThemeData theme) {
+  if (localPath != null && File(localPath).existsSync()) {
+    return Image.file(File(localPath), fit: BoxFit.cover);
+  }
+  if (url != null && url.isNotEmpty) {
+    return Image.network(url, fit: BoxFit.cover);
+  }
+  return Container(
+    color: theme.colorScheme.surfaceContainerHighest,
+    child: const Icon(Icons.music_note_rounded, size: 20),
+  );
+}
+
+Widget _buildArtwork({
+  String? imageUrl,
+  String? localPath,
+  required ThemeData theme,
+}) {
+  if (localPath != null && File(localPath).existsSync()) {
+    return Image.file(File(localPath), fit: BoxFit.cover);
+  }
+  if (imageUrl?.isNotEmpty ?? false) {
+    return Image.network(
+      imageUrl!,
+      fit: BoxFit.cover,
+      errorBuilder: (ctx, err, stack) => Container(
+        color: theme.colorScheme.surfaceContainerHighest,
+        alignment: Alignment.center,
+        child: const Icon(Icons.music_note_rounded, size: 64),
+      ),
+    );
+  }
+  return Container(
+    color: theme.colorScheme.surfaceContainerHighest,
+    alignment: Alignment.center,
+    child: const Icon(Icons.music_note_rounded, size: 64),
+  );
 }

@@ -302,6 +302,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
         },
       ),
     );
+    if (!mounted) return;
     if (picked != null) {
       // Reflect in autocomplete by finding the plan with this id
       final match = _plans.where((p) => p.id == picked.id);

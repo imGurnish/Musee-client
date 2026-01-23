@@ -1,6 +1,5 @@
 /// Music provider implementation wrapping the external music API.
 /// This provider is DISABLED on web platform due to CORS restrictions.
-library external_music_provider;
 
 import 'package:flutter/foundation.dart';
 import 'package:musee/features/search/data/datasources/external_music_data_source.dart';

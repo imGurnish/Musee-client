@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
@@ -22,7 +23,7 @@ class FloatingPlayerPanel extends StatelessWidget {
         final hasTrack = track != null;
         final title = track?.title ?? 'Nothing playing';
         final artist = track?.artist ?? 'Tap to choose something';
-        final artUrl = track?.imageUrl;
+
         final pos = state.position;
         final dur = state.duration;
         final progress = (dur.inMilliseconds > 0)
@@ -40,6 +41,7 @@ class FloatingPlayerPanel extends StatelessWidget {
                     artist: t.artist,
                     album: t.album,
                     imageUrl: t.imageUrl,
+                    localImagePath: t.localImagePath,
                     headers: t.headers,
                   );
                 }
@@ -66,15 +68,11 @@ class FloatingPlayerPanel extends StatelessWidget {
                       child: SizedBox(
                         width: 64,
                         height: 64,
-                        child: artUrl == null
-                            ? Container(
-                                color: color.primary.withValues(alpha: 0.15),
-                                child: const Icon(Icons.music_note, size: 28),
-                              )
-                            : Ink.image(
-                                image: NetworkImage(artUrl),
-                                fit: BoxFit.cover,
-                              ),
+                        child: _buildArtwork(
+                          track?.imageUrl,
+                          track?.localImagePath,
+                          color,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -146,7 +144,9 @@ class FloatingPlayerPanel extends StatelessWidget {
                           ),
                         ),
                         IconButton(
-                          onPressed: hasTrack ? () => cubit.next(userInitiated: true) : null,
+                          onPressed: hasTrack
+                              ? () => cubit.next(userInitiated: true)
+                              : null,
                           tooltip: 'Next',
                           icon: const Icon(Icons.skip_next_rounded),
                         ),
@@ -163,7 +163,9 @@ class FloatingPlayerPanel extends StatelessWidget {
                       child: LinearProgressIndicator(
                         value: progress,
                         minHeight: 3,
-                        backgroundColor: color.onSurface.withValues(alpha: 0.12),
+                        backgroundColor: color.onSurface.withValues(
+                          alpha: 0.12,
+                        ),
                         valueColor: AlwaysStoppedAnimation(color.primary),
                       ),
                     ),
@@ -182,6 +184,19 @@ class FloatingPlayerPanel extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildArtwork(String? imageUrl, String? localPath, ColorScheme color) {
+    if (localPath != null && File(localPath).existsSync()) {
+      return Image.file(File(localPath), fit: BoxFit.cover);
+    }
+    if (imageUrl != null) {
+      return Image.network(imageUrl, fit: BoxFit.cover);
+    }
+    return Container(
+      color: color.primaryContainer.withValues(alpha: 0.4),
+      child: const Icon(Icons.music_note, size: 28),
     );
   }
 }

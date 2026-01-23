@@ -6,44 +6,19 @@ class UserDashboardRepositoryImpl implements UserDashboardRepository {
   final UserDashboardRemoteDataSource _remote;
   UserDashboardRepositoryImpl(this._remote);
 
-  DashboardArtist _mapArtist(DashboardArtistDTO a) => DashboardArtist(
-    artistId: a.artistId,
-    name: a.name,
-    avatarUrl: a.avatarUrl,
-  );
-
-  DashboardAlbum _mapAlbum(DashboardAlbumDTO d) => DashboardAlbum(
-    albumId: d.albumId,
-    title: d.title,
-    coverUrl: d.coverUrl,
-    duration: d.duration,
-    artists: d.artists.map(_mapArtist).toList(),
-  );
-
-  PagedDashboardAlbums _mapPaged(PagedDashboardAlbumsDTO dto) {
-    return PagedDashboardAlbums(
-      items: dto.items.map(_mapAlbum).toList(),
-      total: dto.total,
-      page: dto.page,
-      limit: dto.limit,
-    );
-  }
-
   @override
-  Future<PagedDashboardAlbums> getMadeForYou({
+  Future<PagedDashboardItems> getMadeForYou({
     int page = 0,
     int limit = 20,
   }) async {
-    final dto = await _remote.getMadeForYou(page: page, limit: limit);
-    return _mapPaged(dto);
+    return _remote.getMadeForYou(page: page, limit: limit);
   }
 
   @override
-  Future<PagedDashboardAlbums> getTrending({
+  Future<PagedDashboardItems> getTrending({
     int page = 0,
     int limit = 20,
   }) async {
-    final dto = await _remote.getTrending(page: page, limit: limit);
-    return _mapPaged(dto);
+    return _remote.getTrending(page: page, limit: limit);
   }
 }

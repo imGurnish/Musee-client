@@ -135,7 +135,7 @@ class _AdminArtistsPageState extends State<AdminArtistsPage> {
                               if (isMobile) {
                                 return ListView.separated(
                                   itemCount: artists.length,
-                                  separatorBuilder: (_, __) =>
+                                  separatorBuilder: (context, index) =>
                                       const SizedBox(height: 8),
                                   itemBuilder: (context, i) {
                                     final a = artists[i];
@@ -208,7 +208,8 @@ class _AdminArtistsPageState extends State<AdminArtistsPage> {
                                                     ],
                                                   ),
                                                 );
-                                                if (confirm == true) {
+                                                if (confirm == true &&
+                                                    context.mounted) {
                                                   context
                                                       .read<AdminArtistsBloc>()
                                                       .add(
@@ -319,7 +320,8 @@ class _AdminArtistsPageState extends State<AdminArtistsPage> {
                                                           ],
                                                         ),
                                                       );
-                                                  if (confirm == true) {
+                                                  if (confirm == true &&
+                                                      context.mounted) {
                                                     context
                                                         .read<
                                                           AdminArtistsBloc

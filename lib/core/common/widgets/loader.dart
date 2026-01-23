@@ -72,7 +72,7 @@ class _LoaderState extends State<Loader> with SingleTickerProviderStateMixin {
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: widget.color.withOpacity(0.6),
+                  color: widget.color.withValues(alpha: 0.6),
                   blurRadius: 6,
                   spreadRadius: 1,
                 ),

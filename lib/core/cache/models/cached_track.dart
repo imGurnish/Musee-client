@@ -49,6 +49,26 @@ class CachedTrack extends HiveObject {
   /// Size of cached audio file in bytes (0 if not downloaded)
   @HiveField(12)
   int audioSizeBytes = 0;
+
+  /// Source provider identifier ('musee' or 'external')
+  @HiveField(13)
+  String sourceProvider = 'musee';
+
+  /// Local file path for cached album artwork
+  @HiveField(14)
+  String? localImagePath;
+
+  /// Number of times this track has been played (for recommendations)
+  @HiveField(15)
+  int playCount = 0;
+
+  /// Whether this track is available offline (has downloaded audio)
+  bool get isAvailableOffline =>
+      localAudioPath != null && localAudioPath!.isNotEmpty;
+
+  /// Full prefixed ID for multi-source operations
+  String get prefixedId =>
+      sourceProvider == 'musee' ? trackId : '$sourceProvider:$trackId';
 }
 
 /// Hive type adapter for caching album metadata locally.
@@ -76,4 +96,12 @@ class CachedAlbum extends HiveObject {
   /// Timestamp when this album was cached
   @HiveField(6)
   late DateTime cachedAt;
+
+  /// Source provider identifier ('musee' or 'external')
+  @HiveField(7)
+  String sourceProvider = 'musee';
+
+  /// Local file path for cached cover artwork
+  @HiveField(8)
+  String? localCoverPath;
 }

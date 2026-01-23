@@ -5,7 +5,7 @@ class ListTrending {
   final UserDashboardRepository _repo;
   ListTrending(this._repo);
 
-  Future<PagedDashboardAlbums> call({int page = 0, int limit = 20}) {
+  Future<PagedDashboardItems> call({int page = 0, int limit = 20}) {
     return _repo.getTrending(page: page, limit: limit);
   }
 }

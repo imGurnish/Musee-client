@@ -31,11 +31,16 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Admin • Tracks'),actions: [IconButton(
-        onPressed:()=> context.push(Routes.adminTrackCreate),
-        icon: const Icon(Icons.library_music),
-        tooltip: 'Create track',
-      ),],),
+      appBar: AppBar(
+        title: const Text('Admin • Tracks'),
+        actions: [
+          IconButton(
+            onPressed: () => context.push(Routes.adminTrackCreate),
+            icon: const Icon(Icons.library_music),
+            tooltip: 'Create track',
+          ),
+        ],
+      ),
 
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -126,7 +131,7 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                               if (isMobile) {
                                 return ListView.separated(
                                   itemCount: items.length,
-                                  separatorBuilder: (_, __) =>
+                                  separatorBuilder: (context, index) =>
                                       const SizedBox(height: 8),
                                   itemBuilder: (context, index) {
                                     final t = items[index];
@@ -190,7 +195,8 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                                                     ],
                                                   ),
                                                 );
-                                                if (confirm == true) {
+                                                if (confirm == true &&
+                                                    context.mounted) {
                                                   context
                                                       .read<AdminTracksBloc>()
                                                       .add(
@@ -303,7 +309,8 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                                                           ],
                                                         ),
                                                       );
-                                                  if (confirm == true) {
+                                                  if (confirm == true &&
+                                                      context.mounted) {
                                                     context
                                                         .read<AdminTracksBloc>()
                                                         .add(

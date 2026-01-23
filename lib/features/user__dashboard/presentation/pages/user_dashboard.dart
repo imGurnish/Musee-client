@@ -13,6 +13,11 @@ import 'package:musee/core/common/entities/user.dart';
 import 'package:musee/features/user__dashboard/presentation/bloc/user_dashboard_cubit.dart';
 import 'package:get_it/get_it.dart';
 
+import 'package:musee/features/user__dashboard/domain/entities/dashboard_album.dart'; // contains DashboardItem
+import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
+import 'package:musee/core/player/player_cubit.dart';
+import 'package:musee/core/player/player_state.dart';
+
 class UserDashboard extends StatefulWidget {
   const UserDashboard({super.key});
 
@@ -29,154 +34,202 @@ class _UserDashboardState extends State<UserDashboard> {
     }
   }
 
+  void _handleItemTap(BuildContext context, DashboardItem item) {
+    if (item.type == DashboardItemType.track) {
+      // Play track
+      showPlayerBottomSheet(
+        context,
+        trackId: item.id,
+        title: item.title,
+        artist: item.artists.map((a) => a.name).join(', '),
+        imageUrl: item.coverUrl,
+      );
+    } else {
+      // Navigate to album
+      context.push('/albums/${item.id}');
+    }
+  }
+
+  IconData _getIcon(DashboardItemType type) {
+    switch (type) {
+      case DashboardItemType.track:
+        return Icons.music_note_rounded;
+      case DashboardItemType.album:
+        return Icons.album_rounded;
+    }
+  }
+
+  String _getSubtitle(DashboardItem item) {
+    final artistName = item.artists.isNotEmpty
+        ? item.artists.first.name
+        : 'Unknown';
+    if (item.type == DashboardItemType.track) {
+      return 'Song • $artistName';
+    }
+    return 'Album • $artistName';
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocProvider<UserDashboardCubit>(
       create: (_) => GetIt.I<UserDashboardCubit>()..load(),
-      child: Scaffold(
-        bottomNavigationBar: BottomNavBar(selectedIndex: 0),
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final width = constraints.maxWidth;
-              final isCompact = width < 700;
+      child: BlocListener<PlayerCubit, PlayerViewState>(
+        listener: (context, playerState) {
+          if (playerState.track?.trackId != null) {
+            context.read<UserDashboardCubit>().refreshRecentlyPlayed();
+          }
+        },
+        listenWhen: (previous, current) {
+          return previous.track?.trackId != current.track?.trackId;
+        },
+        child: Scaffold(
+          bottomNavigationBar: BottomNavBar(selectedIndex: 0),
+          body: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final isCompact = width < 700;
 
-              return BlocBuilder<UserDashboardCubit, UserDashboardState>(
-                builder: (context, state) {
-                  final madeForYouItems = state.madeForYou
-                      .map(
-                        (a) => MediaItem(
-                          title: a.title,
-                          subtitle: a.artists.isNotEmpty
-                              ? a.artists.first.name
-                              : 'Album',
-                          imageUrl: a.coverUrl,
-                          icon: Icons.album,
-                          onTap: () => context.push('/albums/${a.albumId}'),
-                        ),
-                      )
-                      .toList();
-                  final trendingItems = state.trending
-                      .map(
-                        (a) => MediaItem(
-                          title: a.title,
-                          subtitle: a.artists.isNotEmpty
-                              ? a.artists.first.name
-                              : 'Album',
-                          imageUrl: a.coverUrl,
-                          icon: Icons.trending_up,
-                          onTap: () => context.push('/albums/${a.albumId}'),
-                        ),
-                      )
-                      .toList();
-
-                  return CustomScrollView(
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                          child: _HeaderBar(),
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                          child: _HeroBanner(),
-                        ),
-                      ),
-                      const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                      SliverToBoxAdapter(
-                        child: HorizontalMediaSection(
-                          title: 'Recently played',
-                          items: (() {
-                            // Use Made for you as a surrogate for recently played when backend isn't wired yet
-                            final source = state.madeForYou.isNotEmpty
-                                ? state.madeForYou
-                                : state.trending;
-                            return source
-                                .take(6)
-                                .map(
-                                  (a) => MediaItem(
-                                    title: a.title,
-                                    subtitle: a.artists.isNotEmpty
-                                        ? a.artists.first.name
-                                        : 'Album',
-                                    imageUrl: a.coverUrl,
-                                    icon: Icons.album,
-                                    onTap: () =>
-                                        context.push('/albums/${a.albumId}'),
-                                  ),
-                                )
-                                .toList();
-                          })(),
-                          onSeeAll: () {},
-                          cardWidth: isCompact ? 140 : 160,
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: SizedBox(height: isCompact ? 4 : 8),
-                      ),
-                      SliverToBoxAdapter(
-                        child: SectionHeader(
-                          title: 'Made for you',
-                          onSeeAll: () {},
-                        ),
-                      ),
-                      if (state.loadingMadeForYou)
-                        const SliverToBoxAdapter(
-                          child: Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: Center(child: CircularProgressIndicator()),
+                return BlocBuilder<UserDashboardCubit, UserDashboardState>(
+                  builder: (context, state) {
+                    final madeForYouItems = state.madeForYou
+                        .map(
+                          (item) => MediaItem(
+                            title: item.title,
+                            subtitle: _getSubtitle(item),
+                            imageUrl: item.coverUrl,
+                            icon: _getIcon(item.type),
+                            onTap: () => _handleItemTap(context, item),
                           ),
                         )
-                      else if (state.errorMadeForYou != null)
+                        .toList();
+
+                    final trendingItems = state.trending
+                        .map(
+                          (item) => MediaItem(
+                            title: item.title,
+                            subtitle: _getSubtitle(item),
+                            imageUrl: item.coverUrl,
+                            icon: item.type == DashboardItemType.track
+                                ? Icons.trending_up
+                                : Icons.album_rounded,
+                            onTap: () => _handleItemTap(context, item),
+                          ),
+                        )
+                        .toList();
+
+                    return CustomScrollView(
+                      slivers: [
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Text(
-                              'Failed to load: ${state.errorMadeForYou}',
-                            ),
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                            child: _HeaderBar(),
                           ),
-                        )
-                      else
-                        _GridSection(items: madeForYouItems),
-
-                      SliverToBoxAdapter(
-                        child: SizedBox(height: isCompact ? 4 : 8),
-                      ),
-                      SliverToBoxAdapter(
-                        child: SectionHeader(
-                          title: 'Trending now',
-                          onSeeAll: () {},
                         ),
-                      ),
-                      if (state.loadingTrending)
-                        const SliverToBoxAdapter(
-                          child: Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: Center(child: CircularProgressIndicator()),
-                          ),
-                        )
-                      else if (state.errorTrending != null)
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Text(
-                              'Failed to load: ${state.errorTrending}',
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16.0,
+                            ),
+                            child: _HeroBanner(),
+                          ),
+                        ),
+                        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                        if (state.recentlyPlayed.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: HorizontalMediaSection(
+                              title: 'Recently played',
+                              items: state.recentlyPlayed
+                                  .map(
+                                    (t) => MediaItem(
+                                      title: t.title,
+                                      subtitle: t.artistName,
+                                      imageUrl: t.albumCoverUrl,
+                                      localImagePath: t.localImagePath,
+                                      icon: Icons.music_note,
+                                      onTap: () {
+                                        showPlayerBottomSheet(
+                                          context,
+                                          trackId: t.trackId,
+                                          title: t.title,
+                                          artist: t.artistName,
+                                          imageUrl: t.albumCoverUrl,
+                                          localImagePath: t.localImagePath,
+                                        );
+                                      },
+                                    ),
+                                  )
+                                  .toList(),
+                              onSeeAll: () {},
+                              cardWidth: isCompact ? 140 : 160,
                             ),
                           ),
-                        )
-                      else
-                        _GridSection(items: trendingItems),
+                        if (state.recentlyPlayed.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: SizedBox(height: isCompact ? 4 : 8),
+                          ),
+                        SliverToBoxAdapter(
+                          child: SectionHeader(
+                            title: 'Made for you',
+                            onSeeAll: () {},
+                          ),
+                        ),
+                        if (state.loadingMadeForYou)
+                          const SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Center(child: CircularProgressIndicator()),
+                            ),
+                          )
+                        else if (state.errorMadeForYou != null)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Text(
+                                'Failed to load: ${state.errorMadeForYou}',
+                              ),
+                            ),
+                          )
+                        else
+                          _GridSection(items: madeForYouItems),
 
-                      SliverToBoxAdapter(
-                        child: SizedBox(height: isCompact ? 24 : 32),
-                      ),
-                    ],
-                  );
-                },
-              );
-            },
+                        SliverToBoxAdapter(
+                          child: SizedBox(height: isCompact ? 4 : 8),
+                        ),
+                        SliverToBoxAdapter(
+                          child: SectionHeader(
+                            title: 'Trending now',
+                            onSeeAll: () {},
+                          ),
+                        ),
+                        if (state.loadingTrending)
+                          const SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Center(child: CircularProgressIndicator()),
+                            ),
+                          )
+                        else if (state.errorTrending != null)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Text(
+                                'Failed to load: ${state.errorTrending}',
+                              ),
+                            ),
+                          )
+                        else
+                          _GridSection(items: trendingItems),
+
+                        SliverToBoxAdapter(
+                          child: SizedBox(height: isCompact ? 24 : 32),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
           ),
         ),
       ),

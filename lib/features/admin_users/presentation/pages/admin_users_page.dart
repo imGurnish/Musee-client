@@ -205,7 +205,8 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                             ],
                                           ),
                                         );
-                                        if (confirm == true) {
+                                        if (confirm == true &&
+                                            context.mounted) {
                                           context.read<AdminUsersBloc>().add(
                                             DeleteUserEvent(u.id),
                                           );
@@ -237,7 +238,8 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                             ],
                                           ),
                                         );
-                                        if (confirm == true) {
+                                        if (confirm == true &&
+                                            context.mounted) {
                                           context.read<AdminUsersBloc>().add(
                                             DeleteUserEvent(u.id),
                                           );

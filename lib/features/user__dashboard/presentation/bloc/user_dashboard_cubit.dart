@@ -3,14 +3,25 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:musee/features/user__dashboard/domain/entities/dashboard_album.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_made_for_you.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_trending.dart';
+import 'package:musee/core/cache/services/track_cache_service.dart';
+import 'package:musee/core/cache/models/cached_track.dart';
 
 class UserDashboardState extends Equatable {
   final bool loadingMadeForYou;
   final bool loadingTrending;
-  final List<DashboardAlbum> madeForYou;
-  final List<DashboardAlbum> trending;
+  final List<DashboardItem> madeForYou;
+  final List<DashboardItem> trending;
   final String? errorMadeForYou;
   final String? errorTrending;
+
+  /// Recently played tracks from local cache
+  final List<CachedTrack> recentlyPlayed;
+
+  /// Most played tracks from local cache (for recommendations)
+  final List<CachedTrack> mostPlayed;
+
+  /// Timestamp to force state updates even if list content references are same
+  final DateTime? lastUpdated;
 
   const UserDashboardState({
     this.loadingMadeForYou = false,
@@ -19,15 +30,21 @@ class UserDashboardState extends Equatable {
     this.trending = const [],
     this.errorMadeForYou,
     this.errorTrending,
+    this.recentlyPlayed = const [],
+    this.mostPlayed = const [],
+    this.lastUpdated,
   });
 
   UserDashboardState copyWith({
     bool? loadingMadeForYou,
     bool? loadingTrending,
-    List<DashboardAlbum>? madeForYou,
-    List<DashboardAlbum>? trending,
+    List<DashboardItem>? madeForYou,
+    List<DashboardItem>? trending,
     String? errorMadeForYou,
     String? errorTrending,
+    List<CachedTrack>? recentlyPlayed,
+    List<CachedTrack>? mostPlayed,
+    DateTime? lastUpdated,
   }) {
     return UserDashboardState(
       loadingMadeForYou: loadingMadeForYou ?? this.loadingMadeForYou,
@@ -36,6 +53,9 @@ class UserDashboardState extends Equatable {
       trending: trending ?? this.trending,
       errorMadeForYou: errorMadeForYou,
       errorTrending: errorTrending,
+      recentlyPlayed: recentlyPlayed ?? this.recentlyPlayed,
+      mostPlayed: mostPlayed ?? this.mostPlayed,
+      lastUpdated: lastUpdated ?? this.lastUpdated,
     );
   }
 
@@ -47,15 +67,23 @@ class UserDashboardState extends Equatable {
     trending,
     errorMadeForYou,
     errorTrending,
+    recentlyPlayed,
+    mostPlayed,
+    lastUpdated,
   ];
 }
 
 class UserDashboardCubit extends Cubit<UserDashboardState> {
   final ListMadeForYou _listMadeForYou;
   final ListTrending _listTrending;
+  final TrackCacheService? _trackCache;
 
-  UserDashboardCubit(this._listMadeForYou, this._listTrending)
-    : super(const UserDashboardState());
+  UserDashboardCubit(
+    this._listMadeForYou,
+    this._listTrending, {
+    TrackCacheService? trackCache,
+  }) : _trackCache = trackCache,
+       super(const UserDashboardState());
 
   Future<void> load({int page = 0, int limit = 20}) async {
     emit(
@@ -66,6 +94,9 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
         errorTrending: null,
       ),
     );
+
+    // Load from cache first (instant display)
+    await _loadFromCache();
 
     try {
       final results = await Future.wait([
@@ -92,5 +123,35 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
         ),
       );
     }
+  }
+
+  Future<void> _loadFromCache() async {
+    if (_trackCache == null) return;
+
+    try {
+      final recentlyPlayed = await _trackCache.getRecentlyPlayed(limit: 10);
+      final mostPlayed = await _trackCache.getMostPlayed(limit: 10);
+
+      emit(
+        state.copyWith(recentlyPlayed: recentlyPlayed, mostPlayed: mostPlayed),
+      );
+    } catch (_) {
+      // Cache errors are non-fatal, just continue
+    }
+  }
+
+  /// Refresh recently played from cache (call after playing a track)
+  Future<void> refreshRecentlyPlayed() async {
+    if (_trackCache == null) return;
+
+    try {
+      final recentlyPlayed = await _trackCache.getRecentlyPlayed(limit: 10);
+      emit(
+        state.copyWith(
+          recentlyPlayed: recentlyPlayed,
+          lastUpdated: DateTime.now(),
+        ),
+      );
+    } catch (_) {}
   }
 }

@@ -110,7 +110,7 @@ class _AdminPlansPageState extends State<AdminPlansPage> {
                         if (isMobile) {
                           return ListView.separated(
                             itemCount: items.length,
-                            separatorBuilder: (_, __) =>
+                            separatorBuilder: (context, index) =>
                                 const SizedBox(height: 8),
                             itemBuilder: (context, i) {
                               final p = items[i];
@@ -162,7 +162,8 @@ class _AdminPlansPageState extends State<AdminPlansPage> {
                                               ],
                                             ),
                                           );
-                                          if (confirm == true) {
+                                          if (confirm == true &&
+                                              context.mounted) {
                                             context.read<AdminPlansBloc>().add(
                                               DeletePlanEvent(p.id),
                                             );
@@ -258,7 +259,8 @@ class _AdminPlansPageState extends State<AdminPlansPage> {
                                                 ],
                                               ),
                                             );
-                                            if (confirm == true) {
+                                            if (confirm == true &&
+                                                context.mounted) {
                                               context
                                                   .read<AdminPlansBloc>()
                                                   .add(DeletePlanEvent(p.id));

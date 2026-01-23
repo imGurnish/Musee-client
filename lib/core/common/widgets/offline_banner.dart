@@ -1,5 +1,6 @@
 /// Offline banner and connectivity-aware widgets.
 /// Shows persistent offline status and allows interaction with cached content.
+library;
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -24,7 +25,7 @@ class OfflineBanner extends StatelessWidget {
         color: theme.colorScheme.secondaryContainer,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),

@@ -29,13 +29,17 @@ class CachedTrackAdapter extends TypeAdapter<CachedTrack> {
       ..streamingUrl = fields[9] as String?
       ..cachedAt = fields[10] as DateTime
       ..lastPlayedAt = fields[11] as DateTime?
-      ..audioSizeBytes = fields[12] as int;
+      ..audioSizeBytes = fields[12] as int? ?? 0
+      // Handle new fields with defaults for backward compatibility
+      ..sourceProvider = (fields[13] as String?) ?? 'musee'
+      ..localImagePath = fields[14] as String?
+      ..playCount = (fields[15] as int?) ?? 0;
   }
 
   @override
   void write(BinaryWriter writer, CachedTrack obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.trackId)
       ..writeByte(1)
@@ -61,7 +65,13 @@ class CachedTrackAdapter extends TypeAdapter<CachedTrack> {
       ..writeByte(11)
       ..write(obj.lastPlayedAt)
       ..writeByte(12)
-      ..write(obj.audioSizeBytes);
+      ..write(obj.audioSizeBytes)
+      ..writeByte(13)
+      ..write(obj.sourceProvider)
+      ..writeByte(14)
+      ..write(obj.localImagePath)
+      ..writeByte(15)
+      ..write(obj.playCount);
   }
 
   @override
@@ -91,14 +101,17 @@ class CachedAlbumAdapter extends TypeAdapter<CachedAlbum> {
       ..coverUrl = fields[2] as String?
       ..releaseDate = fields[3] as String?
       ..artistName = fields[4] as String
-      ..trackIds = (fields[5] as List).cast<String>()
-      ..cachedAt = fields[6] as DateTime;
+      ..trackIds = (fields[5] as List?)?.cast<String>() ?? []
+      ..cachedAt = fields[6] as DateTime
+      // Handle new fields with defaults for backward compatibility
+      ..sourceProvider = (fields[7] as String?) ?? 'musee'
+      ..localCoverPath = fields[8] as String?;
   }
 
   @override
   void write(BinaryWriter writer, CachedAlbum obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(9)
       ..writeByte(0)
       ..write(obj.albumId)
       ..writeByte(1)
@@ -112,7 +125,11 @@ class CachedAlbumAdapter extends TypeAdapter<CachedAlbum> {
       ..writeByte(5)
       ..write(obj.trackIds)
       ..writeByte(6)
-      ..write(obj.cachedAt);
+      ..write(obj.cachedAt)
+      ..writeByte(7)
+      ..write(obj.sourceProvider)
+      ..writeByte(8)
+      ..write(obj.localCoverPath);
   }
 
   @override

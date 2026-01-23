@@ -69,6 +69,7 @@ class _AdminTrackCreatePageState extends State<AdminTrackCreatePage> {
         },
       ),
     );
+    if (!mounted) return;
     if (picked != null) {
       setState(() {
         _albumId = picked.id;
@@ -127,6 +128,7 @@ class _AdminTrackCreatePageState extends State<AdminTrackCreatePage> {
         },
       ),
     );
+    if (!mounted) return;
     if (picked != null) {
       setState(
         () => _artists.add(
@@ -559,7 +561,7 @@ class _AdminTrackCreatePageState extends State<AdminTrackCreatePage> {
               child: AbsorbPointer(
                 absorbing: true,
                 child: Container(
-                  color: Colors.black.withOpacity(0.35),
+                  color: Colors.black.withValues(alpha: 0.35),
                   child: const Center(
                     child: _UploadingIndicator(label: 'Uploading track...'),
                   ),

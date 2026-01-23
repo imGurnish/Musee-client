@@ -27,7 +27,7 @@ class ComingSoonPage extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: cs.primaryContainer.withOpacity(0.3),
+                  color: cs.primaryContainer.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
@@ -48,7 +48,9 @@ class ComingSoonPage extends StatelessWidget {
               Text(
                 'The "$featureName" feature is under active development. Check back later for updates.',
                 style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.textTheme.bodyLarge?.color?.withOpacity(0.8),
+                  color: theme.textTheme.bodyLarge?.color?.withValues(
+                    alpha: 0.8,
+                  ),
                 ),
                 textAlign: TextAlign.center,
               ),

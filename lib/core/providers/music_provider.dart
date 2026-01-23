@@ -2,11 +2,12 @@
 /// Implementing this interface allows seamless integration of different
 /// music sources (Musee server, external APIs, etc.) following the Strategy Pattern.
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+library;
+
 import 'provider_models.dart';
 
 /// Abstract music provider interface following clean architecture principles.
-/// Each music source (Musee server, JioSaavn-like external API) implements this.
+/// Each music source (Musee server, external API) implements this.
 abstract class MusicProvider {
   /// Unique identifier for this provider (e.g., 'musee', 'external')
   String get providerId;

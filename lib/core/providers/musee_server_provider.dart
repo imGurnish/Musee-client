@@ -82,8 +82,9 @@ class MuseeServerProvider implements MusicProvider {
       final data = json.decode(response.body) as Map<String, dynamic>;
       return _parseAlbum(data, includeTracks: true);
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('[MuseeServerProvider] getAlbumWithTracks error: $e');
+      }
       return null;
     }
   }
@@ -310,7 +311,7 @@ class MuseeServerProvider implements MusicProvider {
       title: json['title']?.toString() ?? '',
       coverUrl: json['cover_url']?.toString(),
       source: MusicSource.musee,
-      year: json['release_date']?.toString()?.substring(0, 4),
+      year: (json['release_date'] as String?)?.split('-').first,
       artists: artists,
       tracks: tracks,
     );

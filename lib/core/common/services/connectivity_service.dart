@@ -1,5 +1,6 @@
 /// Stream-based connectivity monitoring service.
 /// Provides real-time network status updates and connectivity checks.
+library;
 
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';

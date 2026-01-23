@@ -17,7 +17,7 @@ class UsersList extends StatelessWidget {
     final theme = Theme.of(context);
     return ListView.separated(
       itemCount: users.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
         final u = users[i];
         return Material(

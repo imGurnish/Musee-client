@@ -9,6 +9,7 @@ import 'package:musee/core/theme/app_colors.dart';
 import 'package:musee/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:musee/init_dependencies.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:musee/core/player/player_cubit.dart';
 
 // Conditional import for web-specific plugins
 import 'web_url_strategy.dart'
@@ -34,6 +35,7 @@ void main() async {
       providers: [
         BlocProvider(create: (_) => serviceLocator<AuthBloc>()),
         BlocProvider(create: (_) => serviceLocator<AppUserCubit>()),
+        BlocProvider(create: (_) => serviceLocator<PlayerCubit>()),
       ],
       // child: DevicePreview(
       //   builder: (BuildContext context) {

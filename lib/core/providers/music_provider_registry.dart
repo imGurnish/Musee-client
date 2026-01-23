@@ -2,12 +2,12 @@
 /// Provides unified access to all available music sources and handles
 /// provider selection based on track IDs and platform availability.
 
+library;
+
 import 'package:flutter/foundation.dart';
 
 import 'music_provider.dart';
 import 'provider_models.dart';
-import 'musee_server_provider.dart';
-import 'external_music_provider.dart';
 
 /// Central registry managing all music providers.
 ///
@@ -114,8 +114,9 @@ class MusicProviderRegistry {
     final results = await Future.wait(
       activeProviders.map(
         (p) => p.search(query, limit: limitPerProvider).catchError((_) {
-          if (kDebugMode)
+          if (kDebugMode) {
             print('[MusicProviderRegistry] Search failed for ${p.providerId}');
+          }
           return const ProviderSearchResults();
         }),
       ),

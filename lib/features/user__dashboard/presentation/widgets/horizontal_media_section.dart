@@ -35,6 +35,7 @@ class HorizontalMediaSection extends StatelessWidget {
                   title: item.title,
                   subtitle: item.subtitle,
                   imageUrl: item.imageUrl,
+                  localImagePath: item.localImagePath,
                   fallbackIcon: item.icon,
                   onTap: item.onTap,
                 ),
@@ -53,6 +54,7 @@ class MediaItem {
   final String title;
   final String subtitle;
   final String? imageUrl;
+  final String? localImagePath;
   final IconData icon;
   final VoidCallback? onTap;
 
@@ -60,6 +62,7 @@ class MediaItem {
     required this.title,
     required this.subtitle,
     this.imageUrl,
+    this.localImagePath,
     this.icon = Icons.music_note,
     this.onTap,
   });

@@ -8,6 +8,7 @@ class PlayerTrack extends Equatable {
   final String artist;
   final String? album;
   final String? imageUrl;
+  final String? localImagePath;
   final Map<String, String>? headers;
 
   const PlayerTrack({
@@ -17,6 +18,7 @@ class PlayerTrack extends Equatable {
     required this.artist,
     this.album,
     this.imageUrl,
+    this.localImagePath,
     this.headers,
   });
 
@@ -27,6 +29,7 @@ class PlayerTrack extends Equatable {
     String? artist,
     String? album,
     String? imageUrl,
+    String? localImagePath,
     Map<String, String>? headers,
   }) => PlayerTrack(
     trackId: trackId ?? this.trackId,
@@ -35,11 +38,21 @@ class PlayerTrack extends Equatable {
     artist: artist ?? this.artist,
     album: album ?? this.album,
     imageUrl: imageUrl ?? this.imageUrl,
+    localImagePath: localImagePath ?? this.localImagePath,
     headers: headers ?? this.headers,
   );
 
   @override
-  List<Object?> get props => [trackId, url, title, artist, album, imageUrl, headers];
+  List<Object?> get props => [
+    trackId,
+    url,
+    title,
+    artist,
+    album,
+    imageUrl,
+    localImagePath,
+    headers,
+  ];
 }
 
 class PlayerViewState extends Equatable {

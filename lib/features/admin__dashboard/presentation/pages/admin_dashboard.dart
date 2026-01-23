@@ -117,7 +117,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         title: 'Albums',
                         subtitle: 'Manage albums',
                         icon: Icons.album,
-                        color: theme.colorScheme.secondary.withOpacity(0.85),
+                        color: theme.colorScheme.secondary.withValues(
+                          alpha: 0.85,
+                        ),
                         onTap: () {
                           context.push("/admin/albums");
                         },

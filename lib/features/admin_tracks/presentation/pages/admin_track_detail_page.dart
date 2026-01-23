@@ -114,6 +114,7 @@ class _AdminTrackDetailPageState extends State<AdminTrackDetailPage> {
         },
       ),
     );
+    if (!mounted) return;
     if (picked != null) {
       setState(() {
         _albumId = picked.id;
@@ -215,6 +216,7 @@ class _AdminTrackDetailPageState extends State<AdminTrackDetailPage> {
         },
       ),
     );
+    if (!mounted) return;
     if (picked != null) {
       final link = serviceLocator<LinkTrackArtist>();
       final r = await link(
@@ -294,7 +296,7 @@ class _AdminTrackDetailPageState extends State<AdminTrackDetailPage> {
               child: AbsorbPointer(
                 absorbing: true,
                 child: Container(
-                  color: Colors.black.withOpacity(0.35),
+                  color: Colors.black.withValues(alpha: 0.35),
                   child: const Center(
                     child: _UploadingIndicator(label: 'Uploading changes…'),
                   ),

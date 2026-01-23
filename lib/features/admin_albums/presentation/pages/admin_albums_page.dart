@@ -133,7 +133,7 @@ class _AdminAlbumsPageState extends State<AdminAlbumsPage> {
                               if (isMobile) {
                                 return ListView.separated(
                                   itemCount: albums.length,
-                                  separatorBuilder: (_, __) =>
+                                  separatorBuilder: (context, index) =>
                                       const SizedBox(height: 8),
                                   itemBuilder: (context, i) {
                                     final a = albums[i];
@@ -217,7 +217,8 @@ class _AdminAlbumsPageState extends State<AdminAlbumsPage> {
                                                     ],
                                                   ),
                                                 );
-                                                if (confirm == true) {
+                                                if (confirm == true &&
+                                                    context.mounted) {
                                                   context
                                                       .read<AdminAlbumsBloc>()
                                                       .add(
@@ -341,7 +342,8 @@ class _AdminAlbumsPageState extends State<AdminAlbumsPage> {
                                                           ],
                                                         ),
                                                       );
-                                                  if (confirm == true) {
+                                                  if (confirm == true &&
+                                                      context.mounted) {
                                                     context
                                                         .read<AdminAlbumsBloc>()
                                                         .add(

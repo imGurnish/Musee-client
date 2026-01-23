@@ -5,7 +5,7 @@ class ListMadeForYou {
   final UserDashboardRepository _repo;
   ListMadeForYou(this._repo);
 
-  Future<PagedDashboardAlbums> call({int page = 0, int limit = 20}) {
+  Future<PagedDashboardItems> call({int page = 0, int limit = 20}) {
     return _repo.getMadeForYou(page: page, limit: limit);
   }
 }

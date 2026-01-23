@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 
 class MediaCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final String? imageUrl;
+  final String? localImagePath;
   final IconData fallbackIcon;
   final double borderRadius;
   final VoidCallback? onTap;
@@ -13,6 +15,7 @@ class MediaCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.imageUrl,
+    this.localImagePath,
     this.fallbackIcon = Icons.music_note,
     this.borderRadius = 12,
     this.onTap,
@@ -69,6 +72,17 @@ class MediaCard extends StatelessWidget {
   }
 
   Widget _buildImageOrPlaceholder(ColorScheme color) {
+    if (localImagePath != null && File(localImagePath!).existsSync()) {
+      return Image.file(
+        File(localImagePath!),
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _buildNetworkOrPlaceholder(color),
+      );
+    }
+    return _buildNetworkOrPlaceholder(color);
+  }
+
+  Widget _buildNetworkOrPlaceholder(ColorScheme color) {
     if (imageUrl != null && imageUrl!.isNotEmpty) {
       return Image.network(imageUrl!, fit: BoxFit.cover);
     }

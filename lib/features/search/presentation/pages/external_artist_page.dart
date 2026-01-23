@@ -138,7 +138,8 @@ class _ExternalArtistPageState extends State<ExternalArtistPage> {
                       width: 48,
                       height: 48,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.album),
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.album),
                     ),
                   ),
                   title: Text(album.title),

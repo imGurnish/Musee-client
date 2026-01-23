@@ -61,6 +61,9 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
       backgroundColor: Colors.transparent,
       elevation: 0,
       title: _buildSearchField(),
+      titleSpacing: 0,
+      actions: [IconButton(icon: const Icon(Icons.mic), onPressed: () => {})],
+      actionsPadding: const EdgeInsets.symmetric(horizontal: 4),
     );
   }
 
@@ -68,7 +71,6 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
   Widget _buildSearchField() {
     return Container(
       height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: TextField(
         controller: _searchController,
         maxLines: 1,

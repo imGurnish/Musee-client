@@ -13,7 +13,7 @@ abstract class TrackCacheService {
   /// Get cached track by ID, or null if not cached
   Future<CachedTrack?> getTrack(String trackId);
 
-  /// Update the last played timestamp for LRU tracking
+  /// Update the last played timestamp and increment play count for LRU tracking
   Future<void> updateLastPlayed(String trackId);
 
   /// Cache an album's metadata
@@ -33,6 +33,33 @@ abstract class TrackCacheService {
 
   /// Clear all cached data
   Future<void> clearAll();
+
+  /// Get recently played tracks sorted by last played time (most recent first)
+  Future<List<CachedTrack>> getRecentlyPlayed({int limit = 20});
+
+  /// Get most played tracks sorted by play count (highest first)
+  Future<List<CachedTrack>> getMostPlayed({int limit = 20});
+
+  /// Get all tracks that are available offline
+  Future<List<CachedTrack>> getOfflineAvailable();
+
+  /// Get cache statistics
+  Future<CacheStats> getStats();
+}
+
+/// Cache statistics for management UI
+class CacheStats {
+  final int trackCount;
+  final int albumCount;
+  final int offlineTrackCount;
+  final int totalPlayCount;
+
+  const CacheStats({
+    required this.trackCount,
+    required this.albumCount,
+    required this.offlineTrackCount,
+    required this.totalPlayCount,
+  });
 }
 
 class TrackCacheServiceImpl implements TrackCacheService {
@@ -84,6 +111,7 @@ class TrackCacheServiceImpl implements TrackCacheService {
     final track = _tracks.get(trackId);
     if (track != null) {
       track.lastPlayedAt = DateTime.now();
+      track.playCount += 1;
       await track.save();
     }
   }
@@ -135,5 +163,44 @@ class TrackCacheServiceImpl implements TrackCacheService {
   Future<void> clearAll() async {
     await _tracks.clear();
     await _albums.clear();
+  }
+
+  @override
+  Future<List<CachedTrack>> getRecentlyPlayed({int limit = 20}) async {
+    final tracksWithPlays = _tracks.values
+        .where((t) => t.lastPlayedAt != null)
+        .toList();
+    // Sort by lastPlayedAt descending (most recent first)
+    tracksWithPlays.sort((a, b) => b.lastPlayedAt!.compareTo(a.lastPlayedAt!));
+    return tracksWithPlays.take(limit).toList();
+  }
+
+  @override
+  Future<List<CachedTrack>> getMostPlayed({int limit = 20}) async {
+    final tracksWithPlays = _tracks.values
+        .where((t) => t.playCount > 0)
+        .toList();
+    // Sort by playCount descending (highest first)
+    tracksWithPlays.sort((a, b) => b.playCount.compareTo(a.playCount));
+    return tracksWithPlays.take(limit).toList();
+  }
+
+  @override
+  Future<List<CachedTrack>> getOfflineAvailable() async {
+    return _tracks.values.where((t) => t.isAvailableOffline).toList();
+  }
+
+  @override
+  Future<CacheStats> getStats() async {
+    final tracks = _tracks.values.toList();
+    final offlineCount = tracks.where((t) => t.isAvailableOffline).length;
+    final totalPlays = tracks.fold<int>(0, (sum, t) => sum + t.playCount);
+
+    return CacheStats(
+      trackCount: tracks.length,
+      albumCount: _albums.length,
+      offlineTrackCount: offlineCount,
+      totalPlayCount: totalPlays,
+    );
   }
 }

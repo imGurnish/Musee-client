@@ -29,7 +29,7 @@ class AdminSidebar extends StatelessWidget {
         children: [
           DrawerHeader(
             decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withOpacity(0.08),
+              color: theme.colorScheme.primary.withValues(alpha: 0.08),
             ),
             child: const Text(
               'Admin',

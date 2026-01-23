@@ -6,14 +6,12 @@ import 'package:bloc/bloc.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/features/player/domain/repository/player_repository.dart';
-import 'package:dio/dio.dart' as dio;
-import 'package:flutter/foundation.dart'
-    show kIsWeb, kDebugMode, defaultTargetPlatform, TargetPlatform;
-import 'package:musee/core/secrets/app_secrets.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:musee/core/providers/music_provider_registry.dart';
+import 'package:musee/core/cache/services/image_cache_service.dart';
 
 import 'player_state.dart';
 
@@ -22,6 +20,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   final PlayerRepository? _repo; // optional to allow previous initialization
   final TrackCacheService? _trackCache;
   final AudioCacheService? _audioCache;
+  final ImageCacheService? _imageCache;
+  final MusicProviderRegistry? _musicProviderRegistry;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration?>? _durationSub;
   StreamSubscription<PlayerState>? _playerStateSub;
@@ -30,10 +30,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     PlayerRepository? repository,
     TrackCacheService? trackCache,
     AudioCacheService? audioCache,
+    ImageCacheService? imageCache,
+    MusicProviderRegistry? musicProviderRegistry,
   }) : _player = AudioPlayer(),
        _repo = repository,
        _trackCache = trackCache,
        _audioCache = audioCache,
+       _imageCache = imageCache,
+       _musicProviderRegistry = musicProviderRegistry,
        super(const PlayerViewState()) {
     _init();
   }
@@ -88,139 +92,124 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     // 2. Check if we have a cached streaming URL (avoids API call)
     final cachedTrack = await _trackCache?.getTrack(trackId);
     if (cachedTrack?.streamingUrl != null) {
+      // NOTE: We could add expiry check here if needed
       if (kDebugMode) {
         print('[PlayerCubit] Using cached streaming URL for track: $trackId');
       }
       return cachedTrack!.streamingUrl;
     }
 
-    // 3. Fetch from backend API
-    try {
-      final client = dio.Dio();
-      final token = Supabase.instance.client.auth.currentSession?.accessToken;
-      final res = await client.get(
-        '${AppSecrets.backendUrl}/api/user/tracks/$trackId',
-        options: dio.Options(
-          headers: token != null
-              ? {'Authorization': 'Bearer $token', 'Accept': 'application/json'}
-              : {'Accept': 'application/json'},
-        ),
-      );
-      final data = (res.data as Map).cast<String, dynamic>();
-      final hls = (data['hls'] as Map?)?.cast<String, dynamic>();
-      final master = hls?['master'] as String?;
+    // 3. Fetch from MusicProviderRegistry (Backend or External)
+    if (_musicProviderRegistry != null) {
+      try {
+        final url = await _musicProviderRegistry.getStreamUrl(trackId);
 
-      final isWindows =
-          !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-      String? playableUrl;
-      String? urlToCache;
+        if (url != null) {
+          // 4. Cache metadata and streaming URL (and download image)
+          // Run in background to not block playback start completely?
+          // Ideally we await it ensuring metadata exists before adding to Recently Played UI update cycle
+          await _cacheTrackMetadata(trackId, url);
 
-      if (kIsWeb || isWindows) {
-        final audios = (data['audios'] as List?)?.cast<dynamic>() ?? const [];
-        String? bestMp3;
-        int bestBitrate = -1;
-        for (final item in audios) {
-          final m = (item as Map).cast<String, dynamic>();
-          final ext = (m['ext'] as String?)?.toLowerCase();
-          final path = m['path'] as String?;
-          final br = (m['bitrate'] as num?)?.toInt() ?? 0;
-          if (ext == 'mp3' && path != null && path.isNotEmpty) {
-            if (br > bestBitrate) {
-              bestBitrate = br;
-              bestMp3 = path;
-            }
-          }
+          return url;
         }
-        playableUrl = bestMp3 ?? master;
-        urlToCache = bestMp3 ?? master;
-      } else {
-        playableUrl = master;
-        urlToCache = master;
+      } catch (e) {
+        if (kDebugMode) print('[PlayerCubit] Error fetching stream URL: $e');
       }
-
-      // 4. Cache metadata from API response
-      if (_trackCache != null && playableUrl != null) {
-        await _cacheTrackFromApiResponse(trackId, data, playableUrl);
-      }
-
-      // 5. Optionally trigger background download for offline access (non-web only)
-      if (_audioCache != null &&
-          _trackCache != null &&
-          urlToCache != null &&
-          !kIsWeb) {
-        unawaited(_downloadTrackForOffline(trackId, urlToCache));
-      }
-
-      return playableUrl;
-    } catch (e) {
-      // 6. On network error, try returning cached streaming URL as fallback
-      if (cachedTrack?.streamingUrl != null) {
-        if (kDebugMode) {
-          print('[PlayerCubit] Network error, using cached URL: $trackId');
-        }
-        return cachedTrack!.streamingUrl;
-      }
-      return null;
     }
+
+    // Fallback if no provider registry (shouldn't happen in new setup)
+    // or if provider failed and returning null
+    return null;
   }
 
-  /// Cache track metadata from API response
-  Future<void> _cacheTrackFromApiResponse(
+  /// Cache track metadata from MusicProvider
+  Future<void> _cacheTrackMetadata(
     String trackId,
-    Map<String, dynamic> data,
-    String streamingUrl,
-  ) async {
-    if (_trackCache == null) return;
-
-    final artists =
-        (data['artists'] as List?)
-            ?.map((a) => (a['name'] ?? '').toString())
-            .where((s) => s.isNotEmpty)
-            .join(', ') ??
-        '';
-    final album = data['album'] as Map<String, dynamic>?;
-
-    final cached = CachedTrack()
-      ..trackId = trackId
-      ..title = (data['title'] ?? '').toString()
-      ..albumId = album?['album_id']?.toString()
-      ..albumTitle = album?['title']?.toString()
-      ..albumCoverUrl = (album?['cover_url'] ?? data['cover_url'])?.toString()
-      ..artistName = artists
-      ..durationSeconds = (data['duration'] as num?)?.toInt() ?? 0
-      ..isExplicit = data['is_explicit'] == true
-      ..streamingUrl = streamingUrl
-      ..cachedAt = DateTime.now()
-      ..lastPlayedAt = DateTime.now();
-
-    await _trackCache.cacheTrack(cached);
-    if (kDebugMode) {
-      print('[PlayerCubit] Cached track metadata: $trackId');
-    }
-  }
-
-  /// Download track audio for offline playback in background
-  Future<void> _downloadTrackForOffline(String trackId, String url) async {
-    if (_audioCache == null || _trackCache == null) return;
+    String streamingUrl, {
+    PlayerTrack? fallback,
+  }) async {
+    if (_trackCache == null || _musicProviderRegistry == null) return;
 
     try {
-      final localPath = await _audioCache.downloadAndCache(
-        trackId: trackId,
-        remoteUrl: url,
-        trackCache: _trackCache,
-      );
-      if (localPath != null && kDebugMode) {
-        print('[PlayerCubit] Downloaded track for offline: $trackId');
+      var track = await _musicProviderRegistry.getTrack(trackId);
+
+      // If remote fetch fails, try to use fallback data
+      if (track == null && fallback != null) {
+        if (kDebugMode)
+          print('[PlayerCubit] getTrack failed, using fallback for $trackId');
+        // Fallback available, will use it below
+      } else if (track == null) {
+        if (kDebugMode) {
+          print(
+            '[PlayerCubit] getTrack returned null for $trackId and no fallback',
+          );
+        }
+        return;
+      }
+
+      if (kDebugMode && track != null) {
+        print('[PlayerCubit] caching track: ${track.title}');
+      }
+
+      // Download album artwork (if we have a URL from track or fallback)
+      String? imageUrl = track?.imageUrl ?? fallback?.imageUrl;
+      String? localImagePath;
+      if (_imageCache != null && imageUrl != null) {
+        try {
+          localImagePath = await _imageCache.cacheImage(imageUrl);
+        } catch (_) {}
+      }
+
+      final existing = await _trackCache.getTrack(trackId);
+      int playCount = existing?.playCount ?? 0;
+      playCount += 1;
+
+      final cached = CachedTrack()
+        ..trackId = trackId
+        ..title = track?.title ?? fallback?.title ?? 'Unknown Title'
+        ..albumId = track?.albumId
+        ..albumTitle = track?.albumTitle ?? fallback?.album
+        ..albumCoverUrl = imageUrl
+        ..artistName =
+            track?.artists.map((a) => a.name).join(', ') ??
+            fallback?.artist ??
+            'Unknown Artist'
+        ..durationSeconds = track?.durationSeconds ?? 0
+        ..streamingUrl = streamingUrl
+        ..cachedAt = DateTime.now()
+        ..lastPlayedAt = DateTime.now()
+        ..sourceProvider = track?.source.name ?? 'musee'
+        ..playCount = playCount
+        ..localImagePath = localImagePath; // Save local path!
+
+      if (existing != null) {
+        // Preserve audio cache info
+        cached.localAudioPath = existing.localAudioPath;
+        cached.audioSizeBytes = existing.audioSizeBytes;
+      }
+
+      await _trackCache.cacheTrack(cached);
+      if (kDebugMode) {
+        print(
+          '[PlayerCubit] Cached track metadata: $trackId (${cached.sourceProvider})',
+        );
       }
     } catch (e) {
-      if (kDebugMode) {
-        print('[PlayerCubit] Failed to download track: $trackId - $e');
-      }
+      if (kDebugMode) print('[PlayerCubit] Failed to cache track metadata: $e');
     }
   }
 
   Future<void> playTrack(PlayerTrack track) async {
     emit(state.copyWith(track: track, buffering: true));
+
+    // Cache metadata if we have a track ID (e.g. from Search)
+    if (track.trackId != null && track.url.isNotEmpty && _trackCache != null) {
+      // Run in background to not block immediate playback
+      unawaited(
+        _cacheTrackMetadata(track.trackId!, track.url, fallback: track),
+      );
+    }
+
     try {
       final headers = track.headers ?? const <String, String>{};
       final uri = Uri.parse(track.url);
@@ -233,13 +222,60 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
   }
 
+  /// Play a track by ID, resolving the URL via MusicProviderRegistry.
+  /// This ensures metadata caching and proper offline support.
+  Future<void> playTrackById({
+    required String trackId,
+    String? title,
+    String? artist,
+    String? album,
+    String? imageUrl,
+  }) async {
+    final url = await _fetchPlayableUrl(trackId);
+    if (url == null) {
+      // Could throw or emit error state if needed
+      return;
+    }
+
+    // Metadata will be cached by _fetchPlayableUrl (which calls _cacheTrackMetadata internally)
+    // But we also need to pass initial display metadata to PlayerTrack
+
+    final track = PlayerTrack(
+      trackId: trackId,
+      url: url,
+      title: title ?? 'Unknown Title',
+      artist: artist ?? 'Unknown Artist',
+      album: album,
+      imageUrl: imageUrl,
+    );
+
+    await playTrack(track);
+  }
+
   // Queue APIs
+  Future<List<QueueItem>> _mapToQueueItems(List<dynamic> expanded) async {
+    if (_trackCache == null) {
+      return expanded.map((m) => QueueItem.fromExpandedJson(m)).toList();
+    }
+    final futures = expanded.map((m) async {
+      var item = QueueItem.fromExpandedJson(m);
+      try {
+        final cached = await _trackCache.getTrack(item.trackId);
+        if (cached?.localImagePath != null) {
+          item = item.copyWith(localImagePath: cached!.localImagePath);
+        }
+      } catch (_) {}
+      return item;
+    });
+    return Future.wait(futures);
+  }
+
   Future<void> loadQueue() async {
     final repo = _repo;
     if (repo == null) return;
     try {
       final expanded = await repo.getQueueExpanded();
-      final items = expanded.map((m) => QueueItem.fromExpandedJson(m)).toList();
+      final items = await _mapToQueueItems(expanded);
       emit(state.copyWith(queue: items));
     } catch (_) {}
   }
@@ -252,9 +288,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           trackId: trackId,
           expand: true,
         );
-        final items = expanded
-            .map((m) => QueueItem.fromExpandedJson(m))
-            .toList();
+        final items = await _mapToQueueItems(expanded);
         emit(state.copyWith(queue: items));
       } catch (_) {}
     }
@@ -392,6 +426,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       artist: item.artist.isEmpty ? 'Unknown Artist' : item.artist,
       album: item.album,
       imageUrl: item.imageUrl,
+      localImagePath: item.localImagePath,
     );
     emit(state.copyWith(track: track, buffering: true, currentIndex: index));
     try {
@@ -427,7 +462,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (repo == null) return;
     try {
       final expanded = await repo.getQueueExpanded();
-      final items = expanded.map((m) => QueueItem.fromExpandedJson(m)).toList();
+      final items = await _mapToQueueItems(expanded);
       // Preserve current track: find same trackId in new list to set index.
       int newIndex = -1;
       if (state.track?.trackId != null) {

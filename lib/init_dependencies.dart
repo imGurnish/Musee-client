@@ -91,6 +91,7 @@ import 'package:musee/features/player/data/repositories/player_repository_impl.d
 import 'package:musee/features/player/domain/repository/player_repository.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
+import 'package:musee/core/cache/services/image_cache_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 // New infrastructure services
@@ -143,6 +144,13 @@ Future<void> initDependencies() async {
     () => audioCacheService,
   );
 
+  // Image cache for album artwork
+  final imageCacheService = ImageCacheServiceImpl();
+  await imageCacheService.init();
+  serviceLocator.registerLazySingleton<ImageCacheService>(
+    () => imageCacheService,
+  );
+
   // Register player with repository and cache services
   serviceLocator
     ..registerLazySingleton<PlayerDataSource>(
@@ -156,6 +164,8 @@ Future<void> initDependencies() async {
         repository: serviceLocator(),
         trackCache: serviceLocator<TrackCacheService>(),
         audioCache: serviceLocator<AudioCacheService>(),
+        imageCache: serviceLocator<ImageCacheService>(),
+        musicProviderRegistry: serviceLocator<MusicProviderRegistry>(),
       ),
     );
 
@@ -436,6 +446,7 @@ void _initUserDashboard() {
       () => UserDashboardCubit(
         serviceLocator<ListMadeForYou>(),
         serviceLocator<ListTrending>(),
+        trackCache: serviceLocator<TrackCacheService>(),
       ),
     );
 }

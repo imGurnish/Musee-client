@@ -82,7 +82,11 @@ class CatalogTrackModel extends CatalogTrack {
           ? json['duration'] as int
           : int.tryParse(json['duration']?.toString() ?? ''),
       artists: artists,
-      imageUrl: json['image_url'] as String?,
+      imageUrl:
+          (json['album']?['cover_url'] ??
+                  json['image_url'] ??
+                  json['cover_url'])
+              as String?,
     );
   }
 }

@@ -1,25 +1,35 @@
 import 'package:dio/dio.dart' as dio;
 import 'package:musee/core/secrets/app_secrets.dart';
+import 'package:musee/features/user__dashboard/domain/entities/dashboard_album.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supa;
 
-class DashboardAlbumDTO {
-  final String albumId;
-  final String title;
-  final String? coverUrl;
-  final int? duration;
-  final List<DashboardArtistDTO> artists;
-
-  DashboardAlbumDTO({
-    required this.albumId,
-    required this.title,
-    required this.coverUrl,
-    required this.duration,
-    required this.artists,
+class DashboardItemDTO extends DashboardItem {
+  const DashboardItemDTO({
+    required super.id,
+    required super.title,
+    super.coverUrl,
+    super.duration,
+    required super.artists,
+    required super.type,
+    super.trackId,
+    super.albumId,
   });
 
-  factory DashboardAlbumDTO.fromJson(Map<String, dynamic> json) {
-    return DashboardAlbumDTO(
-      albumId: json['album_id'] as String,
+  factory DashboardItemDTO.fromJson(Map<String, dynamic> json) {
+    final typeStr = json['type'] as String? ?? 'album';
+    final type = typeStr == 'track'
+        ? DashboardItemType.track
+        : DashboardItemType.album;
+
+    // ID determination
+    final trackId = json['track_id']?.toString();
+    final albumId = json['album_id']?.toString();
+    final id = type == DashboardItemType.track
+        ? (trackId ?? '')
+        : (albumId ?? '');
+
+    return DashboardItemDTO(
+      id: id,
       title: json['title'] as String? ?? '',
       coverUrl: json['cover_url'] as String?,
       duration: (json['duration'] as num?)?.toInt(),
@@ -27,9 +37,12 @@ class DashboardAlbumDTO {
           .map(
             (e) => DashboardArtistDTO.fromJson(
               Map<String, dynamic>.from(e as Map),
-            ),
+            ).toDomain(),
           )
           .toList(),
+      type: type,
+      trackId: trackId,
+      albumId: albumId,
     );
   }
 }
@@ -52,29 +65,26 @@ class DashboardArtistDTO {
       avatarUrl: json['avatar_url'] as String?,
     );
   }
+
+  DashboardArtist toDomain() =>
+      DashboardArtist(artistId: artistId, name: name, avatarUrl: avatarUrl);
 }
 
-class PagedDashboardAlbumsDTO {
-  final List<DashboardAlbumDTO> items;
-  final int total;
-  final int page;
-  final int limit;
-
-  PagedDashboardAlbumsDTO({
-    required this.items,
-    required this.total,
-    required this.page,
-    required this.limit,
+class PagedDashboardItemsDTO extends PagedDashboardItems {
+  const PagedDashboardItemsDTO({
+    required super.items,
+    required super.total,
+    required super.page,
+    required super.limit,
   });
 
-  factory PagedDashboardAlbumsDTO.fromJson(Map<String, dynamic> json) {
+  factory PagedDashboardItemsDTO.fromJson(Map<String, dynamic> json) {
     final items = (json['items'] as List<dynamic>? ?? const [])
         .map(
-          (e) =>
-              DashboardAlbumDTO.fromJson(Map<String, dynamic>.from(e as Map)),
+          (e) => DashboardItemDTO.fromJson(Map<String, dynamic>.from(e as Map)),
         )
         .toList();
-    return PagedDashboardAlbumsDTO(
+    return PagedDashboardItemsDTO(
       items: items,
       total: (json['total'] as num?)?.toInt() ?? items.length,
       page: (json['page'] as num?)?.toInt() ?? 0,
@@ -84,8 +94,8 @@ class PagedDashboardAlbumsDTO {
 }
 
 abstract interface class UserDashboardRemoteDataSource {
-  Future<PagedDashboardAlbumsDTO> getMadeForYou({int page = 0, int limit = 20});
-  Future<PagedDashboardAlbumsDTO> getTrending({int page = 0, int limit = 20});
+  Future<PagedDashboardItemsDTO> getMadeForYou({int page = 0, int limit = 20});
+  Future<PagedDashboardItemsDTO> getTrending({int page = 0, int limit = 20});
 }
 
 class UserDashboardRemoteDataSourceImpl
@@ -106,7 +116,7 @@ class UserDashboardRemoteDataSourceImpl
   }
 
   @override
-  Future<PagedDashboardAlbumsDTO> getMadeForYou({
+  Future<PagedDashboardItemsDTO> getMadeForYou({
     int page = 0,
     int limit = 20,
   }) async {
@@ -115,13 +125,13 @@ class UserDashboardRemoteDataSourceImpl
       queryParameters: {'page': page, 'limit': limit},
       options: dio.Options(headers: _authHeader()),
     );
-    return PagedDashboardAlbumsDTO.fromJson(
+    return PagedDashboardItemsDTO.fromJson(
       Map<String, dynamic>.from(res.data as Map),
     );
   }
 
   @override
-  Future<PagedDashboardAlbumsDTO> getTrending({
+  Future<PagedDashboardItemsDTO> getTrending({
     int page = 0,
     int limit = 20,
   }) async {
@@ -130,7 +140,7 @@ class UserDashboardRemoteDataSourceImpl
       queryParameters: {'page': page, 'limit': limit},
       options: dio.Options(headers: _authHeader()),
     );
-    return PagedDashboardAlbumsDTO.fromJson(
+    return PagedDashboardItemsDTO.fromJson(
       Map<String, dynamic>.from(res.data as Map),
     );
   }
