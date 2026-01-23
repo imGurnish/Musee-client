@@ -21,6 +21,8 @@ abstract class AudioCacheService {
     required String trackId,
     required String remoteUrl,
     required TrackCacheService trackCache,
+    void Function(int received, int total)? onProgress,
+    CancelToken? cancelToken,
   });
 
   /// Delete a specific cached audio file
@@ -84,6 +86,8 @@ class AudioCacheServiceImpl implements AudioCacheService {
     required String trackId,
     required String remoteUrl,
     required TrackCacheService trackCache,
+    void Function(int received, int total)? onProgress,
+    CancelToken? cancelToken,
   }) async {
     if (kIsWeb) return null;
     try {
@@ -98,24 +102,60 @@ class AudioCacheServiceImpl implements AudioCacheService {
         }
       }
 
-      final filePath = _getFilePath(trackId, ext);
+      var filePath = _getFilePath(trackId, ext);
       final file = File(filePath);
 
       // Download the file
-      await _dio.download(
+      final response = await _dio.download(
         remoteUrl,
         filePath,
+        onReceiveProgress: onProgress,
+        cancelToken: cancelToken,
         options: Options(
           responseType: ResponseType.bytes,
           followRedirects: true,
         ),
       );
 
+      // Verify content type and correct extension if needed
+      final contentType = response.headers.value('content-type');
+      String correctExt = ext;
+
+      if (contentType != null) {
+        if (contentType.contains('audio/mp4') ||
+            contentType.contains('audio/m4a') ||
+            contentType.contains('audio/x-m4a')) {
+          correctExt = 'm4a';
+        } else if (contentType.contains('audio/mpeg') ||
+            contentType.contains('audio/mp3')) {
+          correctExt = 'mp3';
+        } else if (contentType.contains('audio/aac')) {
+          correctExt = 'aac';
+        } else if (contentType.contains('audio/flac')) {
+          correctExt = 'flac';
+        } else if (contentType.contains('audio/wav')) {
+          correctExt = 'wav';
+        }
+      }
+
+      // If extension needs correction, rename the file
+      if (correctExt != ext) {
+        final newPath = _getFilePath(trackId, correctExt);
+        // Rename (move)
+        await file.rename(newPath);
+
+        // Update variables for registration
+        filePath = newPath;
+        // Check if old file exists (rename should move it)
+      }
+
+      final savedFile = File(filePath);
+
       // Update the track cache with local path and file size
       final track = await trackCache.getTrack(trackId);
       if (track != null) {
         track.localAudioPath = filePath;
-        track.audioSizeBytes = await file.length();
+        track.audioSizeBytes = await savedFile.length();
         await trackCache.cacheTrack(track);
       }
 

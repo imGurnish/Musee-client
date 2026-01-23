@@ -4,6 +4,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
+import 'package:musee/core/download/download_manager.dart';
+import 'package:musee/core/cache/services/audio_cache_service.dart';
 
 /// Shows the full-screen player bottom sheet, styled similar to Spotify.
 Future<void> showPlayerBottomSheet(
@@ -234,6 +236,9 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
                       ],
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  if (state.track?.trackId != null)
+                    _DownloadButton(trackId: state.track!.trackId!),
                   const SizedBox(width: 8),
                   IconButton.filledTonal(
                     tooltip: 'Add to library',
@@ -544,4 +549,56 @@ Widget _buildArtwork({
     alignment: Alignment.center,
     child: const Icon(Icons.music_note_rounded, size: 64),
   );
+}
+
+class _DownloadButton extends StatelessWidget {
+  final String trackId;
+  const _DownloadButton({required this.trackId});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<DownloadManager, DownloadState>(
+      builder: (context, state) {
+        final status = state.status[trackId];
+        final progress = state.progress[trackId] ?? 0.0;
+
+        if (status == DownloadStatus.downloading) {
+          return SizedBox(
+            width: 48,
+            height: 48,
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: CircularProgressIndicator(value: progress, strokeWidth: 3),
+            ),
+          );
+        }
+
+        return FutureBuilder<String?>(
+          future: GetIt.I<AudioCacheService>().getLocalAudioPath(trackId),
+          builder: (context, snapshot) {
+            final isDownloaded = snapshot.data != null;
+
+            if (isDownloaded || status == DownloadStatus.completed) {
+              return IconButton(
+                tooltip: 'Downloaded',
+                icon: Icon(
+                  Icons.download_done_rounded,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                onPressed: () {},
+              );
+            }
+
+            return IconButton(
+              tooltip: 'Download',
+              icon: const Icon(Icons.download_rounded),
+              onPressed: () {
+                context.read<DownloadManager>().addToQueue(trackId);
+              },
+            );
+          },
+        );
+      },
+    );
+  }
 }

@@ -35,6 +35,8 @@ import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
 import 'package:musee/core/common/pages/coming_soon_page.dart';
 import 'package:musee/features/user_artists/presentation/pages/user_artist_page.dart';
 import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.dart';
+import 'package:musee/features/library/presentation/pages/user_library_page.dart';
+import 'package:musee/features/library/presentation/pages/downloads_page.dart';
 
 class AppGoRouter {
   static GoRouter createRouter(AppUserCubit appUserCubit) {
@@ -288,10 +290,14 @@ class AppGoRouter {
         GoRoute(
           path: '/library',
           name: 'library',
-          builder: (context, state) => const ComingSoonPage(
-            featureName: 'Your Library',
-            selectedIndex: 2,
-          ),
+          builder: (context, state) => const UserLibraryPage(),
+          routes: [
+            GoRoute(
+              path: 'downloads',
+              name: 'downloads',
+              builder: (context, state) => const DownloadsPage(),
+            ),
+          ],
         ),
         GoRoute(
           path: '/premium',

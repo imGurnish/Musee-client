@@ -38,6 +38,13 @@ abstract class MusicProvider {
   /// Returns null if track is not streamable or an error occurs
   Future<String?> getStreamUrl(String trackId);
 
+  /// Get the download URL for a track (e.g. mp3 file)
+  /// Guaranteed to return a directly downloadable file, unlike getStreamUrl which might return HLS.
+  Future<String?> getDownloadUrl(String trackId) async {
+    // Default implementation falls back to getStreamUrl
+    return getStreamUrl(trackId);
+  }
+
   /// Search for content across tracks, albums, and artists
   Future<ProviderSearchResults> search(String query, {int limit = 20});
 

@@ -14,6 +14,7 @@ import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:get_it/get_it.dart';
 
 import 'package:musee/core/player/player_cubit.dart';
+import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 
 /// Search results page displaying search results grouped by extractors
@@ -440,6 +441,18 @@ class _TrackTile extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          IconButton(
+            tooltip: 'Download',
+            icon: const Icon(Icons.download_rounded),
+            onPressed: () {
+              GetIt.I<DownloadManager>().addToQueue(track.trackId);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Added to downloads')),
+                );
+              }
+            },
+          ),
           IconButton(
             tooltip: 'Add to queue',
             icon: const Icon(Icons.queue_music_rounded),

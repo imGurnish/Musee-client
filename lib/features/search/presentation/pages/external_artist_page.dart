@@ -6,6 +6,7 @@ import 'package:musee/features/search/presentation/widgets/external_badge.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:musee/features/search/presentation/pages/external_album_page.dart';
+import 'package:musee/core/download/download_manager.dart';
 
 class ExternalArtistPage extends StatefulWidget {
   final String artistId;
@@ -191,9 +192,23 @@ class _ArtistSongTile extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: IconButton(
-        icon: const Icon(Icons.play_arrow_rounded),
-        onPressed: () => _play(context),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.download_rounded),
+            onPressed: () {
+              GetIt.I<DownloadManager>().addToQueue('external:${song.id}');
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Added to downloads')),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.play_arrow_rounded),
+            onPressed: () => _play(context),
+          ),
+        ],
       ),
       onTap: () => _play(context),
     );

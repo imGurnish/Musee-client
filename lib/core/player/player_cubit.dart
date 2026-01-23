@@ -182,6 +182,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
             fallback?.artist ??
             'Unknown Artist'
         ..durationSeconds = track?.durationSeconds ?? 0
+        ..isExplicit = track?.isExplicit ?? false
         ..streamingUrl = streamingUrl
         ..cachedAt = DateTime.now()
         ..lastPlayedAt = DateTime.now()
@@ -221,7 +222,15 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     try {
       final headers = track.headers ?? const <String, String>{};
-      final uri = Uri.parse(track.url);
+
+      Uri uri;
+      if (track.url.startsWith('http') || track.url.startsWith('https')) {
+        uri = Uri.parse(track.url);
+      } else {
+        // Assume local file path - crucial for Windows playback of downloaded files
+        uri = Uri.file(track.url);
+      }
+
       await _player.setAudioSource(
         AudioSource.uri(uri, headers: headers.isEmpty ? null : headers),
       );

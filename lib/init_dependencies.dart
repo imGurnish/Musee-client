@@ -97,6 +97,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 // New infrastructure services
 import 'package:musee/core/providers/providers.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';
+import 'package:musee/core/download/download_manager.dart';
 
 final serviceLocator = GetIt.instance;
 
@@ -148,6 +149,15 @@ Future<void> initDependencies() async {
   await imageCacheService.init();
   serviceLocator.registerLazySingleton<ImageCacheService>(
     () => imageCacheService,
+  );
+
+  // Download Manager
+  serviceLocator.registerLazySingleton<DownloadManager>(
+    () => DownloadManager(
+      serviceLocator<AudioCacheService>(),
+      serviceLocator<TrackCacheService>(),
+      serviceLocator<MusicProviderRegistry>(),
+    ),
   );
 
   // Register player with repository and cache services

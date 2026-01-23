@@ -114,6 +114,41 @@ class MuseeServerProvider implements MusicProvider {
   }
 
   @override
+  Future<String?> getDownloadUrl(String trackId) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/api/user/tracks/$trackId');
+      final response = await http.get(uri, headers: _headers).timeout(_timeout);
+
+      if (response.statusCode != 200) return null;
+
+      final data = json.decode(response.body) as Map<String, dynamic>;
+
+      // Always look for MP3 for downloads
+      final audios = (data['audios'] as List?)?.cast<dynamic>() ?? const [];
+      String? bestMp3;
+      int bestBitrate = -1;
+      for (final item in audios) {
+        final m = (item as Map).cast<String, dynamic>();
+        final ext = (m['ext'] as String?)?.toLowerCase();
+        final path = m['path'] as String?;
+        final br = (m['bitrate'] as num?)?.toInt() ?? 0;
+        if (ext == 'mp3' && path != null && path.isNotEmpty) {
+          if (br > bestBitrate) {
+            bestBitrate = br;
+            bestMp3 = path;
+          }
+        }
+      }
+      return bestMp3; // Only return MP3, no fallback to HLS master for download
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[MuseeServerProvider] getDownloadUrl error: $e');
+      }
+      return null;
+    }
+  }
+
+  @override
   Future<String?> getStreamUrl(String trackId) async {
     try {
       final uri = Uri.parse('$_baseUrl/api/user/tracks/$trackId');
@@ -125,8 +160,8 @@ class MuseeServerProvider implements MusicProvider {
       final hls = data['hls'] as Map<String, dynamic>?;
       final master = hls?['master'] as String?;
 
-      // On Windows/web, prefer MP3 fallback over HLS
-      if (kIsWeb || defaultTargetPlatform == TargetPlatform.windows) {
+      // On Web, prefer MP3 fallback over HLS
+      if (kIsWeb) {
         final audios = (data['audios'] as List?)?.cast<dynamic>() ?? const [];
         String? bestMp3;
         int bestBitrate = -1;
