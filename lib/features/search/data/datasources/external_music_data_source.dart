@@ -35,10 +35,23 @@ class ExternalMusicDataSource {
         },
       );
 
+      if (kDebugMode) {
+        print('[ExternalAPI] Search request: $uri');
+      }
+
       final response = await http.get(uri, headers: _headers).timeout(_timeout);
 
+      if (kDebugMode) {
+        print('[ExternalAPI] Search status: ${response.statusCode}');
+        print('[ExternalAPI] Search body length: ${response.body.length}');
+      }
+
       if (response.statusCode != 200) {
-        if (kDebugMode) print('External search failed: ${response.statusCode}');
+        if (kDebugMode) {
+          print(
+            '[ExternalAPI] Search failed: ${response.statusCode} - ${response.body.substring(0, (response.body.length > 200) ? 200 : response.body.length)}',
+          );
+        }
         return const ExternalMusicSearchResult();
       }
 
@@ -49,12 +62,26 @@ class ExternalMusicDataSource {
       }
 
       if (data is! Map<String, dynamic>) {
+        if (kDebugMode) {
+          print(
+            '[ExternalAPI] Search unexpected data type: ${data.runtimeType}',
+          );
+        }
         return const ExternalMusicSearchResult();
       }
 
-      return ExternalMusicSearchResult.fromJson(data);
-    } catch (e) {
-      if (kDebugMode) print('External search error: $e');
+      final result = ExternalMusicSearchResult.fromJson(data);
+      if (kDebugMode) {
+        print(
+          '[ExternalAPI] Search results: ${result.songs.length} songs, ${result.albums.length} albums, ${result.artists.length} artists',
+        );
+      }
+      return result;
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('[ExternalAPI] Search error: $e');
+        print('[ExternalAPI] Stack trace: $stackTrace');
+      }
       return const ExternalMusicSearchResult();
     }
   }

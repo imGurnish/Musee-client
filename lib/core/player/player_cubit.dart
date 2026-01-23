@@ -284,13 +284,27 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> removeFromQueue(String trackId) async {
-    final newList = [...state.queue]..removeWhere((e) => e.trackId == trackId);
-    var newIndex = state.currentIndex;
     final removedIndex = state.queue.indexWhere((e) => e.trackId == trackId);
-    if (removedIndex >= 0 && removedIndex <= state.currentIndex) {
-      newIndex = (state.currentIndex - 1).clamp(-1, newList.length - 1);
+    if (removedIndex < 0) return;
+
+    final newList = [...state.queue]..removeAt(removedIndex);
+
+    // Calculate new index correctly:
+    // - If removed item is before current: shift index back by 1
+    // - If removed item IS current: keep same index (next item slides in)
+    // - If removed item is after current: no change
+    int newIndex = state.currentIndex;
+    if (removedIndex < state.currentIndex) {
+      newIndex = state.currentIndex - 1;
+    } else if (removedIndex == state.currentIndex) {
+      // Current track was removed; clamp to valid range
+      newIndex = newIndex.clamp(-1, newList.length - 1);
     }
+    // If newList is empty, reset to -1
+    if (newList.isEmpty) newIndex = -1;
+
     emit(state.copyWith(queue: newList, currentIndex: newIndex));
+
     final repo = _repo;
     if (repo != null) {
       unawaited(repo.removeFromQueue(trackId: trackId));
@@ -300,17 +314,26 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   Future<void> reorderQueue(int from, int to) async {
     final list = [...state.queue];
     if (from < 0 || from >= list.length || to < 0 || to >= list.length) return;
+    if (from == to) return; // No-op
+
     final item = list.removeAt(from);
     list.insert(to, item);
-    // Adjust current index if needed
-    var idx = state.currentIndex;
-    if (idx == from) {
-      idx = to;
-    } else if (from < idx && to >= idx)
-      idx -= 1;
-    else if (from > idx && to <= idx)
-      idx += 1;
-    emit(state.copyWith(queue: list, currentIndex: idx));
+
+    // Adjust current index based on the move
+    int newIndex = state.currentIndex;
+    if (state.currentIndex == from) {
+      // Moving the currently playing track
+      newIndex = to;
+    } else if (from < state.currentIndex && to >= state.currentIndex) {
+      // Moved something from before current to at/after current
+      newIndex = state.currentIndex - 1;
+    } else if (from > state.currentIndex && to <= state.currentIndex) {
+      // Moved something from after current to at/before current
+      newIndex = state.currentIndex + 1;
+    }
+
+    emit(state.copyWith(queue: list, currentIndex: newIndex));
+
     final repo = _repo;
     if (repo != null) {
       unawaited(repo.reorderQueue(fromIndex: from, toIndex: to));
@@ -340,21 +363,17 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> _playNextInternal({bool userInitiated = false}) async {
-    final idx = state.currentIndex;
-    if (idx + 1 < state.queue.length) {
-      // If user pressed next, remove the previous track from queue.
-      if (userInitiated && idx >= 0 && idx < state.queue.length) {
-        final prevItem = state.queue[idx];
-        // Remove prev item (at current index) BEFORE advancing.
-        final newQueue = [...state.queue]..removeAt(idx);
-        // Adjust index so that next item shifts into current position.
-        final newIndex = idx; // since removal shifts next track into idx
-        emit(state.copyWith(queue: newQueue, currentIndex: newIndex));
-      }
-      await _playAtIndex(state.currentIndex + 1);
+    final currentIdx = state.currentIndex;
+
+    // Check if there's a next track
+    if (currentIdx + 1 < state.queue.length) {
+      // Simply advance to next track - don't remove current
+      // This is cleaner and avoids index confusion
+      final nextIndex = currentIdx + 1;
+      await _playAtIndex(nextIndex);
       await _refreshQueueIfNeeded();
     } else {
-      // end of queue
+      // End of queue - stop playback
       await _player.stop();
       emit(state.copyWith(playing: false));
       await _refreshQueueIfNeeded();

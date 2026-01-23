@@ -93,6 +93,11 @@ import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+// New infrastructure services
+import 'package:musee/core/providers/providers.dart';
+import 'package:musee/core/common/services/connectivity_service.dart';
+import 'package:musee/core/error/app_logger.dart';
+
 final serviceLocator = GetIt.instance;
 
 Future<void> initDependencies() async {
@@ -111,6 +116,19 @@ Future<void> initDependencies() async {
 
   //core
   serviceLocator.registerLazySingleton(() => AppUserCubit());
+
+  // Connectivity service for network monitoring
+  serviceLocator.registerLazySingleton<ConnectivityService>(
+    () => ConnectivityServiceImpl(),
+  );
+
+  // Music provider registry for multi-source music
+  serviceLocator.registerLazySingleton<MusicProviderRegistry>(
+    () => MusicProviderRegistry([
+      MuseeServerProvider(serviceLocator<SupabaseClient>()),
+      ExternalMusicProvider(),
+    ]),
+  );
 
   // Initialize cache services
   final trackCacheService = TrackCacheServiceImpl();
