@@ -337,10 +337,11 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
   }
 
-  Future<void> removeFromQueue(String trackId) async {
-    final removedIndex = state.queue.indexWhere((e) => e.trackId == trackId);
+  Future<void> removeFromQueue(String uid) async {
+    final removedIndex = state.queue.indexWhere((e) => e.uid == uid);
     if (removedIndex < 0) return;
 
+    final item = state.queue[removedIndex];
     final newList = [...state.queue]..removeAt(removedIndex);
 
     // Calculate new index correctly:
@@ -361,7 +362,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     final repo = _repo;
     if (repo != null) {
-      unawaited(repo.removeFromQueue(trackId: trackId));
+      unawaited(repo.removeFromQueue(trackId: item.trackId));
     }
   }
 

@@ -436,7 +436,7 @@ class _QueueSheet extends StatelessWidget {
                           final q = items[index];
                           final playing = index == state.currentIndex;
                           return ListTile(
-                            key: ValueKey(q.trackId),
+                            key: ValueKey(q.uid),
                             contentPadding: EdgeInsets.zero,
                             leading: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -489,7 +489,7 @@ class _QueueSheet extends StatelessWidget {
                                   icon: const Icon(Icons.close_rounded),
                                   onPressed: () => context
                                       .read<PlayerCubit>()
-                                      .removeFromQueue(q.trackId),
+                                      .removeFromQueue(q.uid),
                                 ),
                                 const Icon(Icons.drag_handle_rounded),
                               ],

@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:uuid/uuid.dart';
 
 class QueueItem extends Equatable {
   final String trackId;
@@ -9,7 +10,10 @@ class QueueItem extends Equatable {
   final String? localImagePath;
   final int? durationSeconds;
 
-  const QueueItem({
+  final String uid;
+
+  QueueItem({
+    String? uid,
     required this.trackId,
     required this.title,
     required this.artist,
@@ -17,10 +21,11 @@ class QueueItem extends Equatable {
     this.imageUrl,
     this.localImagePath,
     this.durationSeconds,
-  });
+  }) : uid = uid ?? const Uuid().v4();
 
   @override
   List<Object?> get props => [
+    uid,
     trackId,
     title,
     artist,
@@ -31,6 +36,7 @@ class QueueItem extends Equatable {
   ];
 
   QueueItem copyWith({
+    String? uid,
     String? trackId,
     String? title,
     String? artist,
@@ -40,6 +46,7 @@ class QueueItem extends Equatable {
     int? durationSeconds,
   }) {
     return QueueItem(
+      uid: uid ?? this.uid,
       trackId: trackId ?? this.trackId,
       title: title ?? this.title,
       artist: artist ?? this.artist,
