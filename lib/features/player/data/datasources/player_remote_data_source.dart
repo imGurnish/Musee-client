@@ -5,11 +5,18 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 abstract interface class PlayerDataSource {
   Future<List<String>> getQueueIds();
   Future<List<Map<String, dynamic>>> getQueueExpanded();
-  Future<void> addToQueue(List<String> trackIds);
+  Future<void> addToQueue(
+    List<String> trackIds, {
+    Map<String, dynamic>? metadata,
+  });
   Future<void> removeFromQueue(String trackId);
   Future<List<String>> reorderQueue(int from, int to);
   Future<void> clearQueue();
-  Future<List<Map<String, dynamic>>> playFrom(String trackId, {bool expand = false});
+  Future<List<Map<String, dynamic>>> playFrom(
+    String trackId, {
+    bool expand = false,
+    Map<String, dynamic>? metadata,
+  });
 }
 
 class PlayerDataSourceImpl implements PlayerDataSource {
@@ -19,7 +26,10 @@ class PlayerDataSourceImpl implements PlayerDataSource {
 
   Map<String, String> _headers() {
     final token = _supabase.auth.currentSession?.accessToken;
-    final base = {'Accept': 'application/json', 'Content-Type': 'application/json'};
+    final base = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    };
     return token == null ? base : {...base, 'Authorization': 'Bearer $token'};
   }
 
@@ -47,11 +57,20 @@ class PlayerDataSourceImpl implements PlayerDataSource {
   }
 
   @override
-  Future<void> addToQueue(List<String> trackIds) async {
+  Future<void> addToQueue(
+    List<String> trackIds, {
+    Map<String, dynamic>? metadata,
+  }) async {
     if (trackIds.isEmpty) return;
-    final body = trackIds.length == 1
-        ? {'track_id': trackIds.first}
-        : {'track_ids': trackIds};
+    final Map<String, dynamic> body;
+    if (trackIds.length == 1) {
+      body = {'track_id': trackIds.first};
+      if (metadata != null) {
+        body['metadata'] = metadata;
+      }
+    } else {
+      body = {'track_ids': trackIds};
+    }
     await _dio.post(
       '${AppSecrets.backendUrl}/api/user/queue/add',
       data: body,
@@ -88,10 +107,18 @@ class PlayerDataSourceImpl implements PlayerDataSource {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> playFrom(String trackId, {bool expand = false}) async {
+  Future<List<Map<String, dynamic>>> playFrom(
+    String trackId, {
+    bool expand = false,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final Map<String, dynamic> body = {'track_id': trackId};
+    if (metadata != null) {
+      body['metadata'] = metadata;
+    }
     final res = await _dio.post(
       '${AppSecrets.backendUrl}/api/user/queue/play',
-      data: {'track_id': trackId},
+      data: body,
       queryParameters: expand ? {'expand': '1'} : null,
       options: Options(headers: _headers()),
     );
