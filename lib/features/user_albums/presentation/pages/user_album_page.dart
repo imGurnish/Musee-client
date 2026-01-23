@@ -11,6 +11,7 @@ import 'package:musee/features/user_albums/presentation/bloc/user_album_bloc.dar
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
+import 'package:musee/core/providers/music_provider_registry.dart';
 
 class UserAlbumPage extends StatefulWidget {
   final String albumId;
@@ -60,48 +61,7 @@ class _UserAlbumView extends StatelessWidget {
 
     Future<String?> fetchPlayableUrl(String trackId) async {
       try {
-        final client = GetIt.I<dio.Dio>();
-        final token = Supabase.instance.client.auth.currentSession?.accessToken;
-        final res = await client.get(
-          '${AppSecrets.backendUrl}/api/user/tracks/$trackId',
-          options: dio.Options(
-            headers: token != null
-                ? {
-                    'Authorization': 'Bearer $token',
-                    'Accept': 'application/json',
-                  }
-                : {'Accept': 'application/json'},
-          ),
-        );
-        final data = (res.data as Map).cast<String, dynamic>();
-        final hls = (data['hls'] as Map?)?.cast<String, dynamic>();
-        final master = hls?['master'] as String?;
-
-        // On web and Windows, prefer progressive MP3 if available
-        // (Windows Media Foundation has limited HLS support via just_audio_windows).
-        final isWindows =
-            !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-        if (kIsWeb || isWindows) {
-          final audios = (data['audios'] as List?)?.cast<dynamic>() ?? const [];
-          String? bestMp3;
-          int bestBitrate = -1;
-          for (final item in audios) {
-            final m = (item as Map).cast<String, dynamic>();
-            final ext = (m['ext'] as String?)?.toLowerCase();
-            final path = m['path'] as String?;
-            final br = (m['bitrate'] as num?)?.toInt() ?? 0;
-            if (ext == 'mp3' && path != null && path.isNotEmpty) {
-              if (br > bestBitrate) {
-                bestBitrate = br;
-                bestMp3 = path;
-              }
-            }
-          }
-          return bestMp3 ?? master;
-        }
-
-        // Other native platforms: use HLS master
-        return master;
+        return GetIt.I<MusicProviderRegistry>().getStreamUrl(trackId);
       } catch (_) {
         return null;
       }
@@ -182,6 +142,7 @@ class _UserAlbumView extends StatelessWidget {
                                         : primaryArtist,
                                     album: album.title,
                                     imageUrl: album.coverUrl,
+                                    trackId: first.trackId,
                                   );
                                 },
                           icon: const Icon(Icons.play_arrow_rounded),
@@ -267,6 +228,7 @@ class _UserAlbumView extends StatelessWidget {
                                     artist: artists,
                                     album: album.title,
                                     imageUrl: album.coverUrl,
+                                    trackId: t.trackId,
                                   );
                                 },
                               ),
@@ -334,6 +296,7 @@ class _UserAlbumView extends StatelessWidget {
                               artist: artists,
                               album: album.title,
                               imageUrl: album.coverUrl,
+                              trackId: t.trackId,
                             );
                           },
                         ),

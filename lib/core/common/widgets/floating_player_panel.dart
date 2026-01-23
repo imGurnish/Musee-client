@@ -43,6 +43,7 @@ class FloatingPlayerPanel extends StatelessWidget {
                     imageUrl: t.imageUrl,
                     localImagePath: t.localImagePath,
                     headers: t.headers,
+                    trackId: t.trackId,
                   );
                 }
               : null,

@@ -8,6 +8,7 @@ abstract interface class PlayerDataSource {
   Future<void> addToQueue(
     List<String> trackIds, {
     Map<String, dynamic>? metadata,
+    List<Map<String, dynamic>>? metadataList,
   });
   Future<void> removeFromQueue(String trackId);
   Future<List<String>> reorderQueue(int from, int to);
@@ -60,6 +61,7 @@ class PlayerDataSourceImpl implements PlayerDataSource {
   Future<void> addToQueue(
     List<String> trackIds, {
     Map<String, dynamic>? metadata,
+    List<Map<String, dynamic>>? metadataList,
   }) async {
     if (trackIds.isEmpty) return;
     final Map<String, dynamic> body;
@@ -70,6 +72,9 @@ class PlayerDataSourceImpl implements PlayerDataSource {
       }
     } else {
       body = {'track_ids': trackIds};
+      if (metadataList != null) {
+        body['metadata_list'] = metadataList;
+      }
     }
     await _dio.post(
       '${AppSecrets.backendUrl}/api/user/queue/add',

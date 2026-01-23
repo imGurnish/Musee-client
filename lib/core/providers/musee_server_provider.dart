@@ -43,6 +43,7 @@ class MuseeServerProvider implements MusicProvider {
 
   @override
   Future<ProviderTrack?> getTrack(String trackId) async {
+    if (trackId.contains(':')) return null;
     try {
       final uri = Uri.parse('$_baseUrl/api/user/tracks/$trackId');
       final response = await http.get(uri, headers: _headers).timeout(_timeout);
@@ -61,6 +62,7 @@ class MuseeServerProvider implements MusicProvider {
 
   @override
   Future<ProviderAlbum?> getAlbum(String albumId) async {
+    if (albumId.contains(':')) return null;
     try {
       final uri = Uri.parse('$_baseUrl/api/user/albums/$albumId');
       final response = await http.get(uri, headers: _headers).timeout(_timeout);
@@ -79,6 +81,7 @@ class MuseeServerProvider implements MusicProvider {
 
   @override
   Future<ProviderAlbum?> getAlbumWithTracks(String albumId) async {
+    if (albumId.contains(':')) return null;
     try {
       final uri = Uri.parse('$_baseUrl/api/user/albums/$albumId?expand=tracks');
       final response = await http.get(uri, headers: _headers).timeout(_timeout);
@@ -97,6 +100,7 @@ class MuseeServerProvider implements MusicProvider {
 
   @override
   Future<ProviderArtist?> getArtist(String artistId) async {
+    if (artistId.contains(':')) return null;
     try {
       final uri = Uri.parse('$_baseUrl/api/user/artists/$artistId');
       final response = await http.get(uri, headers: _headers).timeout(_timeout);
@@ -115,6 +119,7 @@ class MuseeServerProvider implements MusicProvider {
 
   @override
   Future<String?> getDownloadUrl(String trackId) async {
+    if (trackId.contains(':')) return null;
     try {
       final uri = Uri.parse('$_baseUrl/api/user/tracks/$trackId');
       final response = await http.get(uri, headers: _headers).timeout(_timeout);
@@ -150,6 +155,7 @@ class MuseeServerProvider implements MusicProvider {
 
   @override
   Future<String?> getStreamUrl(String trackId) async {
+    if (trackId.contains(':')) return null;
     try {
       final uri = Uri.parse('$_baseUrl/api/user/tracks/$trackId');
       final response = await http.get(uri, headers: _headers).timeout(_timeout);

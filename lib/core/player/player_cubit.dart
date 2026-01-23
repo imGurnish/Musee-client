@@ -295,6 +295,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       final expanded = await repo.getQueueExpanded();
       final items = await _mapToQueueItems(expanded);
       emit(state.copyWith(queue: items));
+      await _refreshQueueIfNeeded();
     } catch (_) {}
   }
 
@@ -314,6 +315,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     final idx = state.queue.indexWhere((q) => q.trackId == trackId);
     if (idx >= 0) {
       await _playAtIndex(idx);
+      await _refreshQueueIfNeeded();
     } else {
       // Fallback: play single by resolving URL
       final url = await _fetchPlayableUrl(trackId);
@@ -474,8 +476,59 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> _refreshQueueIfNeeded() async {
-    // Ensure minimum of 10 remaining tracks after current index.
-    if (state.queue.length >= 10) return;
+    final remaining = state.queue.length - (state.currentIndex + 1);
+
+    // 1. Client-side Smart Fill (External Recommendations)
+    if (remaining < 3 &&
+        state.queue.isNotEmpty &&
+        _musicProviderRegistry != null &&
+        _repo != null) {
+      try {
+        final seed = state.queue.last;
+        // Use artist as seed for recommendations
+        final seedQuery = seed.artist.split(',').first.trim();
+        if (seedQuery.isNotEmpty && seedQuery != 'Unknown Artist') {
+          // Search for similar tracks
+          final results = await _musicProviderRegistry.search(
+            seedQuery,
+            limitPerProvider: 5,
+          );
+
+          // Filter duplicates (already in queue)
+          final existingIds = state.queue.map((q) => q.trackId).toSet();
+          final newTracks = results.tracks
+              .where((t) => !existingIds.contains(t.prefixedId))
+              .take(5)
+              .toList();
+
+          if (newTracks.isNotEmpty) {
+            final trackIds = <String>[];
+            final metadataList = <Map<String, dynamic>>[];
+
+            for (final track in newTracks) {
+              trackIds.add(track.prefixedId);
+              metadataList.add({
+                'title': track.title,
+                'artist': track.artistName,
+                'cover_url': track.imageUrl,
+                'duration': track.durationSeconds,
+                'source': track.source.name,
+              });
+            }
+
+            // Bulk add with metadata
+            await _repo.addToQueue(
+              trackIds: trackIds,
+              metadataList: metadataList,
+            );
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) debugPrint('[PlayerCubit] Smart auto-fill failed: $e');
+      }
+    }
+
+    // 2. Sync with Backend
     final repo = _repo;
     if (repo == null) return;
     try {

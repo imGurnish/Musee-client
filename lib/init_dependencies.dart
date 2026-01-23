@@ -399,6 +399,7 @@ void _initUserAlbums() {
     ..registerLazySingleton<UserAlbumsRepository>(
       () => UserAlbumsRepositoryImpl(
         serviceLocator<UserAlbumsRemoteDataSource>(),
+        serviceLocator<MusicProviderRegistry>(),
       ),
     )
     // use cases

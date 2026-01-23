@@ -51,12 +51,18 @@ class QueueItem extends Equatable {
   }
 
   factory QueueItem.fromExpandedJson(Map<String, dynamic> json) {
-    final artists =
-        (json['artists'] as List?)
-            ?.map((a) => (a['name'] ?? '').toString())
-            .where((s) => s.isNotEmpty)
-            .join(', ') ??
-        '';
+    String artists = '';
+    final rawArtists = json['artists'];
+    if (rawArtists is List) {
+      artists = rawArtists
+          .map((a) => (a['name'] ?? '').toString())
+          .where((s) => s.isNotEmpty)
+          .join(', ');
+    } else if (rawArtists is String) {
+      artists = rawArtists;
+    } else if (json['artist'] is String) {
+      artists = json['artist'];
+    }
     // final hls = (json['hls'] as Map?)?.cast<String, dynamic>();
     final imageUrl =
         (json['album']?['cover_url'] ?? json['image_url'] ?? json['cover_url'])

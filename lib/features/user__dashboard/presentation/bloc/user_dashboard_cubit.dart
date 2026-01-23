@@ -119,12 +119,40 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
         _listMadeForYou(page: page, limit: limit),
         _listTrending(page: page, limit: limit),
       ]);
+
+      // Mix External Recommendations into "Made For You"
+      final backendMadeForYou = results[0].items;
+      final trending = results[1].items;
+      final recommendations = state.recommendations;
+
+      final mixedMadeForYou = <DashboardItem>[];
+      final seenIds = <String>{};
+
+      void addUnique(DashboardItem item) {
+        if (!seenIds.contains(item.id)) {
+          seenIds.add(item.id);
+          mixedMadeForYou.add(item);
+        }
+      }
+
+      // Interleave: [Rec, Backend, Rec, Backend...]
+      final maxLen = recommendations.length > backendMadeForYou.length
+          ? recommendations.length
+          : backendMadeForYou.length;
+
+      for (var i = 0; i < maxLen; i++) {
+        if (i < recommendations.length) addUnique(recommendations[i]);
+        if (i < backendMadeForYou.length) addUnique(backendMadeForYou[i]);
+      }
+
       emit(
         state.copyWith(
           loadingMadeForYou: false,
           loadingTrending: false,
-          madeForYou: results[0].items,
-          trending: results[1].items,
+          madeForYou: mixedMadeForYou.isNotEmpty
+              ? mixedMadeForYou
+              : backendMadeForYou,
+          trending: trending,
           errorMadeForYou: null,
           errorTrending: null,
         ),

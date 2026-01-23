@@ -9,7 +9,12 @@ class PlayerRepositoryImpl implements PlayerRepository {
   Future<void> addToQueue({
     required List<String> trackIds,
     Map<String, dynamic>? metadata,
-  }) => _remote.addToQueue(trackIds, metadata: metadata);
+    List<Map<String, dynamic>>? metadataList,
+  }) => _remote.addToQueue(
+    trackIds,
+    metadata: metadata,
+    metadataList: metadataList,
+  );
 
   @override
   Future<void> clearQueue() => _remote.clearQueue();

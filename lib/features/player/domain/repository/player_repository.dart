@@ -4,6 +4,7 @@ abstract interface class PlayerRepository {
   Future<void> addToQueue({
     required List<String> trackIds,
     Map<String, dynamic>? metadata,
+    List<Map<String, dynamic>>? metadataList,
   });
   Future<void> removeFromQueue({required String trackId});
   Future<List<String>> reorderQueue({
