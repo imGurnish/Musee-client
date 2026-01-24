@@ -99,6 +99,9 @@ import 'package:musee/core/providers/providers.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';
 import 'package:musee/core/download/download_manager.dart';
 
+// Sync services
+import 'package:musee/core/sync/sync.dart';
+
 final serviceLocator = GetIt.instance;
 
 Future<void> initDependencies() async {
@@ -195,6 +198,7 @@ Future<void> initDependencies() async {
   _initUserArtists();
   _initUserDashboard();
   _initSearch();
+  _initSync();
 }
 
 void _initAuth() {
@@ -475,4 +479,25 @@ void _initSearch() {
     // use cases
     ..registerFactory(() => GetSuggestions(serviceLocator()))
     ..registerFactory(() => GetSearchResults(serviceLocator()));
+}
+
+void _initSync() {
+  serviceLocator
+    // datasource
+    ..registerLazySingleton<SyncDataSource>(() => SyncDataSourceImpl())
+    // repository
+    ..registerLazySingleton<SyncRepository>(
+      () => SyncRepositoryImpl(serviceLocator<SyncDataSource>()),
+    )
+    // cubit - singleton so state persists across navigation
+    ..registerLazySingleton<SyncCubit>(
+      () => SyncCubit(serviceLocator<SyncRepository>()),
+    )
+    // player service - bridges PlayerCubit and SyncCubit for playback sync
+    ..registerLazySingleton<SyncPlayerService>(
+      () => SyncPlayerService(
+        playerCubit: serviceLocator<PlayerCubit>(),
+        syncCubit: serviceLocator<SyncCubit>(),
+      ),
+    );
 }

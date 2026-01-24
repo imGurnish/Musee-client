@@ -476,6 +476,19 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     emit(state.copyWith(volume: volume));
   }
 
+  /// Set playback speed (for sync drift correction)
+  /// Speed values: 0.5 to 2.0, where 1.0 is normal
+  Future<void> setSpeed(double speed) async {
+    final clampedSpeed = speed.clamp(0.5, 2.0);
+    await _player.setSpeed(clampedSpeed);
+    if (kDebugMode) {
+      debugPrint('[PlayerCubit] Playback speed set to $clampedSpeed');
+    }
+  }
+
+  /// Get current playback speed
+  double get currentSpeed => _player.speed;
+
   Future<void> _refreshQueueIfNeeded() async {
     final remaining = state.queue.length - (state.currentIndex + 1);
 

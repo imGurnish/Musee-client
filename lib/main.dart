@@ -11,6 +11,8 @@ import 'package:musee/init_dependencies.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/download/download_manager.dart';
+import 'package:musee/core/sync/presentation/cubit/sync_cubit.dart';
+import 'package:musee/core/sync/services/sync_player_service.dart';
 
 // Conditional import for web-specific plugins
 import 'web_url_strategy.dart'
@@ -38,6 +40,7 @@ void main() async {
         BlocProvider(create: (_) => serviceLocator<AppUserCubit>()),
         BlocProvider(create: (_) => serviceLocator<PlayerCubit>()),
         BlocProvider(create: (_) => serviceLocator<DownloadManager>()),
+        BlocProvider(create: (_) => serviceLocator<SyncCubit>()),
       ],
       // child: DevicePreview(
       //   builder: (BuildContext context) {
@@ -59,12 +62,17 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   late final GoRouter _router;
   bool _hasInitializedAuth = false;
+  late final SyncPlayerService _syncPlayerService;
 
   @override
   void initState() {
     super.initState();
     // Initialize router with AppUserCubit
     _router = AppGoRouter.createRouter(serviceLocator<AppUserCubit>());
+
+    // Initialize and start the sync player service
+    _syncPlayerService = serviceLocator<SyncPlayerService>();
+    _syncPlayerService.start();
 
     // Add AuthUserLoggedIn event after the first frame to check initial auth state
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -73,6 +81,12 @@ class _MyAppState extends State<MyApp> {
         _hasInitializedAuth = true;
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _syncPlayerService.stop();
+    super.dispose();
   }
 
   @override
