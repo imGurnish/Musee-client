@@ -25,8 +25,9 @@ class SyncPlaybackState {
   final String? trackImageUrl;
   final Duration position;
   final Duration duration;
+  final DateTime receivedAt; // When this state was received locally
 
-  const SyncPlaybackState({
+  SyncPlaybackState({
     required this.isPlaying,
     this.currentTrackId,
     this.trackTitle,
@@ -35,7 +36,15 @@ class SyncPlaybackState {
     this.trackImageUrl,
     required this.position,
     required this.duration,
-  });
+    DateTime? receivedAt,
+  }) : receivedAt = receivedAt ?? DateTime.now();
+
+  /// Get estimated current position accounting for time since received
+  Duration get estimatedPosition {
+    if (!isPlaying) return position;
+    final elapsed = DateTime.now().difference(receivedAt);
+    return position + elapsed;
+  }
 }
 
 /// Playback command received from host

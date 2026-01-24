@@ -207,6 +207,12 @@ class SyncCubit extends Cubit<SyncState> {
       case SyncMessageType.joinRequest:
         _handleJoinRequest(message);
         break;
+      case SyncMessageType.clockPing:
+        _handleClockPing(message);
+        break;
+      case SyncMessageType.clockPong:
+        _handleClockPong(message);
+        break;
       default:
         break;
     }
@@ -222,6 +228,7 @@ class SyncCubit extends Cubit<SyncState> {
     final posMs = message.payload['position'] as int? ?? 0;
     final durMs = message.payload['duration'] as int? ?? 0;
 
+    // receivedAt is set automatically to DateTime.now() in the constructor
     emit(
       state.copyWith(
         remotePlaybackState: SyncPlaybackState(
@@ -359,6 +366,16 @@ class SyncCubit extends Cubit<SyncState> {
     emit(state.copyWith(connectionState: SyncConnectionState.connected));
   }
 
+  /// Handle clock ping - just respond with pong (not used in simplified approach)
+  void _handleClockPing(SyncMessage message) {
+    // Simplified: we don't need clock sync, just track receivedAt locally
+  }
+
+  /// Handle clock pong - not used in simplified approach
+  void _handleClockPong(SyncMessage message) {
+    // Simplified: we don't need clock sync
+  }
+
   /// Request drift correction from host
   void _requestDriftCorrection(int driftMs) {
     try {
@@ -424,7 +441,8 @@ class SyncCubit extends Cubit<SyncState> {
         duration: duration,
       );
 
-      await _repository.sendMessage(message);
+      // Fire-and-forget to avoid blocking host UI
+      unawaited(_repository.sendMessage(message));
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[SyncCubit] Broadcast playback state error: $e');

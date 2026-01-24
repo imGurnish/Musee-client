@@ -20,14 +20,14 @@ class SyncPlayerService {
   Timer? _driftCorrectionTimer;
 
   /// Large drift threshold - seek directly (ms)
-  static const int _seekThresholdMs = 500;
+  static const int _seekThresholdMs = 300;
 
   /// Small drift threshold - use speed adjustment (ms)
-  static const int _speedAdjustThresholdMs = 100;
+  static const int _speedAdjustThresholdMs = 50;
 
   /// Speed adjustment factors for gradual drift correction
-  static const double _speedUpFactor = 1.05;
-  static const double _speedDownFactor = 0.95;
+  static const double _speedUpFactor = 1.03;
+  static const double _speedDownFactor = 0.97;
 
   /// Current playback speed (for drift correction)
   double _currentSpeed = 1.0;
@@ -38,13 +38,13 @@ class SyncPlayerService {
   /// Track ID that's currently being loaded (to avoid duplicate loads)
   String? _loadingTrackId;
 
-  /// Last known host position and when we received it
-  Duration? _lastHostPosition;
-  DateTime? _lastHostPositionTime;
-
   /// Running drift samples for smoothing
   final List<int> _driftSamples = [];
   static const int _maxDriftSamples = 5;
+
+  /// Last broadcast state to avoid redundant broadcasts
+  bool? _lastBroadcastPlaying;
+  String? _lastBroadcastTrackId;
 
   SyncPlayerService({
     required PlayerCubit playerCubit,
@@ -89,6 +89,8 @@ class SyncPlayerService {
     _resetPlaybackSpeed();
     _driftSamples.clear();
     _loadingTrackId = null;
+    _lastBroadcastPlaying = null;
+    _lastBroadcastTrackId = null;
 
     if (kDebugMode) {
       debugPrint('[SyncPlayerService] Stopped');
@@ -101,18 +103,27 @@ class SyncPlayerService {
 
     final syncState = _syncCubit.state;
 
-    // If host, broadcast playback state to clients
+    // If host, broadcast only on meaningful state changes (play/pause/track change)
     if (syncState.isHost && syncState.isConnected) {
-      _syncCubit.broadcastPlaybackState(
-        isPlaying: playerState.playing,
-        trackId: playerState.track?.trackId,
-        trackTitle: playerState.track?.title,
-        trackArtist: playerState.track?.artist,
-        trackAlbum: playerState.track?.album,
-        trackImageUrl: playerState.track?.imageUrl,
-        position: playerState.position,
-        duration: playerState.duration,
-      );
+      final playingChanged = _lastBroadcastPlaying != playerState.playing;
+      final trackChanged = _lastBroadcastTrackId != playerState.track?.trackId;
+
+      // Only broadcast on play/pause toggle or track change
+      if (playingChanged || trackChanged) {
+        _lastBroadcastPlaying = playerState.playing;
+        _lastBroadcastTrackId = playerState.track?.trackId;
+
+        _syncCubit.broadcastPlaybackState(
+          isPlaying: playerState.playing,
+          trackId: playerState.track?.trackId,
+          trackTitle: playerState.track?.title,
+          trackArtist: playerState.track?.artist,
+          trackAlbum: playerState.track?.album,
+          trackImageUrl: playerState.track?.imageUrl,
+          position: playerState.position,
+          duration: playerState.duration,
+        );
+      }
     }
 
     // If client and track just loaded, sync to host position
@@ -155,9 +166,7 @@ class SyncPlayerService {
   void _startSyncSignalBroadcast() {
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(
-      const Duration(
-        milliseconds: 250,
-      ), // More frequent updates for better sync
+      const Duration(seconds: 1), // Periodic position sync while playing
       (_) => _broadcastSyncSignal(),
     );
     if (kDebugMode) {
@@ -177,10 +186,12 @@ class SyncPlayerService {
     }
   }
 
-  /// Broadcast current playback position for sync
+  /// Broadcast current playback position for sync (only when playing)
   void _broadcastSyncSignal() {
     final playerState = _playerCubit.state;
     if (playerState.track == null) return;
+    // Only broadcast periodic updates when playing
+    if (!playerState.playing) return;
 
     _syncCubit.broadcastPlaybackState(
       isPlaying: playerState.playing,
@@ -196,24 +207,19 @@ class SyncPlayerService {
 
   /// Sync client to host's current position
   void _syncToHostPosition() {
-    if (_lastHostPosition == null || _lastHostPositionTime == null) return;
-
     final syncState = _syncCubit.state;
     if (!syncState.isClient || syncState.remotePlaybackState == null) return;
 
-    // Calculate where the host should be now
-    final timeSinceUpdate = DateTime.now().difference(_lastHostPositionTime!);
-    final estimatedHostPosition = syncState.remotePlaybackState!.isPlaying
-        ? _lastHostPosition! + timeSinceUpdate
-        : _lastHostPosition!;
+    // Use the estimated position which accounts for time since received
+    final targetPosition = syncState.remotePlaybackState!.estimatedPosition;
 
     if (kDebugMode) {
       debugPrint(
-        '[SyncPlayerService] Initial sync: seeking to ${estimatedHostPosition.inMilliseconds}ms',
+        '[SyncPlayerService] Initial sync: seeking to ${targetPosition.inMilliseconds}ms',
       );
     }
 
-    _playerCubit.seek(estimatedHostPosition);
+    _playerCubit.seek(targetPosition);
   }
 
   /// Perform drift correction
@@ -223,7 +229,6 @@ class SyncPlayerService {
     final syncState = _syncCubit.state;
     if (!syncState.isClient || !syncState.isConnected) return;
     if (syncState.remotePlaybackState == null) return;
-    if (_lastHostPosition == null || _lastHostPositionTime == null) return;
 
     final localState = _playerCubit.state;
 
@@ -239,9 +244,9 @@ class SyncPlayerService {
       return;
     }
 
-    // Calculate estimated host position now
-    final timeSinceUpdate = DateTime.now().difference(_lastHostPositionTime!);
-    final estimatedHostPosition = _lastHostPosition! + timeSinceUpdate;
+    // Use the estimated position from SyncPlaybackState
+    final estimatedHostPosition =
+        syncState.remotePlaybackState!.estimatedPosition;
 
     // Calculate drift (positive = we're behind, negative = we're ahead)
     final driftMs =
@@ -312,10 +317,6 @@ class SyncPlayerService {
   /// Handle remote playback state from host
   void _handleRemotePlaybackState(SyncPlaybackState remoteState) {
     final localState = _playerCubit.state;
-
-    // Store the host position for drift calculation
-    _lastHostPosition = remoteState.position;
-    _lastHostPositionTime = DateTime.now();
 
     // Check if we need to load the same track
     if (remoteState.currentTrackId != null &&

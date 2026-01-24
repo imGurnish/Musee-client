@@ -31,6 +31,12 @@ enum SyncMessageType {
 
   /// Request to disconnect
   disconnect,
+
+  /// Clock sync ping (client -> host)
+  clockPing,
+
+  /// Clock sync pong (host -> client)
+  clockPong,
 }
 
 /// Base class for sync messages
