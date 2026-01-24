@@ -84,6 +84,7 @@ class SyncState extends Equatable {
   final SyncDriftCorrection? lastDriftCorrection;
   final int currentDriftMs;
   final int averageDriftMs;
+  final int networkLatencyMs;
   final List<String>? pendingJoinRequests;
 
   const SyncState({
@@ -101,6 +102,7 @@ class SyncState extends Equatable {
     this.lastDriftCorrection,
     this.currentDriftMs = 0,
     this.averageDriftMs = 0,
+    this.networkLatencyMs = 0,
     this.pendingJoinRequests,
   });
 
@@ -120,6 +122,7 @@ class SyncState extends Equatable {
       lastDriftCorrection = null,
       currentDriftMs = 0,
       averageDriftMs = 0,
+      networkLatencyMs = 0,
       pendingJoinRequests = null;
 
   SyncState copyWith({
@@ -137,6 +140,7 @@ class SyncState extends Equatable {
     SyncDriftCorrection? lastDriftCorrection,
     int? currentDriftMs,
     int? averageDriftMs,
+    int? networkLatencyMs,
     List<String>? pendingJoinRequests,
   }) {
     return SyncState(
@@ -154,6 +158,7 @@ class SyncState extends Equatable {
       lastDriftCorrection: lastDriftCorrection ?? this.lastDriftCorrection,
       currentDriftMs: currentDriftMs ?? this.currentDriftMs,
       averageDriftMs: averageDriftMs ?? this.averageDriftMs,
+      networkLatencyMs: networkLatencyMs ?? this.networkLatencyMs,
       pendingJoinRequests: pendingJoinRequests ?? this.pendingJoinRequests,
     );
   }
@@ -191,6 +196,7 @@ class SyncState extends Equatable {
     lastDriftCorrection,
     currentDriftMs,
     averageDriftMs,
+    networkLatencyMs,
     pendingJoinRequests,
   ];
 }

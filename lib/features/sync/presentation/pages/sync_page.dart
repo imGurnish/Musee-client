@@ -132,6 +132,7 @@ class _SyncPageContentState extends State<_SyncPageContent>
                             child: DriftIndicator(
                               currentDriftMs: state.currentDriftMs,
                               averageDriftMs: state.averageDriftMs,
+                              networkLatencyMs: state.networkLatencyMs,
                             ),
                           ),
                         ),

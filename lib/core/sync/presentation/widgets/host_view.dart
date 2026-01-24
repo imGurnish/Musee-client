@@ -183,6 +183,18 @@ class HostView extends StatelessWidget {
               ),
             ),
           ),
+
+          const SizedBox(height: 16),
+
+          // Cancel button to go back to mode selection
+          if (!state.isConnected)
+            TextButton.icon(
+              onPressed: () {
+                context.read<SyncCubit>().cancelSync();
+              },
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Back to Mode Selection'),
+            ),
         ],
       ),
     );

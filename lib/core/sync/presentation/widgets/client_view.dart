@@ -135,11 +135,23 @@ class ClientView extends StatelessWidget {
                 label: const Text('Search for Hosts'),
               )
             else
-              TextButton(
-                onPressed: () {
-                  context.read<SyncCubit>().stopDiscovering();
-                },
-                child: const Text('Stop Searching'),
+              Column(
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      context.read<SyncCubit>().stopDiscovering();
+                    },
+                    child: const Text('Pause Searching'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      context.read<SyncCubit>().cancelSync();
+                    },
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Cancel'),
+                  ),
+                ],
               ),
           ],
         ),
@@ -276,6 +288,18 @@ class ClientView extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            // Cancel button to go back to mode selection
+            SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                onPressed: () {
+                  context.read<SyncCubit>().cancelSync();
+                },
+                icon: const Icon(Icons.arrow_back),
+                label: const Text('Back to Mode Selection'),
+              ),
             ),
           ],
         ),

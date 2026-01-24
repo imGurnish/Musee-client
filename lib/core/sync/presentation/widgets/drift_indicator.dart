@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 class DriftIndicator extends StatelessWidget {
   final int currentDriftMs;
   final int averageDriftMs;
+  final int networkLatencyMs;
 
   const DriftIndicator({
     super.key,
     required this.currentDriftMs,
     required this.averageDriftMs,
+    this.networkLatencyMs = 0,
   });
 
   @override
@@ -85,6 +87,17 @@ class DriftIndicator extends StatelessWidget {
                   'Average',
                   '${averageDriftMs}ms',
                   _getDriftColor(averageDriftMs.abs()),
+                ),
+                Container(
+                  width: 1,
+                  height: 30,
+                  color: colorScheme.outline.withValues(alpha: 0.3),
+                ),
+                _buildDriftValue(
+                  context,
+                  'Latency',
+                  '${networkLatencyMs}ms',
+                  _getLatencyColor(networkLatencyMs),
                 ),
               ],
             ),
@@ -224,6 +237,13 @@ class DriftIndicator extends StatelessWidget {
     if (absDriftMs < 50) return Colors.green;
     if (absDriftMs < 150) return Colors.lightGreen;
     if (absDriftMs < 300) return Colors.orange;
+    return Colors.red;
+  }
+
+  Color _getLatencyColor(int latencyMs) {
+    if (latencyMs < 50) return Colors.green;
+    if (latencyMs < 100) return Colors.lightGreen;
+    if (latencyMs < 200) return Colors.orange;
     return Colors.red;
   }
 }

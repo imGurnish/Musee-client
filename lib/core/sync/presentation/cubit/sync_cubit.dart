@@ -134,6 +134,16 @@ class SyncCubit extends Cubit<SyncState> {
     }
   }
 
+  /// Cancel the current sync mode and return to mode selection
+  void cancelSync() {
+    _repository.stopDiscovery();
+    _repository.disconnect();
+    emit(const SyncState.initial());
+    if (kDebugMode) {
+      debugPrint('[SyncCubit] Sync cancelled, returning to mode selection');
+    }
+  }
+
   /// Connect to a host device
   Future<void> connectToHost(SyncDevice host) async {
     try {
@@ -255,6 +265,21 @@ class SyncCubit extends Cubit<SyncState> {
           command: command,
           seekPosition: seekMs != null ? Duration(milliseconds: seekMs) : null,
         ),
+      ),
+    );
+  }
+
+  /// Update sync metrics from SyncPlayerService
+  void updateSyncMetrics({
+    required int currentDriftMs,
+    required int averageDriftMs,
+    required int networkLatencyMs,
+  }) {
+    emit(
+      state.copyWith(
+        currentDriftMs: currentDriftMs,
+        averageDriftMs: averageDriftMs,
+        networkLatencyMs: networkLatencyMs,
       ),
     );
   }

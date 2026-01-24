@@ -19,15 +19,15 @@ class SyncPlayerService {
   /// Timer for drift correction checks (when acting as client)
   Timer? _driftCorrectionTimer;
 
-  /// Large drift threshold - seek directly (ms)
-  static const int _seekThresholdMs = 300;
+  /// Adaptive drift thresholds - start conservative, improve over time
+  int _seekThresholdMs = 400; // Initial seek threshold
+  int _speedAdjustThresholdMs = 75; // Initial speed adjust threshold
 
-  /// Small drift threshold - use speed adjustment (ms)
-  static const int _speedAdjustThresholdMs = 50;
-
-  /// Speed adjustment factors for gradual drift correction
-  static const double _speedUpFactor = 1.03;
-  static const double _speedDownFactor = 0.97;
+  /// Speed adjustment factors - adaptive based on drift magnitude
+  static const double _maxSpeedUpFactor = 1.08;
+  static const double _maxSpeedDownFactor = 0.92;
+  static const double _gentleSpeedUpFactor = 1.01;
+  static const double _gentleSpeedDownFactor = 0.99;
 
   /// Current playback speed (for drift correction)
   double _currentSpeed = 1.0;
@@ -38,9 +38,21 @@ class SyncPlayerService {
   /// Track ID that's currently being loaded (to avoid duplicate loads)
   String? _loadingTrackId;
 
-  /// Running drift samples for smoothing
+  /// Running drift samples for smoothing - exponential moving average
   final List<int> _driftSamples = [];
-  static const int _maxDriftSamples = 5;
+  static const int _maxDriftSamples = 10;
+  double _exponentialMovingAverage = 0.0;
+  static const double _emaAlpha = 0.3; // Smoothing factor (0.2-0.4 recommended)
+
+  /// Network latency tracking
+  final List<int> _networkLatencySamples = [];
+  static const int _maxLatencySamples = 20;
+  int _estimatedNetworkLatencyMs = 100; // Initial estimate
+
+  /// Drift trend tracking for improvement
+  int _consistentDriftDirection = 0; // -1: ahead, 0: neutral, 1: behind
+  int _consistentDriftCount = 0;
+  static const int _consistentDriftThreshold = 3;
 
   /// Last broadcast state to avoid redundant broadcasts
   bool? _lastBroadcastPlaying;
@@ -88,9 +100,17 @@ class SyncPlayerService {
     // Reset playback speed
     _resetPlaybackSpeed();
     _driftSamples.clear();
+    _networkLatencySamples.clear();
     _loadingTrackId = null;
     _lastBroadcastPlaying = null;
     _lastBroadcastTrackId = null;
+    _exponentialMovingAverage = 0.0;
+    _consistentDriftDirection = 0;
+    _consistentDriftCount = 0;
+
+    // Reset adaptive thresholds
+    _seekThresholdMs = 400;
+    _speedAdjustThresholdMs = 75;
 
     if (kDebugMode) {
       debugPrint('[SyncPlayerService] Stopped');
@@ -222,13 +242,16 @@ class SyncPlayerService {
     _playerCubit.seek(targetPosition);
   }
 
-  /// Perform drift correction
+  /// Perform adaptive drift correction with self-improving thresholds
   void _performDriftCorrection() {
     if (!_isActive) return;
 
     final syncState = _syncCubit.state;
     if (!syncState.isClient || !syncState.isConnected) return;
     if (syncState.remotePlaybackState == null) return;
+
+    // Estimate network latency from message timestamp
+    _estimateNetworkLatency(syncState.remotePlaybackState!);
 
     final localState = _playerCubit.state;
 
@@ -244,52 +267,161 @@ class SyncPlayerService {
       return;
     }
 
-    // Use the estimated position from SyncPlaybackState
+    // Use the estimated position accounting for network latency
     final estimatedHostPosition =
-        syncState.remotePlaybackState!.estimatedPosition;
+        syncState.remotePlaybackState!.estimatedPosition +
+        Duration(milliseconds: _estimatedNetworkLatencyMs ~/ 2);
 
     // Calculate drift (positive = we're behind, negative = we're ahead)
     final driftMs =
         estimatedHostPosition.inMilliseconds -
         localState.position.inMilliseconds;
 
-    // Add to drift samples for smoothing
+    // Update exponential moving average for smooth drift tracking
+    if (_driftSamples.isEmpty) {
+      _exponentialMovingAverage = driftMs.toDouble();
+    } else {
+      _exponentialMovingAverage =
+          (_emaAlpha * driftMs) + ((1 - _emaAlpha) * _exponentialMovingAverage);
+    }
+
+    // Add to drift samples
     _driftSamples.add(driftMs);
     if (_driftSamples.length > _maxDriftSamples) {
       _driftSamples.removeAt(0);
     }
 
-    // Calculate average drift
-    final avgDrift =
-        _driftSamples.reduce((a, b) => a + b) ~/ _driftSamples.length;
+    // Track drift direction for self-improvement
+    _updateDriftTrend(driftMs);
+
+    // Update SyncCubit with real metrics
+    _syncCubit.updateSyncMetrics(
+      currentDriftMs: driftMs,
+      averageDriftMs: _exponentialMovingAverage.toInt(),
+      networkLatencyMs: _estimatedNetworkLatencyMs,
+    );
 
     if (kDebugMode) {
       debugPrint(
-        '[SyncPlayerService] Drift: ${driftMs}ms (avg: ${avgDrift}ms)',
+        '[SyncPlayerService] Drift: ${driftMs}ms (EMA: ${_exponentialMovingAverage.toStringAsFixed(1)}ms, threshold: ${_speedAdjustThresholdMs}ms)',
       );
     }
 
     // Large drift - seek directly
-    if (avgDrift.abs() > _seekThresholdMs) {
+    if (_exponentialMovingAverage.abs() > _seekThresholdMs) {
       if (kDebugMode) {
-        debugPrint('[SyncPlayerService] Large drift, seeking to host position');
+        debugPrint(
+          '[SyncPlayerService] Large drift detected, seeking to host position',
+        );
       }
       _playerCubit.seek(estimatedHostPosition);
       _driftSamples.clear();
+      _exponentialMovingAverage = 0.0;
       _resetPlaybackSpeed();
       return;
     }
 
-    // Medium drift - adjust playback speed
-    if (avgDrift > _speedAdjustThresholdMs) {
+    // Adaptive speed adjustment based on drift magnitude
+    _adaptiveSpeedCorrection(_exponentialMovingAverage.toInt());
+  }
+
+  /// Estimate network latency from message timestamps
+  void _estimateNetworkLatency(SyncPlaybackState remoteState) {
+    final now = DateTime.now();
+    final timeSinceReceived = now.difference(remoteState.receivedAt);
+
+    // Network latency is approximately half the time since we received the message
+    final estimatedLatency = timeSinceReceived.inMilliseconds ~/ 2;
+
+    _networkLatencySamples.add(estimatedLatency);
+    if (_networkLatencySamples.length > _maxLatencySamples) {
+      _networkLatencySamples.removeAt(0);
+    }
+
+    // Update running average
+    if (_networkLatencySamples.isNotEmpty) {
+      _estimatedNetworkLatencyMs =
+          (_networkLatencySamples.reduce((a, b) => a + b) /
+                  _networkLatencySamples.length)
+              .toInt();
+    }
+  }
+
+  /// Track drift direction for adaptive threshold improvement
+  void _updateDriftTrend(int currentDrift) {
+    final direction = currentDrift > 0 ? 1 : (currentDrift < 0 ? -1 : 0);
+
+    if (direction == _consistentDriftDirection) {
+      _consistentDriftCount++;
+
+      // Improve thresholds if we consistently drift in one direction
+      if (_consistentDriftCount >= _consistentDriftThreshold) {
+        _adaptivelyImproveThresholds();
+        _consistentDriftCount = 0;
+      }
+    } else {
+      _consistentDriftDirection = direction;
+      _consistentDriftCount = 1;
+    }
+  }
+
+  /// Adaptively improve thresholds based on drift patterns
+  void _adaptivelyImproveThresholds() {
+    // Gradually tighten thresholds for better sync
+    // Minimum 50ms for speed adjust, minimum 150ms for seek
+    if (_speedAdjustThresholdMs > 50) {
+      _speedAdjustThresholdMs = (_speedAdjustThresholdMs * 0.9).toInt();
+    }
+    if (_seekThresholdMs > 150) {
+      _seekThresholdMs = (_seekThresholdMs * 0.95).toInt();
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        '[SyncPlayerService] Improved thresholds: speedAdj=${_speedAdjustThresholdMs}ms, seek=${_seekThresholdMs}ms',
+      );
+    }
+  }
+
+  /// Adaptive speed correction with granular adjustments
+  void _adaptiveSpeedCorrection(int driftMs) {
+    final absDrift = driftMs.abs();
+
+    // Select appropriate speed factor based on drift magnitude
+    final speedFactor = _selectAdaptiveSpeedFactor(driftMs, absDrift);
+
+    if (driftMs > _speedAdjustThresholdMs) {
       // We're behind - speed up
-      _setPlaybackSpeed(_speedUpFactor);
-    } else if (avgDrift < -_speedAdjustThresholdMs) {
+      _setPlaybackSpeed(speedFactor);
+    } else if (driftMs < -_speedAdjustThresholdMs) {
       // We're ahead - slow down
-      _setPlaybackSpeed(_speedDownFactor);
+      _setPlaybackSpeed(speedFactor);
     } else {
       // Within tolerance - normal speed
       _resetPlaybackSpeed();
+    }
+  }
+
+  /// Select adaptive playback speed based on drift magnitude
+  double _selectAdaptiveSpeedFactor(int driftMs, int absDrift) {
+    if (driftMs > 0) {
+      // Behind - need to speed up
+      if (absDrift > 200) {
+        return _maxSpeedUpFactor; // Large drift: aggressive speed up
+      } else if (absDrift > 100) {
+        return _gentleSpeedUpFactor + 0.02; // Medium drift
+      } else {
+        return _gentleSpeedUpFactor; // Small drift: gentle speed up
+      }
+    } else {
+      // Ahead - need to slow down
+      if (absDrift > 200) {
+        return _maxSpeedDownFactor; // Large drift: aggressive slow down
+      } else if (absDrift > 100) {
+        return _gentleSpeedDownFactor - 0.02; // Medium drift
+      } else {
+        return _gentleSpeedDownFactor; // Small drift: gentle slow down
+      }
     }
   }
 
