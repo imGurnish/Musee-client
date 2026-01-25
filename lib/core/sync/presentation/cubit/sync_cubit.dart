@@ -16,6 +16,7 @@ class SyncCubit extends Cubit<SyncState> {
 
   StreamSubscription<List<SyncDevice>>? _discoveredDevicesSub;
   StreamSubscription<SyncMessage>? _incomingMessagesSub;
+  Timer? _pingTimer;
 
   /// Drift correction parameters
   static const int driftThresholdMs = 200; // Tolerance before correction
@@ -24,6 +25,11 @@ class SyncCubit extends Cubit<SyncState> {
 
   /// Running drift samples for statistical analysis
   final List<int> _driftSamples = [];
+
+  /// Ping tracking for RTT measurement
+  final Map<String, DateTime> _pendingPings = {};
+  final List<int> _rttSamples = [];
+  static const int _maxRttSamples = 10;
 
   SyncCubit(this._repository) : super(const SyncState.initial()) {
     _init();
@@ -136,6 +142,9 @@ class SyncCubit extends Cubit<SyncState> {
 
   /// Cancel the current sync mode and return to mode selection
   void cancelSync() {
+    _stopPingTimer();
+    _rttSamples.clear();
+    _pendingPings.clear();
     _repository.stopDiscovery();
     _repository.disconnect();
     emit(const SyncState.initial());
@@ -355,6 +364,11 @@ class SyncCubit extends Cubit<SyncState> {
         ),
       );
 
+      // Start ping timer if this is the first client
+      if (state.connectedDevices.length == 1) {
+        _startPingTimer();
+      }
+
       // Send approval message
       _sendJoinApproval(deviceId);
 
@@ -391,14 +405,86 @@ class SyncCubit extends Cubit<SyncState> {
     emit(state.copyWith(connectionState: SyncConnectionState.connected));
   }
 
-  /// Handle clock ping - just respond with pong (not used in simplified approach)
+  /// Handle clock ping - respond with pong (client responds to host)
   void _handleClockPing(SyncMessage message) {
-    // Simplified: we don't need clock sync, just track receivedAt locally
+    // Client receives ping from host, send pong back
+    if (state.isClient) {
+      final pingId = message.payload['pingId'] as String? ?? '';
+      final pongMessage = SyncMessage(
+        type: SyncMessageType.clockPong,
+        senderId: state.localDevice?.deviceId ?? '',
+        sessionId: state.currentSession?.sessionId ?? '',
+        timestamp: DateTime.now(),
+        payload: {
+          'pingId': pingId,
+          'originalTimestamp': message.timestamp.millisecondsSinceEpoch,
+        },
+      );
+      unawaited(_repository.sendMessage(pongMessage));
+    }
   }
 
-  /// Handle clock pong - not used in simplified approach
+  /// Handle clock pong - calculate RTT (host receives from client)
   void _handleClockPong(SyncMessage message) {
-    // Simplified: we don't need clock sync
+    if (state.isHost) {
+      final pingId = message.payload['pingId'] as String? ?? '';
+      final sentTime = _pendingPings.remove(pingId);
+
+      if (sentTime != null) {
+        final rtt = DateTime.now().difference(sentTime).inMilliseconds;
+
+        _rttSamples.add(rtt);
+        if (_rttSamples.length > _maxRttSamples) {
+          _rttSamples.removeAt(0);
+        }
+
+        // Calculate average RTT and use half as estimated latency
+        final avgRtt = _rttSamples.isNotEmpty
+            ? (_rttSamples.reduce((a, b) => a + b) / _rttSamples.length).toInt()
+            : 0;
+        final estimatedLatency = avgRtt ~/ 2;
+
+        emit(state.copyWith(networkLatencyMs: estimatedLatency));
+
+        if (kDebugMode) {
+          debugPrint(
+            '[SyncCubit] RTT: ${rtt}ms, Avg Latency: ${estimatedLatency}ms',
+          );
+        }
+      }
+    }
+  }
+
+  /// Start periodic ping to measure latency (called by host)
+  void _startPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (state.isHost && state.connectedDevices.isNotEmpty) {
+        _sendPing();
+      }
+    });
+  }
+
+  /// Stop ping timer
+  void _stopPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = null;
+  }
+
+  /// Send a ping to measure RTT
+  void _sendPing() {
+    final pingId = DateTime.now().millisecondsSinceEpoch.toString();
+    _pendingPings[pingId] = DateTime.now();
+
+    final pingMessage = SyncMessage(
+      type: SyncMessageType.clockPing,
+      senderId: state.localDevice?.deviceId ?? '',
+      sessionId: state.currentSession?.sessionId ?? '',
+      timestamp: DateTime.now(),
+      payload: {'pingId': pingId},
+    );
+
+    unawaited(_repository.sendMessage(pingMessage));
   }
 
   /// Request drift correction from host
@@ -545,6 +631,9 @@ class SyncCubit extends Cubit<SyncState> {
   /// Disconnect from sync
   Future<void> disconnect() async {
     try {
+      _stopPingTimer();
+      _rttSamples.clear();
+      _pendingPings.clear();
       await _repository.disconnect();
       emit(const SyncState.initial());
       if (kDebugMode) {
@@ -561,6 +650,7 @@ class SyncCubit extends Cubit<SyncState> {
   Future<void> close() {
     _discoveredDevicesSub?.cancel();
     _incomingMessagesSub?.cancel();
+    _stopPingTimer();
     return super.close();
   }
 }

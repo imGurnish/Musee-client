@@ -186,6 +186,11 @@ class HostView extends StatelessWidget {
 
           const SizedBox(height: 16),
 
+          // Host sync status card
+          _buildSyncStatusCard(context, theme, colorScheme),
+
+          const SizedBox(height: 16),
+
           // Cancel button to go back to mode selection
           if (!state.isConnected)
             TextButton.icon(
@@ -198,5 +203,138 @@ class HostView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildSyncStatusCard(
+    BuildContext context,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
+    final connectedCount = state.connectedDevices.length;
+    final isActive = connectedCount > 0;
+
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.sync,
+                  color: isActive ? Colors.green : colorScheme.outline,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Sync Status',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: (isActive ? Colors.green : colorScheme.outline)
+                        .withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    isActive ? 'Broadcasting' : 'Waiting',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: isActive ? Colors.green : colorScheme.outline,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // Stats row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildStatItem(
+                  context,
+                  'Connected',
+                  '$connectedCount',
+                  connectedCount > 0 ? Colors.green : colorScheme.outline,
+                  Icons.devices,
+                ),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: colorScheme.outline.withValues(alpha: 0.3),
+                ),
+                _buildStatItem(
+                  context,
+                  'Latency',
+                  '${state.networkLatencyMs}ms',
+                  _getLatencyColor(state.networkLatencyMs),
+                  Icons.network_ping,
+                ),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: colorScheme.outline.withValues(alpha: 0.3),
+                ),
+                _buildStatItem(
+                  context,
+                  'Status',
+                  state.connectionState.name,
+                  isActive ? Colors.green : Colors.orange,
+                  Icons.signal_cellular_alt,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem(
+    BuildContext context,
+    String label,
+    String value,
+    Color color,
+    IconData icon,
+  ) {
+    final theme = Theme.of(context);
+
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: theme.textTheme.titleMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _getLatencyColor(int latencyMs) {
+    if (latencyMs < 50) return Colors.green;
+    if (latencyMs < 100) return Colors.lightGreen;
+    if (latencyMs < 200) return Colors.orange;
+    return Colors.red;
   }
 }
