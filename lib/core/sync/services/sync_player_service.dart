@@ -263,6 +263,13 @@ class SyncPlayerService {
     final avgDrift =
         _driftSamples.reduce((a, b) => a + b) ~/ _driftSamples.length;
 
+    // Update UI with real drift metrics
+    _syncCubit.updateSyncMetrics(
+      currentDriftMs: driftMs,
+      averageDriftMs: avgDrift,
+      networkLatencyMs: 0, // Client doesn't measure latency
+    );
+
     if (kDebugMode) {
       debugPrint(
         '[SyncPlayerService] Drift: ${driftMs}ms (avg: ${avgDrift}ms)',
