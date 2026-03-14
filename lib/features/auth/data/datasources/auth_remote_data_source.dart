@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:dio/dio.dart' as dio;
 
 import 'package:musee/core/error/exceptions.dart';
-import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:musee/features/auth/data/models/user_model.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -333,52 +331,38 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       debugPrint('Fetching user data for ID: $id');
     }
 
-    final client = dio.Dio();
-
-    // Helper to always use the latest access token from Supabase.
-    Future<dio.Response> doRequest() {
-      final accessToken = supabaseClient.auth.currentSession?.accessToken;
-      if (kDebugMode) {
-        debugPrint('Using access token (len): ${accessToken?.length ?? 0}');
-      }
-      return client.get(
-        '${AppSecrets.backendUrl}/api/user/users/me',
-        options: dio.Options(
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            if (accessToken != null && accessToken.isNotEmpty)
-              'Authorization': 'Bearer $accessToken',
-          },
-          sendTimeout: const Duration(seconds: 15),
-          receiveTimeout: const Duration(seconds: 30),
-        ),
-      );
-    }
-
     try {
-      dio.Response res = await doRequest();
+      // Try to get user profile from Supabase 'users' table
+      final response = await supabaseClient
+          .from('users')
+          .select()
+          .eq('id', id)
+          .maybeSingle();
 
-      // If backend reports unauthorized, give Supabase a brief moment
-      // to refresh the session and retry once.
-      if (res.statusCode == 401) {
-        if (kDebugMode) {
-          debugPrint('Received 401 from /me, retrying once with refreshed session...');
-        }
-        await Future.delayed(const Duration(milliseconds: 500));
-        res = await doRequest();
+      if (response != null) {
+        if (kDebugMode) debugPrint('✅ User data from Supabase: $response');
+        return UserModel.fromJson(response);
       }
 
-      if (res.statusCode == 200 && res.data is Map<String, dynamic>) {
-        final data = Map<String, dynamic>.from(res.data as Map);
-        if (kDebugMode) debugPrint('✅ User data from backend: $data');
-        return UserModel.fromJson(data);
+      // Fallback: build UserModel from Supabase auth metadata
+      final authUser = supabaseClient.auth.currentUser;
+      if (authUser != null) {
+        final defaultAvatar =
+            'https://xvpputhovrhgowfkjhfv.supabase.co/storage/v1/object/public/avatars/users/default_avatar.png';
+
+        final nameFromMetadata = authUser.userMetadata?['name'] as String?;
+        final avatarFromMetadata =
+            authUser.userMetadata?['avatar_url'] as String?;
+
+        return UserModel.fromJson({
+          'id': authUser.id,
+          'name': nameFromMetadata ?? authUser.email ?? 'User',
+          'email': authUser.email,
+          'avatar_url': avatarFromMetadata ?? defaultAvatar,
+        });
       }
 
-      throw ServerExceptionWithStatusCode(
-        res.statusCode ?? 500,
-        'Failed to fetch user data from backend',
-      );
+      throw ServerException('No user data available for ID: $id');
     } catch (e) {
       if (kDebugMode) debugPrint('❌ Error fetching user data: $e');
       rethrow;

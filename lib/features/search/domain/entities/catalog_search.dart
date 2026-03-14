@@ -1,5 +1,5 @@
 /// Source identifier for search results.
-enum SearchSource { catalog, external }
+enum SearchSource { external }
 
 class CatalogArtist {
   final String artistId;
@@ -11,7 +11,7 @@ class CatalogArtist {
     required this.artistId,
     this.name,
     this.avatarUrl,
-    this.source = SearchSource.catalog,
+    this.source = SearchSource.external,
   });
 }
 
@@ -27,7 +27,7 @@ class CatalogAlbum {
     required this.title,
     this.coverUrl,
     this.artists = const [],
-    this.source = SearchSource.catalog,
+    this.source = SearchSource.external,
   });
 }
 
@@ -45,7 +45,7 @@ class CatalogTrack {
     this.duration,
     this.artists = const [],
     this.imageUrl,
-    this.source = SearchSource.catalog,
+    this.source = SearchSource.external,
   });
 }
 

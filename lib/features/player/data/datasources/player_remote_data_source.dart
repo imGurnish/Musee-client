@@ -1,6 +1,10 @@
-import 'package:dio/dio.dart';
-import 'package:musee/core/secrets/app_secrets.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+// Player data source — local-only stub.
+//
+// Queue management is handled entirely in PlayerCubit with in-memory state.
+// This file is retained for potential future persistence (Hive, SQLite, etc).
+//
+// The backend-synced implementation has been removed as part of the
+// JioSaavn-only migration.
 
 abstract interface class PlayerDataSource {
   Future<List<String>> getQueueIds();
@@ -20,41 +24,21 @@ abstract interface class PlayerDataSource {
   });
 }
 
+/// In-memory implementation for local-only queue management.
+/// Queue state is managed by PlayerCubit; this is a no-op placeholder.
 class PlayerDataSourceImpl implements PlayerDataSource {
-  final Dio _dio;
-  final SupabaseClient _supabase;
-  PlayerDataSourceImpl(this._dio, this._supabase);
+  final List<Map<String, dynamic>> _queue = [];
 
-  Map<String, String> _headers() {
-    final token = _supabase.auth.currentSession?.accessToken;
-    final base = {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    };
-    return token == null ? base : {...base, 'Authorization': 'Bearer $token'};
-  }
+  PlayerDataSourceImpl();
 
   @override
   Future<List<String>> getQueueIds() async {
-    final res = await _dio.get(
-      '${AppSecrets.backendUrl}/api/user/queue',
-      options: Options(headers: _headers()),
-    );
-    final data = (res.data as Map).cast<String, dynamic>();
-    final items = (data['items'] as List?)?.cast<dynamic>() ?? const [];
-    return items.map((e) => e.toString()).toList();
+    return _queue.map((e) => e['track_id']?.toString() ?? '').toList();
   }
 
   @override
   Future<List<Map<String, dynamic>>> getQueueExpanded() async {
-    final res = await _dio.get(
-      '${AppSecrets.backendUrl}/api/user/queue',
-      queryParameters: {'expand': '1'},
-      options: Options(headers: _headers()),
-    );
-    final data = (res.data as Map).cast<String, dynamic>();
-    final items = (data['items'] as List?)?.cast<dynamic>() ?? const [];
-    return items.map((e) => (e as Map).cast<String, dynamic>()).toList();
+    return List.unmodifiable(_queue);
   }
 
   @override
@@ -63,52 +47,32 @@ class PlayerDataSourceImpl implements PlayerDataSource {
     Map<String, dynamic>? metadata,
     List<Map<String, dynamic>>? metadataList,
   }) async {
-    if (trackIds.isEmpty) return;
-    final Map<String, dynamic> body;
-    if (trackIds.length == 1) {
-      body = {'track_id': trackIds.first};
-      if (metadata != null) {
-        body['metadata'] = metadata;
-      }
-    } else {
-      body = {'track_ids': trackIds};
-      if (metadataList != null) {
-        body['metadata_list'] = metadataList;
-      }
+    for (var i = 0; i < trackIds.length; i++) {
+      final meta = metadataList != null && i < metadataList.length
+          ? metadataList[i]
+          : metadata ?? {};
+      _queue.add({'track_id': trackIds[i], ...meta});
     }
-    await _dio.post(
-      '${AppSecrets.backendUrl}/api/user/queue/add',
-      data: body,
-      options: Options(headers: _headers()),
-    );
   }
 
   @override
   Future<void> removeFromQueue(String trackId) async {
-    await _dio.delete(
-      '${AppSecrets.backendUrl}/api/user/queue/$trackId',
-      options: Options(headers: _headers()),
-    );
+    _queue.removeWhere((e) => e['track_id'] == trackId);
   }
 
   @override
   Future<List<String>> reorderQueue(int from, int to) async {
-    final res = await _dio.post(
-      '${AppSecrets.backendUrl}/api/user/queue/reorder',
-      data: {'fromIndex': from, 'toIndex': to},
-      options: Options(headers: _headers()),
-    );
-    final data = (res.data as Map).cast<String, dynamic>();
-    final items = (data['items'] as List?)?.cast<dynamic>() ?? const [];
-    return items.map((e) => e.toString()).toList();
+    if (from < 0 || from >= _queue.length || to < 0 || to >= _queue.length) {
+      return getQueueIds();
+    }
+    final item = _queue.removeAt(from);
+    _queue.insert(to, item);
+    return getQueueIds();
   }
 
   @override
   Future<void> clearQueue() async {
-    await _dio.post(
-      '${AppSecrets.backendUrl}/api/user/queue/clear',
-      options: Options(headers: _headers()),
-    );
+    _queue.clear();
   }
 
   @override
@@ -117,18 +81,6 @@ class PlayerDataSourceImpl implements PlayerDataSource {
     bool expand = false,
     Map<String, dynamic>? metadata,
   }) async {
-    final Map<String, dynamic> body = {'track_id': trackId};
-    if (metadata != null) {
-      body['metadata'] = metadata;
-    }
-    final res = await _dio.post(
-      '${AppSecrets.backendUrl}/api/user/queue/play',
-      data: body,
-      queryParameters: expand ? {'expand': '1'} : null,
-      options: Options(headers: _headers()),
-    );
-    final data = (res.data as Map).cast<String, dynamic>();
-    final items = (data['items'] as List?)?.cast<dynamic>() ?? const [];
-    return items.map((e) => (e as Map).cast<String, dynamic>()).toList();
+    return getQueueExpanded();
   }
 }

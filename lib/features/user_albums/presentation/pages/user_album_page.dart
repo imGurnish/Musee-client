@@ -1,14 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart' as dio;
-import 'package:flutter/foundation.dart'
-    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
-import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:musee/features/user_albums/presentation/bloc/user_album_bloc.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/core/providers/music_provider_registry.dart';

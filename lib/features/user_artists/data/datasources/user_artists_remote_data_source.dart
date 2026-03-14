@@ -1,6 +1,4 @@
-import 'package:dio/dio.dart' as dio;
-import 'package:musee/core/secrets/app_secrets.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' as supa;
+import 'package:musee/core/providers/music_provider_registry.dart';
 
 class UserArtistDTO {
   final String artistId;
@@ -20,20 +18,6 @@ class UserArtistDTO {
     this.genres = const [],
     this.monthlyListeners,
   });
-
-  factory UserArtistDTO.fromJson(Map<String, dynamic> json) {
-    return UserArtistDTO(
-      artistId: (json['artist_id'] ?? json['id']).toString(),
-      name: json['name'] as String?,
-      avatarUrl: json['avatar_url'] as String?,
-      coverUrl: json['cover_url'] as String?,
-      bio: json['bio'] as String?,
-      genres:
-          (json['genres'] as List?)?.map((e) => e.toString()).toList() ??
-          const [],
-      monthlyListeners: (json['monthly_listeners'] as num?)?.toInt(),
-    );
-  }
 }
 
 class UserArtistAlbumDTO {
@@ -48,15 +32,6 @@ class UserArtistAlbumDTO {
     this.coverUrl,
     this.releaseDate,
   });
-
-  factory UserArtistAlbumDTO.fromJson(Map<String, dynamic> json) {
-    return UserArtistAlbumDTO(
-      albumId: (json['album_id'] ?? json['id']).toString(),
-      title: json['title']?.toString() ?? '',
-      coverUrl: json['cover_url'] as String?,
-      releaseDate: json['release_date'] as String?,
-    );
-  }
 }
 
 abstract interface class UserArtistsRemoteDataSource {
@@ -64,56 +39,48 @@ abstract interface class UserArtistsRemoteDataSource {
   Future<List<UserArtistAlbumDTO>> getArtistAlbums(String artistId);
 }
 
+/// Artist data source using external (JioSaavn) API via MusicProviderRegistry.
 class UserArtistsRemoteDataSourceImpl implements UserArtistsRemoteDataSource {
-  final dio.Dio _dio;
-  final supa.SupabaseClient supabase;
-  final String baseArtistsPath;
+  final MusicProviderRegistry _registry;
 
-  UserArtistsRemoteDataSourceImpl(this._dio, this.supabase)
-    : baseArtistsPath = '${AppSecrets.backendUrl}/api/user/artists';
-
-  Map<String, String> _authHeader() {
-    final token = supabase.auth.currentSession?.accessToken;
-    if (token == null || token.isEmpty) {
-      throw StateError('Missing Supabase access token for user API request');
-    }
-    return {'Authorization': 'Bearer $token'};
-  }
+  UserArtistsRemoteDataSourceImpl(this._registry);
 
   @override
   Future<UserArtistDTO> getArtist(String artistId) async {
-    final res = await _dio.get(
-      '$baseArtistsPath/$artistId',
-      options: dio.Options(headers: _authHeader()),
+    final artist = await _registry.getArtist(artistId);
+    if (artist == null) {
+      throw Exception('Artist not found: $artistId');
+    }
+
+    return UserArtistDTO(
+      artistId: artist.prefixedId,
+      name: artist.name,
+      avatarUrl: artist.avatarUrl,
+      bio: artist.bio,
     );
-    return UserArtistDTO.fromJson(Map<String, dynamic>.from(res.data));
   }
 
   @override
   Future<List<UserArtistAlbumDTO>> getArtistAlbums(String artistId) async {
-    // Assumption: backend exposes this route; falls back to filtering albums list by artist_id if needed in future.
-    final res = await _dio.get(
-      '$baseArtistsPath/$artistId/albums',
-      options: dio.Options(headers: _authHeader()),
+    // JioSaavn doesn't have a direct artist-albums endpoint.
+    // Search by artist name as a workaround.
+    final artist = await _registry.getArtist(artistId);
+    if (artist == null) return [];
+
+    final results = await _registry.search(
+      artist.name,
+      limitPerProvider: 10,
     );
-    final data = res.data;
-    List<dynamic> items;
-    if (data is Map) {
-      final map = Map<String, dynamic>.from(data);
-      if (map['items'] is List) {
-        items = (map['items'] as List).cast<dynamic>();
-      } else if (map['data'] is List) {
-        items = (map['data'] as List).cast<dynamic>();
-      } else {
-        items = const [];
-      }
-    } else if (data is List) {
-      items = data;
-    } else {
-      items = const [];
-    }
-    return items
-        .map((e) => UserArtistAlbumDTO.fromJson(Map<String, dynamic>.from(e)))
+
+    return results.albums
+        .map(
+          (album) => UserArtistAlbumDTO(
+            albumId: album.prefixedId,
+            title: album.title,
+            coverUrl: album.coverUrl,
+            releaseDate: album.year,
+          ),
+        )
         .toList();
   }
 }

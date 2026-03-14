@@ -1,6 +1,4 @@
-import 'package:dio/dio.dart' as dio;
-import 'package:musee/core/secrets/app_secrets.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' as supa;
+import 'package:musee/core/providers/music_provider_registry.dart';
 
 class UserAlbumDetailDTO {
   final String albumId;
@@ -18,21 +16,6 @@ class UserAlbumDetailDTO {
     required this.artists,
     required this.tracks,
   });
-
-  factory UserAlbumDetailDTO.fromJson(Map<String, dynamic> json) {
-    return UserAlbumDetailDTO(
-      albumId: json['album_id'] as String,
-      title: json['title'] as String,
-      coverUrl: json['cover_url'] as String?,
-      releaseDate: json['release_date'] as String?,
-      artists: (json['artists'] as List<dynamic>? ?? const [])
-          .map((e) => UserAlbumArtistDTO.fromJson(Map<String, dynamic>.from(e)))
-          .toList(),
-      tracks: (json['tracks'] as List<dynamic>? ?? const [])
-          .map((e) => UserAlbumTrackDTO.fromJson(Map<String, dynamic>.from(e)))
-          .toList(),
-    );
-  }
 }
 
 class UserAlbumArtistDTO {
@@ -41,14 +24,6 @@ class UserAlbumArtistDTO {
   final String? avatarUrl;
 
   UserAlbumArtistDTO({required this.artistId, this.name, this.avatarUrl});
-
-  factory UserAlbumArtistDTO.fromJson(Map<String, dynamic> json) {
-    return UserAlbumArtistDTO(
-      artistId: json['artist_id'] as String,
-      name: json['name'] as String?,
-      avatarUrl: json['avatar_url'] as String?,
-    );
-  }
 }
 
 class UserAlbumTrackDTO {
@@ -65,46 +40,58 @@ class UserAlbumTrackDTO {
     required this.isExplicit,
     required this.artists,
   });
-
-  factory UserAlbumTrackDTO.fromJson(Map<String, dynamic> json) {
-    return UserAlbumTrackDTO(
-      trackId: json['track_id'] as String,
-      title: json['title'] as String,
-      duration: (json['duration'] ?? 0) as int,
-      isExplicit: (json['is_explicit'] ?? false) as bool,
-      artists: (json['artists'] as List<dynamic>? ?? const [])
-          .map((e) => UserAlbumArtistDTO.fromJson(Map<String, dynamic>.from(e)))
-          .toList(),
-    );
-  }
 }
 
 abstract interface class UserAlbumsRemoteDataSource {
   Future<UserAlbumDetailDTO> getAlbum(String albumId);
 }
 
+/// Album data source using external (JioSaavn) API via MusicProviderRegistry.
 class UserAlbumsRemoteDataSourceImpl implements UserAlbumsRemoteDataSource {
-  final dio.Dio _dio;
-  final supa.SupabaseClient supabase;
-  final String basePath;
+  final MusicProviderRegistry _registry;
 
-  UserAlbumsRemoteDataSourceImpl(this._dio, this.supabase)
-    : basePath = '${AppSecrets.backendUrl}/api/user/albums';
-
-  Map<String, String> _authHeader() {
-    final token = supabase.auth.currentSession?.accessToken;
-    if (token == null || token.isEmpty) {
-      throw StateError('Missing Supabase access token for user API request');
-    }
-    return {'Authorization': 'Bearer $token'};
-  }
+  UserAlbumsRemoteDataSourceImpl(this._registry);
 
   @override
   Future<UserAlbumDetailDTO> getAlbum(String albumId) async {
-    final res = await _dio.get(
-      '$basePath/$albumId',
-      options: dio.Options(headers: _authHeader()),
+    final album = await _registry.getAlbumWithTracks(albumId);
+    if (album == null) {
+      throw Exception('Album not found: $albumId');
+    }
+
+    return UserAlbumDetailDTO(
+      albumId: album.prefixedId,
+      title: album.title,
+      coverUrl: album.coverUrl,
+      releaseDate: album.year,
+      artists: album.artists
+          .map(
+            (a) => UserAlbumArtistDTO(
+              artistId: a.prefixedId,
+              name: a.name,
+              avatarUrl: a.avatarUrl,
+            ),
+          )
+          .toList(),
+      tracks: (album.tracks ?? [])
+          .map(
+            (t) => UserAlbumTrackDTO(
+              trackId: t.prefixedId,
+              title: t.title,
+              duration: t.durationSeconds ?? 0,
+              isExplicit: t.isExplicit,
+              artists: t.artists
+                  .map(
+                    (a) => UserAlbumArtistDTO(
+                      artistId: a.prefixedId,
+                      name: a.name,
+                      avatarUrl: a.avatarUrl,
+                    ),
+                  )
+                  .toList(),
+            ),
+          )
+          .toList(),
     );
-    return UserAlbumDetailDTO.fromJson(Map<String, dynamic>.from(res.data));
   }
 }

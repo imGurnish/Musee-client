@@ -1,5 +1,6 @@
-/// Unified models for music providers, enabling seamless integration
-/// of multiple music sources (Musee server, external APIs) with source tracking.
+/// Unified models for music providers.
+/// Since the app now exclusively uses the JioSaavn external API,
+/// source tracking is simplified but retained for future extensibility.
 
 library;
 
@@ -7,25 +8,26 @@ import 'package:equatable/equatable.dart';
 
 /// Enum to identify the source of music content
 enum MusicSource {
-  musee, // Musee backend server
-  external, // External music API (disabled on web due to CORS)
+  external, // External music API (JioSaavn)
 }
 
-/// Extension to parse source from prefixed track IDs like "external:12345"
+/// Extension to parse source from track IDs.
+/// With single-source architecture, IDs are plain without prefixes.
+/// Legacy "external:" prefixes are still handled for backward compatibility
+/// with cached data.
 extension MusicSourceParsing on String {
-  MusicSource get musicSource {
-    if (startsWith('external:')) return MusicSource.external;
-    return MusicSource.musee;
-  }
+  MusicSource get musicSource => MusicSource.external;
 
+  /// Strip any legacy 'external:' prefix to get the raw ID
   String get rawId {
     if (startsWith('external:')) return substring(9);
     return this;
   }
 
+  /// Add source prefix (for backward compatibility with cached data)
   String prefixedId(MusicSource source) {
-    if (source == MusicSource.external) return 'external:$this';
-    return this;
+    if (startsWith('external:')) return this;
+    return 'external:$this';
   }
 }
 
@@ -41,7 +43,7 @@ class ProviderArtist extends Equatable {
     required this.id,
     required this.name,
     this.avatarUrl,
-    required this.source,
+    this.source = MusicSource.external,
     this.bio,
   });
 
@@ -66,7 +68,7 @@ class ProviderAlbum extends Equatable {
     required this.id,
     required this.title,
     this.coverUrl,
-    required this.source,
+    this.source = MusicSource.external,
     this.year,
     this.artists = const [],
     this.tracks,
@@ -106,7 +108,7 @@ class ProviderTrack extends Equatable {
     required this.id,
     required this.title,
     this.imageUrl,
-    required this.source,
+    this.source = MusicSource.external,
     this.durationSeconds,
     this.isExplicit = false,
     this.artists = const [],
@@ -149,7 +151,7 @@ class ProviderPlaylist extends Equatable {
     required this.id,
     required this.title,
     this.imageUrl,
-    required this.source,
+    this.source = MusicSource.external,
     this.description,
     this.tracks,
   });

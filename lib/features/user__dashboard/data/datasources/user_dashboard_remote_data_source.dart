@@ -1,7 +1,5 @@
-import 'package:dio/dio.dart' as dio;
-import 'package:musee/core/secrets/app_secrets.dart';
+import 'package:musee/core/providers/music_provider_registry.dart';
 import 'package:musee/features/user__dashboard/domain/entities/dashboard_album.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' as supa;
 
 class DashboardItemDTO extends DashboardItem {
   const DashboardItemDTO({
@@ -14,60 +12,6 @@ class DashboardItemDTO extends DashboardItem {
     super.trackId,
     super.albumId,
   });
-
-  factory DashboardItemDTO.fromJson(Map<String, dynamic> json) {
-    final typeStr = json['type'] as String? ?? 'album';
-    final type = typeStr == 'track'
-        ? DashboardItemType.track
-        : DashboardItemType.album;
-
-    // ID determination
-    final trackId = json['track_id']?.toString();
-    final albumId = json['album_id']?.toString();
-    final id = type == DashboardItemType.track
-        ? (trackId ?? '')
-        : (albumId ?? '');
-
-    return DashboardItemDTO(
-      id: id,
-      title: json['title'] as String? ?? '',
-      coverUrl: json['cover_url'] as String?,
-      duration: (json['duration'] as num?)?.toInt(),
-      artists: (json['artists'] as List<dynamic>? ?? const [])
-          .map(
-            (e) => DashboardArtistDTO.fromJson(
-              Map<String, dynamic>.from(e as Map),
-            ).toDomain(),
-          )
-          .toList(),
-      type: type,
-      trackId: trackId,
-      albumId: albumId,
-    );
-  }
-}
-
-class DashboardArtistDTO {
-  final String artistId;
-  final String name;
-  final String? avatarUrl;
-
-  DashboardArtistDTO({
-    required this.artistId,
-    required this.name,
-    required this.avatarUrl,
-  });
-
-  factory DashboardArtistDTO.fromJson(Map<String, dynamic> json) {
-    return DashboardArtistDTO(
-      artistId: json['artist_id'] as String,
-      name: json['name'] as String? ?? 'Artist',
-      avatarUrl: json['avatar_url'] as String?,
-    );
-  }
-
-  DashboardArtist toDomain() =>
-      DashboardArtist(artistId: artistId, name: name, avatarUrl: avatarUrl);
 }
 
 class PagedDashboardItemsDTO extends PagedDashboardItems {
@@ -77,20 +21,6 @@ class PagedDashboardItemsDTO extends PagedDashboardItems {
     required super.page,
     required super.limit,
   });
-
-  factory PagedDashboardItemsDTO.fromJson(Map<String, dynamic> json) {
-    final items = (json['items'] as List<dynamic>? ?? const [])
-        .map(
-          (e) => DashboardItemDTO.fromJson(Map<String, dynamic>.from(e as Map)),
-        )
-        .toList();
-    return PagedDashboardItemsDTO(
-      items: items,
-      total: (json['total'] as num?)?.toInt() ?? items.length,
-      page: (json['page'] as num?)?.toInt() ?? 0,
-      limit: (json['limit'] as num?)?.toInt() ?? items.length,
-    );
-  }
 }
 
 abstract interface class UserDashboardRemoteDataSource {
@@ -98,35 +28,45 @@ abstract interface class UserDashboardRemoteDataSource {
   Future<PagedDashboardItemsDTO> getTrending({int page = 0, int limit = 20});
 }
 
+/// Dashboard data source using external (JioSaavn) API via MusicProviderRegistry.
+/// "Made for you" uses new releases, "Trending" uses trending tracks.
 class UserDashboardRemoteDataSourceImpl
     implements UserDashboardRemoteDataSource {
-  final dio.Dio _dio;
-  final supa.SupabaseClient _supabase;
-  final String basePath;
+  final MusicProviderRegistry _registry;
 
-  UserDashboardRemoteDataSourceImpl(this._dio, this._supabase)
-    : basePath = '${AppSecrets.backendUrl}/api/user/dashboard';
-
-  Map<String, String> _authHeader() {
-    final token = _supabase.auth.currentSession?.accessToken;
-    if (token == null || token.isEmpty) {
-      throw StateError('Missing Supabase access token for user API request');
-    }
-    return {'Authorization': 'Bearer $token'};
-  }
+  UserDashboardRemoteDataSourceImpl(this._registry);
 
   @override
   Future<PagedDashboardItemsDTO> getMadeForYou({
     int page = 0,
     int limit = 20,
   }) async {
-    final res = await _dio.get(
-      '$basePath/made-for-you',
-      queryParameters: {'page': page, 'limit': limit},
-      options: dio.Options(headers: _authHeader()),
-    );
-    return PagedDashboardItemsDTO.fromJson(
-      Map<String, dynamic>.from(res.data as Map),
+    final albums = await _registry.getNewReleases(limitPerProvider: limit);
+
+    final items = albums
+        .map(
+          (album) => DashboardItemDTO(
+            id: album.prefixedId,
+            albumId: album.prefixedId,
+            title: album.title,
+            coverUrl: album.coverUrl,
+            duration: null,
+            artists: album.artists
+                .map(
+                  (a) =>
+                      DashboardArtist(artistId: a.prefixedId, name: a.name),
+                )
+                .toList(),
+            type: DashboardItemType.album,
+          ),
+        )
+        .toList();
+
+    return PagedDashboardItemsDTO(
+      items: items,
+      total: items.length,
+      page: page,
+      limit: limit,
     );
   }
 
@@ -135,13 +75,32 @@ class UserDashboardRemoteDataSourceImpl
     int page = 0,
     int limit = 20,
   }) async {
-    final res = await _dio.get(
-      '$basePath/trending',
-      queryParameters: {'page': page, 'limit': limit},
-      options: dio.Options(headers: _authHeader()),
-    );
-    return PagedDashboardItemsDTO.fromJson(
-      Map<String, dynamic>.from(res.data as Map),
+    final tracks = await _registry.getTrendingTracks(limitPerProvider: limit);
+
+    final items = tracks
+        .map(
+          (track) => DashboardItemDTO(
+            id: track.prefixedId,
+            trackId: track.prefixedId,
+            title: track.title,
+            coverUrl: track.imageUrl,
+            duration: track.durationSeconds,
+            artists: track.artists
+                .map(
+                  (a) =>
+                      DashboardArtist(artistId: a.prefixedId, name: a.name),
+                )
+                .toList(),
+            type: DashboardItemType.track,
+          ),
+        )
+        .toList();
+
+    return PagedDashboardItemsDTO(
+      items: items,
+      total: items.length,
+      page: page,
+      limit: limit,
     );
   }
 }

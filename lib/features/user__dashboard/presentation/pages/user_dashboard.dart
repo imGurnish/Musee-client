@@ -8,8 +8,6 @@ import 'package:musee/features/user__dashboard/presentation/widgets/horizontal_m
 import 'package:musee/features/user__dashboard/presentation/widgets/media_card.dart';
 import 'package:musee/features/user__dashboard/presentation/widgets/section_header.dart';
 import 'package:go_router/go_router.dart';
-import 'package:musee/core/common/navigation/routes.dart';
-import 'package:musee/core/common/entities/user.dart';
 import 'package:musee/features/user__dashboard/presentation/bloc/user_dashboard_cubit.dart';
 import 'package:get_it/get_it.dart';
 
@@ -303,51 +301,21 @@ class _HeaderBar extends StatelessWidget {
           tooltip: 'Notifications',
         ),
         const SizedBox(width: 8),
-        // Quick access to Admin Home if the current user is an admin
-        BlocBuilder<AppUserCubit, AppUserState>(
-          builder: (context, state) {
-            final isAdmin =
-                state is AppUserLoggedIn &&
-                state.user.userType == UserType.admin;
-            if (!isAdmin) return const SizedBox.shrink();
-            return IconButton.filledTonal(
-              tooltip: 'Admin home',
-              onPressed: () => context.push(Routes.adminDashboard),
-              icon: const Icon(Icons.admin_panel_settings),
-            );
+        PopupMenuButton<String>(
+          icon: const CircleAvatar(child: Icon(Icons.person)),
+          onSelected: (value) {
+            switch (value) {
+              case 'logout':
+                context.read<AuthBloc>().add(AuthLogout());
+                context.read<AppUserCubit>().updateUser(null);
+                break;
+            }
           },
-        ),
-        const SizedBox(width: 8),
-        BlocBuilder<AppUserCubit, AppUserState>(
-          builder: (context, state) {
-            final isAdmin =
-                state is AppUserLoggedIn &&
-                state.user.userType == UserType.admin;
-            return PopupMenuButton<String>(
-              icon: const CircleAvatar(child: Icon(Icons.person)),
-              onSelected: (value) {
-                switch (value) {
-                  case 'admin':
-                    context.push(Routes.adminDashboard);
-                    break;
-                  case 'logout':
-                    context.read<AuthBloc>().add(AuthLogout());
-                    context.read<AppUserCubit>().updateUser(null);
-                    break;
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(value: 'profile', child: Text('Profile')),
-                const PopupMenuItem(value: 'settings', child: Text('Settings')),
-                if (isAdmin)
-                  const PopupMenuItem(
-                    value: 'admin',
-                    child: Text('Open admin dashboard'),
-                  ),
-                const PopupMenuItem(value: 'logout', child: Text('Logout')),
-              ],
-            );
-          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'profile', child: Text('Profile')),
+            const PopupMenuItem(value: 'settings', child: Text('Settings')),
+            const PopupMenuItem(value: 'logout', child: Text('Logout')),
+          ],
         ),
       ],
     );

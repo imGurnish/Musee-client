@@ -1,6 +1,6 @@
-/// Registry for managing multiple music providers.
-/// Provides unified access to all available music sources and handles
-/// provider selection based on track IDs and platform availability.
+/// Registry for managing music providers.
+/// With single-source architecture (JioSaavn), this provides a unified
+/// access layer that can be extended to support additional sources in the future.
 
 library;
 
@@ -14,12 +14,11 @@ import 'provider_models.dart';
 /// Usage:
 /// ```dart
 /// final registry = MusicProviderRegistry([
-///   MuseeServerProvider(supabase),
 ///   ExternalMusicProvider(),
 /// ]);
 ///
-/// // Get stream URL for any track (auto-selects correct provider)
-/// final url = await registry.getStreamUrl('external:12345');
+/// // Get stream URL for any track
+/// final url = await registry.getStreamUrl('12345');
 ///
 /// // Search across all active providers
 /// final results = await registry.search('query');
@@ -36,7 +35,7 @@ class MusicProviderRegistry {
   List<MusicProvider> get activeProviders =>
       _providers.where((p) => p.isAvailableOnPlatform).toList();
 
-  /// Get a provider by its ID ('musee', 'external', etc.)
+  /// Get a provider by its ID
   MusicProvider? getProviderById(String providerId) {
     try {
       return _providers.firstWhere((p) => p.providerId == providerId);
@@ -45,78 +44,63 @@ class MusicProviderRegistry {
     }
   }
 
-  /// Determine which provider should handle a track based on its ID.
-  /// Track IDs with 'external:' prefix go to ExternalMusicProvider.
+  /// Get the provider for a track. With single-source, always returns
+  /// the external provider.
   MusicProvider? getProviderForTrack(String trackId) {
-    final source = trackId.musicSource;
-    final providerId = source == MusicSource.external ? 'external' : 'musee';
-    final provider = getProviderById(providerId);
-
-    // Fall back to musee if the requested provider isn't available
-    if (provider == null || !provider.isAvailableOnPlatform) {
-      return getProviderById('musee');
-    }
-    return provider;
+    if (_providers.isEmpty) return null;
+    // Always use the first available provider (external/JioSaavn)
+    return activeProviders.isNotEmpty ? activeProviders.first : _providers.first;
   }
 
-  /// Get download URL for a track, automatically selecting the correct provider.
+  /// Get download URL for a track.
   Future<String?> getDownloadUrl(String trackId) async {
     final provider = getProviderForTrack(trackId);
     if (provider == null) return null;
-
-    // Strip the source prefix to get the raw ID
     final rawId = trackId.rawId;
     return provider.getDownloadUrl(rawId);
   }
 
-  /// Get streaming URL for a track, automatically selecting the correct provider.
+  /// Get streaming URL for a track.
   Future<String?> getStreamUrl(String trackId) async {
     final provider = getProviderForTrack(trackId);
     if (provider == null) return null;
-
-    // Strip the source prefix to get the raw ID
     final rawId = trackId.rawId;
     return provider.getStreamUrl(rawId);
   }
 
-  /// Get track details, automatically selecting the correct provider.
+  /// Get track details.
   Future<ProviderTrack?> getTrack(String trackId) async {
     final provider = getProviderForTrack(trackId);
     if (provider == null) return null;
-
     final rawId = trackId.rawId;
     return provider.getTrack(rawId);
   }
 
-  /// Get album details, automatically selecting the correct provider.
+  /// Get album details.
   Future<ProviderAlbum?> getAlbum(String albumId) async {
     final provider = getProviderForTrack(albumId);
     if (provider == null) return null;
-
     final rawId = albumId.rawId;
     return provider.getAlbum(rawId);
   }
 
-  /// Get album with tracks, automatically selecting the correct provider.
+  /// Get album with tracks.
   Future<ProviderAlbum?> getAlbumWithTracks(String albumId) async {
     final provider = getProviderForTrack(albumId);
     if (provider == null) return null;
-
     final rawId = albumId.rawId;
     return provider.getAlbumWithTracks(rawId);
   }
 
-  /// Get artist details, automatically selecting the correct provider.
+  /// Get artist details.
   Future<ProviderArtist?> getArtist(String artistId) async {
     final provider = getProviderForTrack(artistId);
     if (provider == null) return null;
-
     final rawId = artistId.rawId;
     return provider.getArtist(rawId);
   }
 
   /// Search across all active providers and aggregate results.
-  /// Results from the primary provider (Musee) appear first.
   Future<ProviderSearchResults> search(
     String query, {
     int limitPerProvider = 10,
@@ -132,7 +116,7 @@ class MusicProviderRegistry {
       ),
     );
 
-    // Merge all results, starting with empty
+    // Merge all results
     var merged = const ProviderSearchResults();
     for (final result in results) {
       merged = merged.merge(result);

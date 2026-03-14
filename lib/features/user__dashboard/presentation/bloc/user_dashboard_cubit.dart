@@ -120,38 +120,36 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
         _listTrending(page: page, limit: limit),
       ]);
 
-      // Mix External Recommendations into "Made For You"
-      final backendMadeForYou = results[0].items;
+      final madeForYouItems = results[0].items;
       final trending = results[1].items;
       final recommendations = state.recommendations;
 
-      final mixedMadeForYou = <DashboardItem>[];
+      // Merge recommendations into madeForYou (deduplicated)
+      final mergedItems = <DashboardItem>[];
       final seenIds = <String>{};
 
       void addUnique(DashboardItem item) {
         if (!seenIds.contains(item.id)) {
           seenIds.add(item.id);
-          mixedMadeForYou.add(item);
+          mergedItems.add(item);
         }
       }
 
-      // Interleave: [Rec, Backend, Rec, Backend...]
-      final maxLen = recommendations.length > backendMadeForYou.length
+      // Interleave: [Recommendation, MadeForYou, ...]
+      final maxLen = recommendations.length > madeForYouItems.length
           ? recommendations.length
-          : backendMadeForYou.length;
+          : madeForYouItems.length;
 
       for (var i = 0; i < maxLen; i++) {
         if (i < recommendations.length) addUnique(recommendations[i]);
-        if (i < backendMadeForYou.length) addUnique(backendMadeForYou[i]);
+        if (i < madeForYouItems.length) addUnique(madeForYouItems[i]);
       }
 
       emit(
         state.copyWith(
           loadingMadeForYou: false,
           loadingTrending: false,
-          madeForYou: mixedMadeForYou.isNotEmpty
-              ? mixedMadeForYou
-              : backendMadeForYou,
+          madeForYou: mergedItems.isNotEmpty ? mergedItems : madeForYouItems,
           trending: trending,
           errorMadeForYou: null,
           errorTrending: null,

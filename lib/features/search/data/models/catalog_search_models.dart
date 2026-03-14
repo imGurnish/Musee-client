@@ -5,7 +5,7 @@ class CatalogArtistModel extends CatalogArtist {
     required super.artistId,
     super.name,
     super.avatarUrl,
-    super.source,
+    super.source = SearchSource.external,
   });
 
   factory CatalogArtistModel.fromJson(Map<String, dynamic> json) {
@@ -33,7 +33,7 @@ class CatalogAlbumModel extends CatalogAlbum {
     required super.title,
     super.coverUrl,
     super.artists = const [],
-    super.source,
+    super.source = SearchSource.external,
   });
 
   factory CatalogAlbumModel.fromJson(Map<String, dynamic> json) {
@@ -62,7 +62,7 @@ class CatalogTrackModel extends CatalogTrack {
     super.duration,
     super.artists = const [],
     super.imageUrl,
-    super.source,
+    super.source = SearchSource.external,
   });
 
   factory CatalogTrackModel.fromJson(Map<String, dynamic> json) {

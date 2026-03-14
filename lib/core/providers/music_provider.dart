@@ -1,13 +1,12 @@
-/// Abstract interface defining the contract for any music data provider.
-/// Implementing this interface allows seamless integration of different
-/// music sources (Musee server, external APIs, etc.) following the Strategy Pattern.
+/// Abstract interface defining the contract for music data providers.
+/// Currently JioSaavn is the sole provider, but this interface allows
+/// seamless integration of additional sources in the future.
 
 library;
 
 import 'provider_models.dart';
 
 /// Abstract music provider interface following clean architecture principles.
-/// Each music source (Musee server, external API) implements this.
 abstract class MusicProvider {
   /// Unique identifier for this provider (e.g., 'musee', 'external')
   String get providerId;

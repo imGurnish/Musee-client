@@ -197,8 +197,7 @@ enum SubscriptionType {
 
 enum UserType {
   listener('listener'),
-  artist('artist'),
-  admin('admin');
+  artist('artist');
 
   final String value;
   const UserType(this.value);
