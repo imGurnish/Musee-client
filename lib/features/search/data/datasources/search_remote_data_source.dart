@@ -1,7 +1,6 @@
 import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:musee/features/search/data/models/suggestion_model.dart';
 import 'package:musee/features/search/data/models/catalog_search_models.dart';
-import 'package:musee/features/search/data/datasources/external_music_data_source.dart';
 import 'package:musee/features/search/domain/entities/catalog_search.dart';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -19,8 +18,6 @@ abstract interface class SearchRemoteDataSource {
 
 class SearchRemoteDataSourceImpl implements SearchRemoteDataSource {
   final SupabaseClient supabaseClient;
-  final ExternalMusicDataSource _externalMusicDataSource =
-      ExternalMusicDataSource();
 
   SearchRemoteDataSourceImpl(this.supabaseClient);
 
@@ -30,7 +27,7 @@ class SearchRemoteDataSourceImpl implements SearchRemoteDataSource {
   @override
   Future<List<SuggestionModel>> getSuggestions(String query) async {
     try {
-      // Aggregate suggestions from backend and External API in parallel
+      // Get suggestions from backend API
       final token = currentSession?.accessToken;
       final Map<String, String> headers = token != null
           ? {'Authorization': 'Bearer $token'}
@@ -49,24 +46,17 @@ class SearchRemoteDataSourceImpl implements SearchRemoteDataSource {
         ),
       ];
 
-      // Launch backend and External searches in parallel
-      final results = await Future.wait([
-        Future.wait(
-          backendUris.map(
-            (u) => http
-                .get(u, headers: headers)
-                .timeout(const Duration(seconds: 10)),
-          ),
+      final backendResponses = await Future.wait(
+        backendUris.map(
+          (u) => http
+              .get(u, headers: headers)
+              .timeout(const Duration(seconds: 10)),
         ),
-        _externalMusicDataSource.search(query),
-      ]);
-
-      final backendResponses = results[0] as List<http.Response>;
-      final externalResult = results[1] as ExternalMusicSearchResult;
+      );
 
       final suggestions = <String>{};
 
-      // 1. Process Backend Results
+      // Process Backend Results
       // Tracks
       if (backendResponses.isNotEmpty &&
           backendResponses[0].statusCode == 200) {
@@ -103,20 +93,9 @@ class SearchRemoteDataSourceImpl implements SearchRemoteDataSource {
         }
       }
 
-      // 2. Process External Results
-      for (final song in externalResult.songs.take(4)) {
-        suggestions.add(song.title);
-      }
-      for (final album in externalResult.albums.take(2)) {
-        suggestions.add(album.title);
-      }
-      for (final artist in externalResult.artists.take(2)) {
-        suggestions.add(artist.name);
-      }
-
       if (suggestions.isNotEmpty) {
         return suggestions
-            .take(15) // Increased limit to accommodate more sources
+            .take(15)
             .map((s) => SuggestionModel.fromJson(s))
             .toList();
       }
@@ -150,17 +129,7 @@ class SearchRemoteDataSourceImpl implements SearchRemoteDataSource {
     String query, {
     int perSectionLimit = 5,
   }) async {
-    // Run catalog search and External search in parallel
-    final results = await Future.wait([
-      _searchCatalogBackend(query, perSectionLimit: perSectionLimit),
-      _searchExternal(query, perSectionLimit: perSectionLimit),
-    ]);
-
-    final catalogResults = results[0];
-    final externalResults = results[1];
-
-    // Merge results: catalog first, then External
-    return catalogResults.merge(externalResults);
+    return _searchCatalogBackend(query, perSectionLimit: perSectionLimit);
   }
 
   /// Search the backend catalog API.
@@ -223,73 +192,8 @@ class SearchRemoteDataSourceImpl implements SearchRemoteDataSource {
   }
 
   /// Search External API and convert results to CatalogSearchResults.
-  Future<CatalogSearchResults> _searchExternal(
-    String query, {
-    int perSectionLimit = 5,
-  }) async {
-    try {
-      final result = await _externalMusicDataSource.search(query);
-      if (result.isEmpty) {
-        return const CatalogSearchResults();
-      }
-
-      // Convert External results to catalog entities
-      final tracks = result.songs.take(perSectionLimit).map((song) {
-        return CatalogTrackModel(
-          trackId: 'external:${song.id}',
-          title: song.title,
-          duration: song.duration,
-          imageUrl: song.imageUrl,
-          source: SearchSource.external,
-          artists: song.primaryArtists != null
-              ? [
-                  CatalogArtistModel(
-                    artistId: 'external:artist',
-                    name: song.primaryArtists,
-                    source: SearchSource.external,
-                  ),
-                ]
-              : const [],
-        );
-      }).toList();
-
-      final albums = result.albums.take(perSectionLimit).map((album) {
-        return CatalogAlbumModel(
-          albumId: 'external:${album.id}',
-          title: album.title,
-          coverUrl: album.imageUrl,
-          source: SearchSource.external,
-          artists: album.music != null
-              ? [
-                  CatalogArtistModel(
-                    artistId: 'external:artist',
-                    name: album.music,
-                    source: SearchSource.external,
-                  ),
-                ]
-              : const [],
-        );
-      }).toList();
-
-      final artists = result.artists.take(perSectionLimit).map((artist) {
-        return CatalogArtistModel(
-          artistId: 'external:${artist.id}',
-          name: artist.name,
-          avatarUrl: artist.imageUrl,
-          source: SearchSource.external,
-        );
-      }).toList();
-
-      return CatalogSearchResults(
-        tracks: tracks,
-        albums: albums,
-        artists: artists,
-      );
-    } catch (e) {
-      if (kDebugMode) print('External search exception: $e');
-      return const CatalogSearchResults();
-    }
-  }
+  /// REMOVED - External music sources are no longer supported.
+  
 }
 
 /// Extract a list of items from various common response envelopes.

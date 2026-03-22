@@ -15,11 +15,10 @@ import 'provider_models.dart';
 /// ```dart
 /// final registry = MusicProviderRegistry([
 ///   MuseeServerProvider(supabase),
-///   ExternalMusicProvider(),
 /// ]);
 ///
-/// // Get stream URL for any track (auto-selects correct provider)
-/// final url = await registry.getStreamUrl('external:12345');
+/// // Get stream URL for any track
+/// final url = await registry.getStreamUrl('12345');
 ///
 /// // Search across all active providers
 /// final results = await registry.search('query');
@@ -46,17 +45,9 @@ class MusicProviderRegistry {
   }
 
   /// Determine which provider should handle a track based on its ID.
-  /// Track IDs with 'external:' prefix go to ExternalMusicProvider.
+  /// Always returns the Musee provider since external sources are removed.
   MusicProvider? getProviderForTrack(String trackId) {
-    final source = trackId.musicSource;
-    final providerId = source == MusicSource.external ? 'external' : 'musee';
-    final provider = getProviderById(providerId);
-
-    // Fall back to musee if the requested provider isn't available
-    if (provider == null || !provider.isAvailableOnPlatform) {
-      return getProviderById('musee');
-    }
-    return provider;
+    return getProviderById('musee');
   }
 
   /// Get download URL for a track, automatically selecting the correct provider.

@@ -1,5 +1,5 @@
 /// Source identifier for search results.
-enum SearchSource { catalog, external }
+enum SearchSource { catalog }
 
 class CatalogArtist {
   final String artistId;

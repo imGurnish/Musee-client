@@ -2,9 +2,6 @@ import 'package:musee/core/common/widgets/loader.dart';
 import 'package:musee/features/search/domain/entities/catalog_search.dart';
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
 import 'package:musee/features/search/presentation/pages/search_suggestions_page.dart';
-import 'package:musee/features/search/presentation/widgets/external_badge.dart';
-import 'package:musee/features/search/presentation/pages/external_album_page.dart';
-import 'package:musee/features/search/presentation/pages/external_artist_page.dart';
 import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -412,8 +409,6 @@ class _TrackTile extends StatelessWidget {
   final CatalogTrack track;
   const _TrackTile({required this.track});
 
-  bool get _isExternal => track.source == SearchSource.external;
-
   @override
   Widget build(BuildContext context) {
     final artistNames = track.artists
@@ -431,10 +426,7 @@ class _TrackTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (_isExternal) ...[
-            const SizedBox(width: 8),
-            const ExternalInlineBadge(),
-          ],
+
         ],
       ),
       subtitle: Text(artistNames, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -517,8 +509,6 @@ class _ArtistTile extends StatelessWidget {
   final CatalogArtist artist;
   const _ArtistTile({required this.artist});
 
-  bool get _isExternal => artist.source == SearchSource.external;
-
   @override
   Widget build(BuildContext context) {
     return ListTile(
@@ -537,28 +527,12 @@ class _ArtistTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (_isExternal) ...[
-            const SizedBox(width: 8),
-            const ExternalInlineBadge(),
-          ],
+
         ],
       ),
       trailing: const _TypeChip(label: 'Artist'),
       onTap: () {
-        if (!_isExternal) {
-          context.push('/artists/${artist.artistId}');
-        } else {
-          // Navigate to External artist page
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => ExternalArtistPage(
-                artistId: artist.artistId,
-                artistName: artist.name ?? 'Artist',
-                initialImageUrl: artist.avatarUrl,
-              ),
-            ),
-          );
-        }
+        context.push('/artists/${artist.artistId}');
       },
     );
   }
@@ -567,8 +541,6 @@ class _ArtistTile extends StatelessWidget {
 class _AlbumTile extends StatelessWidget {
   final CatalogAlbum album;
   const _AlbumTile({required this.album});
-
-  bool get _isExternal => album.source == SearchSource.external;
 
   @override
   Widget build(BuildContext context) {
@@ -598,29 +570,13 @@ class _AlbumTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (_isExternal) ...[
-            const SizedBox(width: 8),
-            const ExternalInlineBadge(),
-          ],
+
         ],
       ),
       subtitle: Text(artistNames, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: const _TypeChip(label: 'Album'),
       onTap: () {
-        if (!_isExternal) {
-          context.push('/albums/${album.albumId}');
-        } else {
-          // Navigate to External album page
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => ExternalAlbumPage(
-                albumId: album.albumId,
-                initialTitle: album.title,
-                initialImageUrl: album.coverUrl,
-              ),
-            ),
-          );
-        }
+        context.push('/albums/${album.albumId}');
       },
     );
   }
