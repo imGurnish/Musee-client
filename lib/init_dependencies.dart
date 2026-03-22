@@ -12,6 +12,7 @@ import 'package:musee/features/auth/domain/usecases/user_sign_in.dart';
 import 'package:musee/features/auth/domain/usecases/user_sign_up.dart';
 import 'package:musee/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:musee/features/auth/domain/usecases/logout_user_usecase.dart';
+
 import 'package:get_it/get_it.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:musee/features/admin_users/data/datasources/admin_remote_data_source.dart';
@@ -92,14 +93,18 @@ import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+
 // New infrastructure services
 import 'package:musee/core/providers/providers.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';
 import 'package:musee/core/download/download_manager.dart';
+
 final serviceLocator = GetIt.instance;
+
 Future<void> initDependencies() async {
   // Initialize Hive for local caching
   await Hive.initFlutter();
+
   // Initialize external dependencies first
   final supabase = await Supabase.initialize(
     url: AppSecrets.supabaseUrl,
@@ -109,35 +114,41 @@ Future<void> initDependencies() async {
   serviceLocator.registerLazySingleton(() => supabase.client);
   // Dio for REST backend
   serviceLocator.registerLazySingleton(() => Dio());
+
   //core
   serviceLocator.registerLazySingleton(() => AppUserCubit());
+
   // Connectivity service for network monitoring
   serviceLocator.registerLazySingleton<ConnectivityService>(
     () => ConnectivityServiceImpl(),
   );
+
   // Music provider registry for multi-source music
   serviceLocator.registerLazySingleton<MusicProviderRegistry>(
     () => MusicProviderRegistry([
-      MuseeServerProvider(serviceLocator<SupabaseClient>()),
-    ]),
+      MuseeServerProvider(serviceLocator<SupabaseClient>())]),
   );
+
   // Initialize cache services
   final trackCacheService = TrackCacheServiceImpl();
   await trackCacheService.init();
   serviceLocator.registerLazySingleton<TrackCacheService>(
     () => trackCacheService,
   );
+
   final audioCacheService = AudioCacheServiceImpl(serviceLocator<Dio>());
   await audioCacheService.init();
   serviceLocator.registerLazySingleton<AudioCacheService>(
     () => audioCacheService,
   );
+
   // Image cache for album artwork
   final imageCacheService = ImageCacheServiceImpl();
   await imageCacheService.init();
   serviceLocator.registerLazySingleton<ImageCacheService>(
     () => imageCacheService,
   );
+
   // Download Manager
   serviceLocator.registerLazySingleton<DownloadManager>(
     () => DownloadManager(
@@ -146,6 +157,7 @@ Future<void> initDependencies() async {
       serviceLocator<MusicProviderRegistry>(),
     ),
   );
+
   // Register player with repository and cache services
   serviceLocator
     ..registerLazySingleton<PlayerDataSource>(
@@ -163,6 +175,7 @@ Future<void> initDependencies() async {
         musicProviderRegistry: serviceLocator<MusicProviderRegistry>(),
       ),
     );
+
   //auth
   _initAuth();
   // admin users
@@ -181,6 +194,7 @@ Future<void> initDependencies() async {
   _initUserDashboard();
   _initSearch();
 }
+
 void _initAuth() {
   serviceLocator
     // Datasource
@@ -213,6 +227,7 @@ void _initAuth() {
       ),
     );
 }
+
 void _initAdminUsers() {
   serviceLocator
     // datasource
@@ -239,6 +254,7 @@ void _initAdminUsers() {
       ),
     );
 }
+
 void _initAdminArtists() {
   serviceLocator
     // datasource
@@ -268,6 +284,7 @@ void _initAdminArtists() {
       ),
     );
 }
+
 void _initAdminAlbums() {
   serviceLocator
     // datasource
@@ -300,6 +317,7 @@ void _initAdminAlbums() {
       ),
     );
 }
+
 void _initAdminPlans() {
   serviceLocator
     // datasource
@@ -329,6 +347,7 @@ void _initAdminPlans() {
       ),
     );
 }
+
 void _initAdminTracks() {
   serviceLocator
     // datasource
@@ -364,6 +383,7 @@ void _initAdminTracks() {
       ),
     );
 }
+
 void _initUserAlbums() {
   serviceLocator
     // datasource
@@ -387,6 +407,7 @@ void _initUserAlbums() {
     // bloc
     ..registerFactory(() => UserAlbumBloc(serviceLocator<GetUserAlbum>()));
 }
+
 void _initUserArtists() {
   serviceLocator
     // datasource
@@ -405,6 +426,7 @@ void _initUserArtists() {
     // bloc
     ..registerFactory(() => UserArtistBloc(serviceLocator<GetUserArtist>()));
 }
+
 void _initUserDashboard() {
   serviceLocator
     // datasource
@@ -437,6 +459,7 @@ void _initUserDashboard() {
       ),
     );
 }
+
 void _initSearch() {
   serviceLocator
     // datasource
