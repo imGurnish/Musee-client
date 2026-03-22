@@ -56,6 +56,14 @@ abstract class MusicProvider {
   Future<List<ProviderAlbum>> getNewReleases({int limit = 20}) async {
     return const [];
   }
+
+  /// Get song-based suggestions/recommendations for a given track ID
+  Future<List<ProviderTrack>> getSongSuggestions(
+    String trackId, {
+    int limit = 10,
+  }) async {
+    return const [];
+  }
 }
 
 /// Result of attempting to get a streaming URL

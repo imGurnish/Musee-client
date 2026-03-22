@@ -11,7 +11,7 @@ import 'package:musee/features/user_albums/presentation/pages/user_album_page.da
 import 'package:musee/features/search/presentation/pages/search_page.dart';
 import 'package:musee/features/search/presentation/pages/search_results_page.dart';
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
-import 'package:musee/core/common/pages/coming_soon_page.dart';
+// import 'package:musee/core/common/pages/coming_soon_page.dart';
 import 'package:musee/features/user_artists/presentation/pages/user_artist_page.dart';
 import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.dart';
 import 'package:musee/features/library/presentation/pages/user_library_page.dart';
@@ -137,18 +137,18 @@ class AppGoRouter {
             ),
           ],
         ),
-        GoRoute(
-          path: '/premium',
-          name: 'premium',
-          builder: (context, state) =>
-              const ComingSoonPage(featureName: 'Premium', selectedIndex: 3),
-        ),
-        GoRoute(
-          path: '/create',
-          name: 'create',
-          builder: (context, state) =>
-              const ComingSoonPage(featureName: 'Create', selectedIndex: 4),
-        ),
+        // GoRoute(
+        //   path: '/premium',
+        //   name: 'premium',
+        //   builder: (context, state) =>
+        //       const ComingSoonPage(featureName: 'Premium', selectedIndex: 3),
+        // ),
+        // GoRoute(
+        //   path: '/create',
+        //   name: 'create',
+        //   builder: (context, state) =>
+        //       const ComingSoonPage(featureName: 'Create', selectedIndex: 4),
+        // ),
       ],
       errorBuilder: (context, state) => const ErrorPage(),
     );

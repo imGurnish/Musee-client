@@ -1,0 +1,36 @@
+[ΓêÜ] Flutter (Channel stable, 3.41.4, on Microsoft Windows [Version 10.0.26200.8037], locale en-US) [335ms]
+    ΓÇó Flutter version 3.41.4 on channel stable at C:\Users\gurni\Downloads\flutter
+    ΓÇó Upstream repository https://github.com/flutter/flutter.git
+    ΓÇó Framework revision ff37bef603 (2 weeks ago), 2026-03-03 16:03:22 -0800
+    ΓÇó Engine revision e4b8dca3f1
+    ΓÇó Dart version 3.11.1
+    ΓÇó DevTools version 2.54.1
+    ΓÇó Feature flags: enable-web, enable-linux-desktop, enable-macos-desktop, enable-windows-desktop, enable-android, enable-ios, cli-animations, enable-native-assets, omit-legacy-version-file, enable-lldb-debugging, enable-uiscene-migration
+
+[ΓêÜ] Windows Version (Windows 11 or higher, 25H2, 2009) [1,621ms]
+
+[X] Android toolchain - develop for Android devices [147ms]
+    ΓÇó Android SDK at C:\Users\gurni\adb
+    ΓÇó Emulator version unknown
+    X cmdline-tools component is missing.
+      Try installing or updating Android Studio.
+      Alternatively, download the tools from https://developer.android.com/studio#command-line-tools-only and make sure to set the ANDROID_HOME environment variable.
+      See https://developer.android.com/studio/command-line for more details.
+
+[X] Chrome - develop for the web (Cannot find Chrome executable at .\Google\Chrome\Application\chrome.exe) [135ms]
+    ! Cannot find Chrome. Try setting CHROME_EXECUTABLE to a Chrome executable.
+
+[ΓêÜ] Visual Studio - develop Windows apps (Visual Studio Community 2026 18.4.0) [133ms]
+    ΓÇó Visual Studio at C:\Program Files\Microsoft Visual Studio\18\Community
+    ΓÇó Visual Studio Community 2026 version 18.4.11605.240
+    ΓÇó Windows 10 SDK version 10.0.26100.0
+
+[ΓêÜ] Connected device (3 available) [232ms]
+    ΓÇó RMX5003 (mobile)  ΓÇó VOMFIBE6SCF6XKLV ΓÇó android-arm64  ΓÇó Android 16 (API 36)
+    ΓÇó Windows (desktop) ΓÇó windows          ΓÇó windows-x64    ΓÇó Microsoft Windows [Version 10.0.26200.8037]
+    ΓÇó Edge (web)        ΓÇó edge             ΓÇó web-javascript ΓÇó Microsoft Edge 145.0.3800.97
+
+[ΓêÜ] Network resources [1,227ms]
+    ΓÇó All expected network resources are available.
+
+! Doctor found issues in 2 categories.

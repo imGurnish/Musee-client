@@ -41,6 +41,7 @@ import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:dio/dio.dart';
+import 'package:musee/core/cache/services/queue_persistence_service.dart';
 
 // New infrastructure services
 import 'package:musee/core/providers/providers.dart';
@@ -96,6 +97,13 @@ Future<void> initDependencies() async {
     () => imageCacheService,
   );
 
+  // Queue persistence for saving/restoring queue state
+  final queuePersistenceService = QueuePersistenceServiceImpl();
+  await queuePersistenceService.init();
+  serviceLocator.registerLazySingleton<QueuePersistenceService>(
+    () => queuePersistenceService,
+  );
+
   // Download Manager
   serviceLocator.registerLazySingleton<DownloadManager>(
     () => DownloadManager(
@@ -105,13 +113,14 @@ Future<void> initDependencies() async {
     ),
   );
 
-  // Register player (no backend repository — queue is local-only)
+  // Register player with queue persistence
   serviceLocator.registerLazySingleton(
     () => PlayerCubit(
       trackCache: serviceLocator<TrackCacheService>(),
       audioCache: serviceLocator<AudioCacheService>(),
       imageCache: serviceLocator<ImageCacheService>(),
       musicProviderRegistry: serviceLocator<MusicProviderRegistry>(),
+      queuePersistence: serviceLocator<QueuePersistenceService>(),
     ),
   );
 

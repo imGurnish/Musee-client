@@ -129,6 +129,27 @@ class ExternalMusicProvider extends MusicProvider {
     }
   }
 
+  @override
+  Future<List<ProviderTrack>> getSongSuggestions(
+    String trackId, {
+    int limit = 10,
+  }) async {
+    if (!isAvailableOnPlatform) return const [];
+
+    try {
+      final suggestions = await _dataSource.getSongSuggestions(
+        trackId,
+        limit: limit,
+      );
+      return suggestions.map(_mapSongDetailToTrack).toList();
+    } catch (e) {
+      if (kDebugMode) {
+        print('[ExternalMusicProvider] getSongSuggestions error: $e');
+      }
+      return const [];
+    }
+  }
+
   // --- Mapping Helpers ---
 
   ProviderTrack _mapSongToTrack(ExternalMusicSong song) {

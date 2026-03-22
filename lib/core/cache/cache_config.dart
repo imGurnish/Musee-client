@@ -14,4 +14,6 @@ class CacheConfig {
   /// Hive box names
   static const String trackBoxName = 'cached_tracks';
   static const String albumBoxName = 'cached_albums';
+  static const String queueBoxName = 'queue_items';
+  static const String queueSettingsBoxName = 'queue_settings';
 }

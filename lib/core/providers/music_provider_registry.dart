@@ -151,4 +151,25 @@ class MusicProviderRegistry {
     );
     return results.expand((list) => list).toList();
   }
+
+  /// Get song suggestions based on a given track ID.
+  Future<List<ProviderTrack>> getSongSuggestions(
+    String trackId, {
+    int limit = 10,
+  }) async {
+    final provider = getProviderForTrack(trackId);
+    if (provider == null) return const [];
+
+    try {
+      final rawId = trackId.rawId;
+      return await provider.getSongSuggestions(rawId, limit: limit);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          '[MusicProviderRegistry] getSongSuggestions failed: $e',
+        );
+      }
+      return const [];
+    }
+  }
 }

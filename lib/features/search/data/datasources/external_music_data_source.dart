@@ -241,6 +241,234 @@ class ExternalMusicDataSource {
     }
   }
 
+  /// Get song suggestions/recommendations based on a song ID.
+  /// Uses multiple strategies:
+  /// 1. Fetch song details to get real pid, then reco.getreco
+  /// 2. Station-based suggestions via webapi.getSuggestedSongs
+  /// 3. Fall back to title-based search
+  Future<List<ExternalMusicSongDetail>> getSongSuggestions(
+    String songId, {
+    int limit = 10,
+  }) async {
+    final normalizedId = _normalizeToken(songId);
+
+    // Strategy 1: webapi.getSuggestedSongs with the song token
+    try {
+      if (kDebugMode) {
+        print('[ExternalAPI] Trying webapi.getSuggestedSongs with token=$normalizedId');
+      }
+
+      final suggested = await _fetchSuggestedSongs(normalizedId, limit);
+      if (suggested.isNotEmpty) return suggested;
+
+      // We need song details for strategies 2 and 3
+      final songDetail = await getSongById(normalizedId);
+      final pid = songDetail?.id ?? normalizedId;
+
+      // Strategy 2: Station-based suggestions
+      if (kDebugMode) {
+        print('[ExternalAPI] getSuggestedSongs empty, trying station suggestions');
+      }
+      final stationResults = await _fetchStationSuggestions(pid, limit);
+      if (stationResults.isNotEmpty) return stationResults;
+
+      // Strategy 3: Search by song title + artist for similar tracks
+      if (songDetail != null) {
+        final searchQuery = songDetail.title;
+        if (kDebugMode) {
+          print(
+            '[ExternalAPI] Station empty, searching by title: "$searchQuery"',
+          );
+        }
+        final searchResults = await _fetchSearchSuggestions(
+          searchQuery,
+          excludeId: pid,
+          limit: limit,
+        );
+        if (searchResults.isNotEmpty) return searchResults;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[ExternalAPI] Song suggestions error: $e');
+      }
+    }
+
+    return const [];
+  }
+
+  /// Strategy 1: webapi.getSuggestedSongs (Works with string slugs)
+  Future<List<ExternalMusicSongDetail>> _fetchSuggestedSongs(
+    String token,
+    int limit,
+  ) async {
+    try {
+      if (kDebugMode) {
+        print('[ExternalAPI] Trying webapi.getSuggestedSongs with $token');
+      }
+      final uri = Uri.parse(AppSecrets.externalMusicBaseUrl).replace(
+        queryParameters: {
+          '__call': 'webapi.getSuggestedSongs',
+          'video_id': token, // The endpoint uses video_id or id for the token
+          '_format': 'json',
+          '_marker': '0',
+          'ctx': 'web6dot0',
+          'limit': limit.toString(),
+        },
+      );
+
+      final response = await http.get(uri, headers: _headers).timeout(_timeout);
+
+      if (response.statusCode == 200) {
+        dynamic data = json.decode(response.body);
+        if (data is String) data = json.decode(data);
+
+        // webapi.getSuggestedSongs usually returns { "Xo1Z1OwW": { ...song details... } }
+        // or a similar map structure containing recommended songs.
+        if (data is Map<String, dynamic> && data.containsKey(token)) {
+          final related = data[token]?['related_songs'];
+          if (related != null) {
+            return _parseSongList(related, limit);
+          }
+        }
+        
+        // Also try standard parsing just in case
+        final results = _parseSongList(data, limit);
+        if (results.isNotEmpty) return results;
+      }
+    } catch (e) {
+      if (kDebugMode) print('[ExternalAPI] getSuggestedSongs error: $e');
+    }
+    return const [];
+  }
+
+  /// Strategy 2: webapi.getSuggestedSongs via station
+  Future<List<ExternalMusicSongDetail>> _fetchStationSuggestions(
+    String songId,
+    int limit,
+  ) async {
+    try {
+      // Create a radio station from the song
+      final stationUri = Uri.parse(AppSecrets.externalMusicBaseUrl).replace(
+        queryParameters: {
+          '__call': 'webradio.createEntityStation',
+          'entity_id': json.encode([songId]),
+          'entity_type': 'queue',
+          '_format': 'json',
+          '_marker': '0',
+          'ctx': 'web6dot0',
+        },
+      );
+
+      final stationResponse =
+          await http.get(stationUri, headers: _headers).timeout(_timeout);
+
+      if (stationResponse.statusCode != 200) return const [];
+
+      dynamic stationData = json.decode(stationResponse.body);
+      if (stationData is String) stationData = json.decode(stationData);
+
+      // Extract station ID
+      String? stationId;
+      if (stationData is Map<String, dynamic>) {
+        stationId = stationData['stationid']?.toString();
+      }
+
+      if (stationId == null || stationId.isEmpty) return const [];
+
+      // Get songs from the station
+      final songsUri = Uri.parse(AppSecrets.externalMusicBaseUrl).replace(
+        queryParameters: {
+          '__call': 'webradio.getSong',
+          'stationid': stationId,
+          'k': limit.toString(),
+          '_format': 'json',
+          '_marker': '0',
+          'ctx': 'web6dot0',
+        },
+      );
+
+      final songsResponse =
+          await http.get(songsUri, headers: _headers).timeout(_timeout);
+
+      if (songsResponse.statusCode != 200) return const [];
+
+      dynamic songsData = json.decode(songsResponse.body);
+      if (songsData is String) songsData = json.decode(songsData);
+
+      if (kDebugMode) {
+        print(
+          '[ExternalAPI] Station songs response type: ${songsData.runtimeType}',
+        );
+      }
+
+      return _parseSongList(songsData, limit);
+    } catch (e) {
+      if (kDebugMode) print('[ExternalAPI] Station suggestions error: $e');
+      return const [];
+    }
+  }
+
+  /// Strategy 3: Search by title to find similar tracks
+  Future<List<ExternalMusicSongDetail>> _fetchSearchSuggestions(
+    String query, {
+    required String excludeId,
+    required int limit,
+  }) async {
+    try {
+      final searchResult = await search(query);
+      // Convert search songs to song details, filtering out the original
+      final filtered = searchResult.songs
+          .where((s) => s.id != excludeId)
+          .take(limit)
+          .toList();
+
+      // Fetch full details for each song
+      final details = <ExternalMusicSongDetail>[];
+      for (final song in filtered) {
+        final detail = await getSongById(song.id);
+        if (detail != null) {
+          details.add(detail);
+        }
+        if (details.length >= limit) break;
+      }
+
+      if (kDebugMode) {
+        print('[ExternalAPI] Search suggestions: ${details.length} results');
+      }
+      return details;
+    } catch (e) {
+      if (kDebugMode) print('[ExternalAPI] Search suggestions error: $e');
+      return const [];
+    }
+  }
+
+  /// Parse a song list from various API response formats
+  List<ExternalMusicSongDetail> _parseSongList(dynamic data, int limit) {
+    if (data is List) {
+      return data
+          .whereType<Map>()
+          .map(
+            (e) =>
+                ExternalMusicSongDetail.fromJson(e.cast<String, dynamic>()),
+          )
+          .take(limit)
+          .toList();
+    }
+
+    if (data is Map<String, dynamic>) {
+      return data.values
+          .whereType<Map>()
+          .map(
+            (e) =>
+                ExternalMusicSongDetail.fromJson(e.cast<String, dynamic>()),
+          )
+          .take(limit)
+          .toList();
+    }
+
+    return const [];
+  }
+
   /// Normalize token by removing trailing underscores.
   String _normalizeToken(String token) {
     var result = Uri.decodeComponent(token).trim();

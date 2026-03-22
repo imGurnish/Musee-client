@@ -8,6 +8,7 @@ import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
+import 'package:musee/core/cache/services/queue_persistence_service.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
 import 'package:musee/core/providers/music_provider_registry.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
@@ -20,20 +21,26 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   final AudioCacheService? _audioCache;
   final ImageCacheService? _imageCache;
   final MusicProviderRegistry? _musicProviderRegistry;
+  final QueuePersistenceService? _queuePersistence;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration?>? _durationSub;
   StreamSubscription<PlayerState>? _playerStateSub;
+
+  /// Tracks the last saved position to avoid redundant saves
+  Duration _lastSavedPosition = Duration.zero;
 
   PlayerCubit({
     TrackCacheService? trackCache,
     AudioCacheService? audioCache,
     ImageCacheService? imageCache,
     MusicProviderRegistry? musicProviderRegistry,
+    QueuePersistenceService? queuePersistence,
   }) : _player = AudioPlayer(),
        _trackCache = trackCache,
        _audioCache = audioCache,
        _imageCache = imageCache,
        _musicProviderRegistry = musicProviderRegistry,
+       _queuePersistence = queuePersistence,
        super(const PlayerViewState()) {
     _init();
   }
@@ -46,6 +53,13 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     _positionSub = _player.positionStream.listen((pos) {
       emit(state.copyWith(position: pos));
+
+      // Debounced position persistence (save every 5 seconds of change)
+      if (_queuePersistence != null &&
+          (pos - _lastSavedPosition).inSeconds.abs() >= 5) {
+        _lastSavedPosition = pos;
+        _queuePersistence.savePosition(pos);
+      }
     });
     _durationSub = _player.durationStream.listen((dur) {
       emit(state.copyWith(duration: dur ?? Duration.zero));
@@ -62,6 +76,67 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         await _playNextInternal();
       }
     });
+
+    // Restore persisted queue on startup
+    await _restorePersistedQueue();
+  }
+
+  /// Restore queue, current index, and position from Hive persistence.
+  Future<void> _restorePersistedQueue() async {
+    if (_queuePersistence == null) return;
+
+    try {
+      final snapshot = await _queuePersistence.loadQueue();
+      if (snapshot.isEmpty) return;
+
+      emit(state.copyWith(
+        queue: snapshot.queue,
+        currentIndex: snapshot.currentIndex,
+      ));
+
+      // If there was a current track, prepare it (but don't auto-play)
+      if (snapshot.currentIndex >= 0 &&
+          snapshot.currentIndex < snapshot.queue.length) {
+        final item = snapshot.queue[snapshot.currentIndex];
+        final url = await _fetchPlayableUrl(item.trackId);
+        if (url != null) {
+          final track = PlayerTrack(
+            trackId: item.trackId,
+            url: url,
+            title: item.title.isEmpty ? 'Unknown Title' : item.title,
+            artist: item.artist.isEmpty ? 'Unknown Artist' : item.artist,
+            album: item.album,
+            imageUrl: item.imageUrl,
+            localImagePath: item.localImagePath,
+          );
+          emit(state.copyWith(track: track));
+
+          // Seek to last known position
+          try {
+            await _player.setAudioSource(AudioSource.uri(Uri.parse(url)));
+            if (snapshot.position > Duration.zero) {
+              await _player.seek(snapshot.position);
+            }
+            // Don't auto-play — user must tap play
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint('[PlayerCubit] Error restoring playback state: $e');
+            }
+          }
+        }
+      }
+
+      if (kDebugMode) {
+        debugPrint(
+          '[PlayerCubit] Restored queue: ${snapshot.queue.length} items, '
+          'index=${snapshot.currentIndex}, position=${snapshot.position}',
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Error restoring persisted queue: $e');
+      }
+    }
   }
 
   // Resolve playable URL with cache-first strategy
@@ -191,7 +266,35 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> playTrack(PlayerTrack track) async {
-    emit(state.copyWith(track: track, buffering: true));
+    // Auto-add to queue if not already present
+    int queueIndex = state.currentIndex;
+    if (track.trackId != null) {
+      final existingIdx =
+          state.queue.indexWhere((q) => q.trackId == track.trackId);
+      if (existingIdx >= 0) {
+        // Already in queue — just update current index
+        queueIndex = existingIdx;
+      } else {
+        // Add to end of queue
+        final newItem = QueueItem(
+          trackId: track.trackId!,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          imageUrl: track.imageUrl,
+          localImagePath: track.localImagePath,
+        );
+        final updatedQueue = [...state.queue, newItem];
+        queueIndex = updatedQueue.length - 1;
+        emit(state.copyWith(queue: updatedQueue, currentIndex: queueIndex));
+      }
+    }
+
+    emit(state.copyWith(
+      track: track,
+      buffering: true,
+      currentIndex: queueIndex,
+    ));
 
     // Cache metadata if we have a track ID
     if (track.trackId != null && track.url.isNotEmpty && _trackCache != null) {
@@ -215,6 +318,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         AudioSource.uri(uri, headers: headers.isEmpty ? null : headers),
       );
       await _player.play();
+
+      // Persist queue and fetch recommendations
+      _persistQueue();
+      unawaited(_refreshQueueIfNeeded());
     } catch (e) {
       emit(state.copyWith(buffering: false, playing: false));
     }
@@ -243,10 +350,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     await playTrack(track);
   }
 
-  // Queue APIs — local-only management
+  // Queue APIs — local management with persistence
 
   Future<void> addToQueue(List<QueueItem> items) async {
-    emit(state.copyWith(queue: [...state.queue, ...items]));
+    final newQueue = [...state.queue, ...items];
+    emit(state.copyWith(queue: newQueue));
+    _persistQueue();
   }
 
   Future<void> removeFromQueue(String uid) async {
@@ -264,6 +373,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (newList.isEmpty) newIndex = -1;
 
     emit(state.copyWith(queue: newList, currentIndex: newIndex));
+    _persistQueue();
   }
 
   Future<void> reorderQueue(int from, int to) async {
@@ -284,10 +394,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
 
     emit(state.copyWith(queue: list, currentIndex: newIndex));
+    _persistQueue();
   }
 
   Future<void> clearQueue() async {
     emit(state.copyWith(queue: const <QueueItem>[], currentIndex: -1));
+    _queuePersistence?.clearQueue();
   }
 
   Future<void> playFromQueueTrackId(String trackId) async {
@@ -350,6 +462,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       localImagePath: item.localImagePath,
     );
     emit(state.copyWith(track: track, buffering: true, currentIndex: index));
+    _persistQueue();
     try {
       await _player.setAudioSource(AudioSource.uri(Uri.parse(url)));
       await _player.play();
@@ -376,8 +489,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     emit(state.copyWith(volume: volume));
   }
 
+  /// Persist the current queue and index to Hive.
+  void _persistQueue() {
+    _queuePersistence?.saveQueue(state.queue, state.currentIndex);
+  }
+
   /// Auto-fill queue with recommendations when running low.
-  /// Uses JioSaavn search to find similar tracks.
+  /// Uses JioSaavn's reco.getreco for song-based suggestions (preferred),
+  /// falling back to artist-name search if suggestions unavailable.
   Future<void> _refreshQueueIfNeeded() async {
     final remaining = state.queue.length - (state.currentIndex + 1);
 
@@ -385,34 +504,81 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         state.queue.isNotEmpty &&
         _musicProviderRegistry != null) {
       try {
-        final seed = state.queue.last;
-        final seedQuery = seed.artist.split(',').first.trim();
-        if (seedQuery.isNotEmpty && seedQuery != 'Unknown Artist') {
-          final results = await _musicProviderRegistry.search(
-            seedQuery,
-            limitPerProvider: 5,
+        // Prefer song-based suggestions via reco.getreco
+        final currentTrack = state.queue.isNotEmpty
+            ? state.queue[state.currentIndex.clamp(0, state.queue.length - 1)]
+            : null;
+
+        List<QueueItem> newItems = [];
+
+        if (currentTrack != null) {
+          final suggestions = await _musicProviderRegistry.getSongSuggestions(
+            currentTrack.trackId,
+            limit: 10,
           );
 
           // Filter duplicates (already in queue)
           final existingIds = state.queue.map((q) => q.trackId).toSet();
-          final newTracks = results.tracks
+          final filtered = suggestions
               .where((t) => !existingIds.contains(t.prefixedId))
               .take(5)
               .toList();
 
-          if (newTracks.isNotEmpty) {
-            final newItems = newTracks
+          if (filtered.isNotEmpty) {
+            newItems = filtered
                 .map(
                   (track) => QueueItem(
                     trackId: track.prefixedId,
                     title: track.title,
                     artist: track.artistName,
                     imageUrl: track.imageUrl,
+                    durationSeconds: track.durationSeconds,
                   ),
                 )
                 .toList();
+          }
+        }
 
-            emit(state.copyWith(queue: [...state.queue, ...newItems]));
+        // Fallback: search by artist name if no song suggestions
+        if (newItems.isEmpty && currentTrack != null) {
+          final seedQuery = currentTrack.artist.split(',').first.trim();
+          if (seedQuery.isNotEmpty && seedQuery != 'Unknown Artist') {
+            final results = await _musicProviderRegistry.search(
+              seedQuery,
+              limitPerProvider: 5,
+            );
+
+            final existingIds = state.queue.map((q) => q.trackId).toSet();
+            final newTracks = results.tracks
+                .where((t) => !existingIds.contains(t.prefixedId))
+                .take(5)
+                .toList();
+
+            if (newTracks.isNotEmpty) {
+              newItems = newTracks
+                  .map(
+                    (track) => QueueItem(
+                      trackId: track.prefixedId,
+                      title: track.title,
+                      artist: track.artistName,
+                      imageUrl: track.imageUrl,
+                    ),
+                  )
+                  .toList();
+            }
+          }
+        }
+
+        if (newItems.isNotEmpty) {
+          final updatedQueue = [...state.queue, ...newItems];
+          emit(state.copyWith(queue: updatedQueue));
+          _persistQueue();
+
+          if (kDebugMode) {
+            debugPrint(
+              '[PlayerCubit] Auto-filled ${newItems.length} tracks via '
+              'recommendations',
+            );
           }
         }
       } catch (e) {
@@ -423,6 +589,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   @override
   Future<void> close() async {
+    // Save final position before closing
+    if (_queuePersistence != null && state.position > Duration.zero) {
+      await _queuePersistence.savePositionImmediate(state.position);
+    }
+    _queuePersistence?.dispose();
+
     await _positionSub?.cancel();
     await _durationSub?.cancel();
     await _playerStateSub?.cancel();
