@@ -15,6 +15,7 @@ abstract interface class AdminArtistsRemoteDataSource {
 
   Future<ArtistModel> createArtist({
     String? artistId,
+    String? externalArtistId,
     String? name,
     String? email,
     String? password,
@@ -104,6 +105,7 @@ class AdminArtistsRemoteDataSourceImpl implements AdminArtistsRemoteDataSource {
   @override
   Future<ArtistModel> createArtist({
     String? artistId,
+    String? externalArtistId,
     String? name,
     String? email,
     String? password,
@@ -126,6 +128,9 @@ class AdminArtistsRemoteDataSourceImpl implements AdminArtistsRemoteDataSource {
     // Option A: link existing user
     if (artistId != null && artistId.isNotEmpty) {
       form.fields.add(MapEntry('artist_id', artistId));
+    }
+    if (externalArtistId != null && externalArtistId.isNotEmpty) {
+      form.fields.add(MapEntry('ext_artist_id', externalArtistId));
     }
     // Option B: create user
     if (name != null) form.fields.add(MapEntry('name', name));

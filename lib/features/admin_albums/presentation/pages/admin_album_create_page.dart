@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:musee/core/common/navigation/routes.dart';
 import 'package:musee/features/admin_artists/presentation/widgets/uuid_picker_dialog.dart';
 import 'package:musee/features/admin_artists/domain/usecases/list_artists.dart';
 import 'package:musee/features/admin_albums/domain/usecases/create_album.dart';
@@ -125,7 +126,16 @@ class _AdminAlbumCreatePageState extends State<AdminAlbumCreatePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Create Album')),
+      appBar: AppBar(
+        title: const Text('Create Album'),
+        actions: [
+          TextButton.icon(
+            onPressed: () => context.push(Routes.adminAlbumImport),
+            icon: const Icon(Icons.cloud_download),
+            label: const Text('Import from JioSaavn'),
+          ),
+        ],
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 800),

@@ -44,6 +44,7 @@ class AdminArtistsRepositoryImpl implements AdminArtistsRepository {
   @override
   Future<Either<Failure, Artist>> createArtist({
     String? artistId,
+    String? externalArtistId,
     String? name,
     String? email,
     String? password,
@@ -63,6 +64,7 @@ class AdminArtistsRepositoryImpl implements AdminArtistsRepository {
     try {
       final a = await remote.createArtist(
         artistId: artistId,
+        externalArtistId: externalArtistId,
         name: name,
         email: email,
         password: password,

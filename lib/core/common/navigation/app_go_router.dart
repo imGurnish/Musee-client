@@ -24,6 +24,9 @@ import 'package:musee/features/admin_tracks/presentation/pages/admin_tracks_page
 import 'package:musee/features/admin_tracks/presentation/pages/admin_track_create_page.dart';
 import 'package:musee/features/admin_tracks/presentation/pages/admin_track_detail_page.dart';
 import 'package:musee/features/admin_tracks/presentation/bloc/admin_tracks_bloc.dart';
+import 'package:musee/features/admin_external_import/presentation/pages/admin_external_track_import_page.dart';
+import 'package:musee/features/admin_external_import/presentation/pages/admin_external_album_import_page.dart';
+import 'package:musee/features/admin_external_import/presentation/pages/admin_external_playlist_import_page.dart';
 import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -225,6 +228,31 @@ class AppGoRouter {
             final id = state.pathParameters['id'] ?? '';
             return AdminTrackDetailPage(trackId: id);
           },
+        ),
+
+        GoRoute(
+          path: Routes.adminTrackImport,
+          name: 'admin_track_import',
+          builder: (context, state) => const AdminExternalTrackImportPage(),
+        ),
+
+        GoRoute(
+          path: Routes.adminAlbumImport,
+          name: 'admin_album_import',
+          builder: (context, state) => const AdminExternalAlbumImportPage(),
+        ),
+
+        GoRoute(
+          path: Routes.adminPlaylists,
+          name: 'admin_playlists',
+          builder: (context, state) =>
+            const ComingSoonPage(featureName: 'Admin Playlists', selectedIndex: 0),
+        ),
+
+        GoRoute(
+          path: Routes.adminPlaylistImport,
+          name: 'admin_playlist_import',
+          builder: (context, state) => const AdminExternalPlaylistImportPage(),
         ),
 
         GoRoute(

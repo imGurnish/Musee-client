@@ -18,6 +18,9 @@ abstract interface class AdminTracksRemoteDataSource {
     required String title,
     required String albumId,
     required int duration,
+    String? externalTrackId,
+    String? language,
+    String? releaseDate,
     String? lyricsUrl,
     bool? isExplicit,
     bool? isPublished,
@@ -33,6 +36,9 @@ abstract interface class AdminTracksRemoteDataSource {
     String? title,
     String? albumId,
     int? duration,
+    String? externalTrackId,
+    String? language,
+    String? releaseDate,
     String? lyricsUrl,
     bool? isExplicit,
     bool? isPublished,
@@ -121,6 +127,9 @@ class AdminTracksRemoteDataSourceImpl implements AdminTracksRemoteDataSource {
     required String title,
     required String albumId,
     required int duration,
+    String? externalTrackId,
+    String? language,
+    String? releaseDate,
     String? lyricsUrl,
     bool? isExplicit,
     bool? isPublished,
@@ -135,6 +144,15 @@ class AdminTracksRemoteDataSourceImpl implements AdminTracksRemoteDataSource {
     form.fields.add(MapEntry('title', title));
     form.fields.add(MapEntry('album_id', albumId));
     form.fields.add(MapEntry('duration', duration.toString()));
+    if (externalTrackId != null && externalTrackId.isNotEmpty) {
+      form.fields.add(MapEntry('ext_track_id', externalTrackId));
+    }
+    if (language != null && language.isNotEmpty) {
+      form.fields.add(MapEntry('language', language));
+    }
+    if (releaseDate != null && releaseDate.isNotEmpty) {
+      form.fields.add(MapEntry('release_date', releaseDate));
+    }
     if (lyricsUrl != null) form.fields.add(MapEntry('lyrics_url', lyricsUrl));
     if (isExplicit != null) {
       form.fields.add(MapEntry('is_explicit', isExplicit.toString()));
@@ -175,6 +193,9 @@ class AdminTracksRemoteDataSourceImpl implements AdminTracksRemoteDataSource {
     String? title,
     String? albumId,
     int? duration,
+    String? externalTrackId,
+    String? language,
+    String? releaseDate,
     String? lyricsUrl,
     bool? isExplicit,
     bool? isPublished,
@@ -191,6 +212,15 @@ class AdminTracksRemoteDataSourceImpl implements AdminTracksRemoteDataSource {
       if (albumId != null) form.fields.add(MapEntry('album_id', albumId));
       if (duration != null) {
         form.fields.add(MapEntry('duration', duration.toString()));
+      }
+      if (externalTrackId != null && externalTrackId.isNotEmpty) {
+        form.fields.add(MapEntry('ext_track_id', externalTrackId));
+      }
+      if (language != null && language.isNotEmpty) {
+        form.fields.add(MapEntry('language', language));
+      }
+      if (releaseDate != null && releaseDate.isNotEmpty) {
+        form.fields.add(MapEntry('release_date', releaseDate));
       }
       if (lyricsUrl != null) form.fields.add(MapEntry('lyrics_url', lyricsUrl));
       if (isExplicit != null) {
@@ -231,6 +261,13 @@ class AdminTracksRemoteDataSourceImpl implements AdminTracksRemoteDataSource {
       if (title != null) body['title'] = title;
       if (albumId != null) body['album_id'] = albumId;
       if (duration != null) body['duration'] = duration;
+      if (externalTrackId != null && externalTrackId.isNotEmpty) {
+        body['ext_track_id'] = externalTrackId;
+      }
+      if (language != null && language.isNotEmpty) body['language'] = language;
+      if (releaseDate != null && releaseDate.isNotEmpty) {
+        body['release_date'] = releaseDate;
+      }
       if (lyricsUrl != null) body['lyrics_url'] = lyricsUrl;
       if (isExplicit != null) body['is_explicit'] = isExplicit;
       if (isPublished != null) body['is_published'] = isPublished;

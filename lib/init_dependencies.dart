@@ -93,6 +93,8 @@ import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:musee/features/admin_external_import/data/jiosaavn_api_client.dart';
+import 'package:musee/features/admin_external_import/data/admin_external_import_service.dart';
 
 // New infrastructure services
 import 'package:musee/core/providers/providers.dart';
@@ -188,6 +190,19 @@ Future<void> initDependencies() async {
   _initAdminPlans();
   // admin tracks
   _initAdminTracks();
+
+  serviceLocator.registerLazySingleton<JioSaavnApiClient>(() => JioSaavnApiClient());
+  serviceLocator.registerLazySingleton<AdminExternalImportService>(
+    () => AdminExternalImportService(
+      jioApi: serviceLocator<JioSaavnApiClient>(),
+      artistsApi: serviceLocator<AdminArtistsRemoteDataSource>(),
+      albumsApi: serviceLocator<AdminAlbumsRemoteDataSource>(),
+      tracksApi: serviceLocator<AdminTracksRemoteDataSource>(),
+      supabase: serviceLocator<SupabaseClient>(),
+      dioClient: serviceLocator<Dio>(),
+    ),
+  );
+
   // user features
   _initUserAlbums();
   _initUserArtists();

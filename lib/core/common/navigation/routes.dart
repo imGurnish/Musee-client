@@ -17,6 +17,10 @@ class Routes {
   static const String adminTracks = '/admin/tracks';
   static const String adminTrackCreate = '/admin/tracks/create-new';
   static const String adminTrackDetail = '/admin/tracks/:id';
+  static const String adminTrackImport = '/admin/tracks/import/external';
+  static const String adminAlbumImport = '/admin/albums/import/external';
+  static const String adminPlaylists = '/admin/playlists';
+  static const String adminPlaylistImport = '/admin/playlists/import/external';
 
   // Authentication
   static const String signIn = '/sign-in';

@@ -12,6 +12,9 @@ abstract interface class AdminAlbumsRepository {
     List<String>? genres,
     bool? isPublished,
     required String artistId,
+    String? externalAlbumId,
+    String? releaseDate,
+    String? language,
     List<int>? coverBytes,
     String? coverFilename,
   });

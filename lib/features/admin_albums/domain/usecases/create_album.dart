@@ -10,6 +10,9 @@ class CreateAlbumParams {
   final List<String>? genres;
   final bool? isPublished;
   final String artistId;
+  final String? externalAlbumId;
+  final String? releaseDate;
+  final String? language;
   final List<int>? coverBytes;
   final String? coverFilename;
 
@@ -19,6 +22,9 @@ class CreateAlbumParams {
     this.genres,
     this.isPublished,
     required this.artistId,
+    this.externalAlbumId,
+    this.releaseDate,
+    this.language,
     this.coverBytes,
     this.coverFilename,
   });
@@ -36,6 +42,9 @@ class CreateAlbum implements UseCase<Album, CreateAlbumParams> {
       genres: params.genres,
       isPublished: params.isPublished,
       artistId: params.artistId,
+      externalAlbumId: params.externalAlbumId,
+      releaseDate: params.releaseDate,
+      language: params.language,
       coverBytes: params.coverBytes,
       coverFilename: params.coverFilename,
     );

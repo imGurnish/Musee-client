@@ -30,8 +30,11 @@ class TrackAudio {
 
 class Track {
   final String trackId;
+  final String? extTrackId;
   final String title;
   final String? albumId;
+  final String? language;
+  final String? releaseDate;
   final String? lyricsUrl;
   final int duration;
   final int playCount;
@@ -47,8 +50,11 @@ class Track {
 
   Track({
     required this.trackId,
+    this.extTrackId,
     required this.title,
     this.albumId,
+    this.language,
+    this.releaseDate,
     this.lyricsUrl,
     required this.duration,
     required this.playCount,

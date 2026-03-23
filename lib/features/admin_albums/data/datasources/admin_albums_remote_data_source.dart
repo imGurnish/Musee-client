@@ -18,6 +18,9 @@ abstract interface class AdminAlbumsRemoteDataSource {
     List<String>? genres,
     bool? isPublished,
     required String artistId,
+    String? externalAlbumId,
+    String? releaseDate,
+    String? language,
     Uint8List? coverBytes,
     String? coverFilename,
   });
@@ -107,6 +110,9 @@ class AdminAlbumsRemoteDataSourceImpl implements AdminAlbumsRemoteDataSource {
     List<String>? genres,
     bool? isPublished,
     required String artistId,
+    String? externalAlbumId,
+    String? releaseDate,
+    String? language,
     Uint8List? coverBytes,
     String? coverFilename,
   }) async {
@@ -123,6 +129,15 @@ class AdminAlbumsRemoteDataSourceImpl implements AdminAlbumsRemoteDataSource {
       }
       if (isPublished != null) {
         form.fields.add(MapEntry('is_published', isPublished.toString()));
+      }
+      if (externalAlbumId != null && externalAlbumId.isNotEmpty) {
+        form.fields.add(MapEntry('ext_album_id', externalAlbumId));
+      }
+      if (releaseDate != null && releaseDate.isNotEmpty) {
+        form.fields.add(MapEntry('release_date', releaseDate));
+      }
+      if (language != null && language.isNotEmpty) {
+        form.fields.add(MapEntry('language', language));
       }
       form.files.add(
         MapEntry(
@@ -142,6 +157,11 @@ class AdminAlbumsRemoteDataSourceImpl implements AdminAlbumsRemoteDataSource {
         if (description != null) 'description': description,
         if (genres != null) 'genres': genres,
         if (isPublished != null) 'is_published': isPublished,
+        if (externalAlbumId != null && externalAlbumId.isNotEmpty)
+          'ext_album_id': externalAlbumId,
+        if (releaseDate != null && releaseDate.isNotEmpty)
+          'release_date': releaseDate,
+        if (language != null && language.isNotEmpty) 'language': language,
         'artist_id': artistId,
       };
       final res = await _dio.post(

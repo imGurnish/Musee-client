@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:musee/core/common/navigation/routes.dart';
 import 'package:musee/features/admin_albums/domain/usecases/list_albums.dart';
 import 'package:musee/features/admin_artists/domain/usecases/list_artists.dart';
 import 'package:musee/features/admin_artists/presentation/widgets/uuid_picker_dialog.dart';
@@ -198,7 +199,16 @@ class _AdminTrackCreatePageState extends State<AdminTrackCreatePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Create Track')),
+      appBar: AppBar(
+        title: const Text('Create Track'),
+        actions: [
+          TextButton.icon(
+            onPressed: () => context.push(Routes.adminTrackImport),
+            icon: const Icon(Icons.cloud_download),
+            label: const Text('Import from JioSaavn'),
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           Center(

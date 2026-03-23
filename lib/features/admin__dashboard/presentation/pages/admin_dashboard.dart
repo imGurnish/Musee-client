@@ -129,7 +129,36 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         subtitle: 'Manage playlists',
                         icon: Icons.queue_music,
                         color: Colors.teal,
-                        onTap: () {},
+                        onTap: () {
+                          context.push(Routes.adminPlaylists);
+                        },
+                      ),
+                      AdminCard(
+                        title: 'Import Playlist',
+                        subtitle: 'Playlist with all songs',
+                        icon: Icons.playlist_add,
+                        color: Colors.tealAccent.shade700,
+                        onTap: () {
+                          context.push(Routes.adminPlaylistImport);
+                        },
+                      ),
+                      AdminCard(
+                        title: 'Import Track',
+                        subtitle: 'From JioSaavn metadata',
+                        icon: Icons.download,
+                        color: Colors.blue,
+                        onTap: () {
+                          context.push(Routes.adminTrackImport);
+                        },
+                      ),
+                      AdminCard(
+                        title: 'Import Album',
+                        subtitle: 'Album with songs and artists',
+                        icon: Icons.library_music,
+                        color: Colors.cyan,
+                        onTap: () {
+                          context.push(Routes.adminAlbumImport);
+                        },
                       ),
                       AdminCard(
                         title: 'Plans',

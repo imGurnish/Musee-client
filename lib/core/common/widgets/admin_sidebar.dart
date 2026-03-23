@@ -46,7 +46,7 @@ class AdminSidebar extends StatelessWidget {
           _item(context, Icons.people, 'Users', '/admin/users'),
           _item(context, Icons.mic, 'Artists', '/admin/artists'),
           _item(context, Icons.album, 'Albums', '/admin/albums'),
-          _item(context, Icons.queue_music, 'Playlists', '/admin/playlists'),
+          _item(context, Icons.queue_music, 'Playlists', Routes.adminPlaylists),
           _item(context, Icons.subscriptions, 'Plans', '/admin/plans'),
           _item(context, Icons.public, 'Countries', '/admin/countries'),
           _item(context, Icons.map, 'Regions', '/admin/regions'),

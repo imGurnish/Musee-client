@@ -10,6 +10,7 @@ abstract interface class AdminArtistsRepository {
 
   Future<Either<Failure, Artist>> createArtist({
     String? artistId,
+    String? externalArtistId,
     String? name,
     String? email,
     String? password,
