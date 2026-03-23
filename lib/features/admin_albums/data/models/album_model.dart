@@ -80,7 +80,7 @@ class AlbumModel extends Album {
       title: (json['title'] ?? '') as String,
       description: json['description'] as String?,
       coverUrl: json['cover_url'] as String?,
-      language: json['language']?.toString(),
+      language: (json['language_code'] ?? json['language'])?.toString(),
       releaseDate: json['release_date']?.toString(),
       genres:
           (json['genres'] as List?)?.map((e) => e.toString()).toList() ??

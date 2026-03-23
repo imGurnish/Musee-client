@@ -27,6 +27,9 @@ import 'package:musee/features/admin_tracks/presentation/bloc/admin_tracks_bloc.
 import 'package:musee/features/admin_external_import/presentation/pages/admin_external_track_import_page.dart';
 import 'package:musee/features/admin_external_import/presentation/pages/admin_external_album_import_page.dart';
 import 'package:musee/features/admin_external_import/presentation/pages/admin_external_playlist_import_page.dart';
+import 'package:musee/features/admin_playlists/presentation/pages/admin_playlists_page.dart';
+import 'package:musee/features/admin_countries/presentation/pages/admin_countries_page.dart';
+import 'package:musee/features/admin_regions/presentation/pages/admin_regions_page.dart';
 import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -245,8 +248,19 @@ class AppGoRouter {
         GoRoute(
           path: Routes.adminPlaylists,
           name: 'admin_playlists',
-          builder: (context, state) =>
-            const ComingSoonPage(featureName: 'Admin Playlists', selectedIndex: 0),
+          builder: (context, state) => const AdminPlaylistsPage(),
+        ),
+
+        GoRoute(
+          path: Routes.adminCountries,
+          name: 'admin_countries',
+          builder: (context, state) => const AdminCountriesPage(),
+        ),
+
+        GoRoute(
+          path: Routes.adminRegions,
+          name: 'admin_regions',
+          builder: (context, state) => const AdminRegionsPage(),
         ),
 
         GoRoute(

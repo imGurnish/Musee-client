@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart' as dio;
 import 'package:flutter/foundation.dart';
 import 'package:musee/core/secrets/app_secrets.dart';
@@ -111,6 +113,9 @@ class AdminExternalImportService {
           releaseDate: albumDetail.releaseDate,
           trackCount: albumDetail.songs.length,
         ),
+        externalUrl: albumDetail.permaUrl,
+        imageUrl: albumDetail.imageUrl,
+        externalPayload: albumDetail.rawPayload,
         coverBytes: coverBytes,
         coverFilename: coverBytes != null ? '${albumDetail.id}.jpg' : null,
       );
@@ -176,8 +181,10 @@ class AdminExternalImportService {
         title: playlist.title,
         description: playlist.subtitle,
         language: playlist.language,
+        externalUrl: playlist.permaUrl,
         coverUrl: playlist.imageUrl,
         trackCount: playlist.songs.length,
+        externalPayload: playlist.rawPayload,
       );
 
       for (final trackId in importedTrackIds.toSet()) {
@@ -247,6 +254,8 @@ class AdminExternalImportService {
     final createdTrack = await _createTrackWithFallback(
       song: song,
       albumId: albumId,
+      externalAlbumId: song.albumId,
+      albumImageUrl: song.imageUrl,
       audioBytes: audio.$1,
       audioFilename: audio.$2,
       artists: artistIds,
@@ -309,6 +318,9 @@ class AdminExternalImportService {
         releaseDate: albumDetail.releaseDate ?? song.releaseDate,
         trackCount: albumDetail.songs.length,
       ),
+      externalUrl: albumDetail.permaUrl,
+      imageUrl: albumDetail.imageUrl ?? song.imageUrl,
+      externalPayload: albumDetail.rawPayload,
       coverBytes: coverBytes,
       coverFilename: coverBytes != null ? '$extAlbumId.jpg' : null,
     );
@@ -347,6 +359,7 @@ class AdminExternalImportService {
       throw Exception('Refusing to create unknown artist');
     }
     final ext = artist.externalId.trim();
+    final detail = ext.isEmpty ? null : await _fetchArtistDetailSafe(ext);
     if (ext.isNotEmpty) {
       final existing = await _findExistingByExt(
         table: 'artists',
@@ -357,10 +370,12 @@ class AdminExternalImportService {
       if (existing != null) return existing;
     }
 
-    final avatarBytes = await jioApi.downloadImage(artist.imageUrl);
-    final name = artist.name.trim().isEmpty
+    final avatarBytes = await jioApi.downloadImage(
+      detail?.imageUrl ?? artist.imageUrl,
+    );
+    final name = (detail?.name ?? artist.name).trim().isEmpty
         ? 'Unknown Artist'
-        : artist.name.trim();
+        : (detail?.name ?? artist.name).trim();
     final safeLocalPart = name
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
@@ -377,7 +392,15 @@ class AdminExternalImportService {
           ? '${ext.isEmpty ? name : ext}.jpg'
           : null,
       externalArtistId: ext.isEmpty ? null : ext,
-      bio: _buildArtistBio(name: name, contextSummary: contextSummary),
+      source: 'jiosaavn',
+      externalUrl: detail?.permaUrl,
+      imageUrl: detail?.imageUrl ?? artist.imageUrl,
+      externalPayload: detail?.rawPayload,
+      bio: _buildArtistBio(
+        name: name,
+        contextSummary: contextSummary,
+        preferredBio: detail?.bio,
+      ),
     );
 
     return created.id;
@@ -412,8 +435,10 @@ class AdminExternalImportService {
     required String title,
     String? description,
     String? language,
+    String? externalUrl,
     String? coverUrl,
     int? trackCount,
+    Map<String, dynamic>? externalPayload,
   }) async {
     final coverBytes = await jioApi.downloadImage(coverUrl);
     final resolvedDescription =
@@ -431,6 +456,18 @@ class AdminExternalImportService {
     }
     form.fields.add(const MapEntry('is_public', 'true'));
     form.fields.add(MapEntry('ext_playlist_id', externalPlaylistId));
+    form.fields.add(const MapEntry('source', 'jiosaavn'));
+    if (externalUrl != null && externalUrl.isNotEmpty) {
+      form.fields.add(MapEntry('playlist_url', externalUrl));
+      form.fields.add(MapEntry('external_url', externalUrl));
+      form.fields.add(MapEntry('perma_url', externalUrl));
+    }
+    if (coverUrl != null && coverUrl.isNotEmpty) {
+      form.fields.add(MapEntry('image', coverUrl));
+    }
+    if (externalPayload != null && externalPayload.isNotEmpty) {
+      form.fields.add(MapEntry('external_payload', jsonEncode(externalPayload)));
+    }
     if (language != null && language.trim().isNotEmpty) {
       form.fields.add(MapEntry('genres', '["$language"]'));
     }
@@ -460,6 +497,19 @@ class AdminExternalImportService {
         fallback.fields.add(MapEntry('description', resolvedDescription));
       }
       fallback.fields.add(const MapEntry('is_public', 'true'));
+      fallback.fields.add(const MapEntry('source', 'jiosaavn'));
+      fallback.fields.add(MapEntry('ext_playlist_id', externalPlaylistId));
+      if (externalUrl != null && externalUrl.isNotEmpty) {
+        fallback.fields.add(MapEntry('playlist_url', externalUrl));
+        fallback.fields.add(MapEntry('external_url', externalUrl));
+        fallback.fields.add(MapEntry('perma_url', externalUrl));
+      }
+      if (coverUrl != null && coverUrl.isNotEmpty) {
+        fallback.fields.add(MapEntry('image', coverUrl));
+      }
+      if (externalPayload != null && externalPayload.isNotEmpty) {
+        fallback.fields.add(MapEntry('external_payload', jsonEncode(externalPayload)));
+      }
       if (coverBytes != null) {
         fallback.files.add(
           MapEntry(
@@ -505,6 +555,10 @@ class AdminExternalImportService {
     required Uint8List? avatarBytes,
     required String? avatarFilename,
     required String? externalArtistId,
+    required String? source,
+    required String? externalUrl,
+    required String? imageUrl,
+    required Map<String, dynamic>? externalPayload,
     required String bio,
   }) async {
     final regionId = await _resolveValidRegionId();
@@ -533,6 +587,10 @@ class AdminExternalImportService {
         avatarBytes: avatarBytes,
         avatarFilename: avatarFilename,
         externalArtistId: externalArtistId,
+        source: source,
+        externalUrl: externalUrl,
+        imageUrl: imageUrl,
+        externalPayload: externalPayload,
         regionId: regionId,
       );
       await _bestEffortUpdateById(
@@ -582,6 +640,11 @@ class AdminExternalImportService {
         bio: bio,
         avatarBytes: avatarBytes,
         avatarFilename: avatarFilename,
+        externalArtistId: externalArtistId,
+        source: source,
+        externalUrl: externalUrl,
+        imageUrl: imageUrl,
+        externalPayload: externalPayload,
         regionId: regionId,
       );
       await _bestEffortUpdateById(
@@ -809,6 +872,9 @@ class AdminExternalImportService {
     required String? releaseDate,
     required String? language,
     required String? description,
+    required String? externalUrl,
+    required String? imageUrl,
+    required Map<String, dynamic>? externalPayload,
     required Uint8List? coverBytes,
     required String? coverFilename,
   }) async {
@@ -822,6 +888,10 @@ class AdminExternalImportService {
         coverBytes: coverBytes,
         coverFilename: coverFilename,
         externalAlbumId: externalAlbumId,
+        source: 'jiosaavn',
+        externalUrl: externalUrl,
+        imageUrl: imageUrl,
+        externalPayload: externalPayload,
         releaseDate: releaseDate,
         language: language,
       );
@@ -846,6 +916,13 @@ class AdminExternalImportService {
         artistId: artistId,
         coverBytes: coverBytes,
         coverFilename: coverFilename,
+        externalAlbumId: externalAlbumId,
+        source: 'jiosaavn',
+        externalUrl: externalUrl,
+        imageUrl: imageUrl,
+        externalPayload: externalPayload,
+        releaseDate: releaseDate,
+        language: language,
       );
       await _bestEffortUpdateById(
         table: 'albums',
@@ -865,6 +942,8 @@ class AdminExternalImportService {
   Future<dynamic> _createTrackWithFallback({
     required JioSaavnSongDetail song,
     required String albumId,
+    required String? externalAlbumId,
+    required String? albumImageUrl,
     required Uint8List audioBytes,
     required String audioFilename,
     required List<String> artists,
@@ -885,8 +964,22 @@ class AdminExternalImportService {
         audioFilename: audioFilename,
         artists: artistPayload,
         externalTrackId: song.id,
+        source: 'jiosaavn',
+        externalUrl: song.permaUrl,
+        imageUrl: song.imageUrl ?? albumImageUrl,
+        externalAlbumId: externalAlbumId,
         language: song.language,
         releaseDate: song.releaseDate,
+        hasLyrics: song.hasLyrics,
+        isDrm: song.isDrm,
+        isDolbyContent: song.isDolbyContent,
+        has320kbps: song.has320kbps,
+        encryptedMediaUrl: song.encryptedMediaUrl,
+        encryptedDrmMediaUrl: song.encryptedDrmMediaUrl,
+        encryptedMediaPath: song.encryptedMediaPath,
+        mediaPreviewUrl: song.mediaPreviewUrl,
+        rights: song.rights,
+        externalPayload: song.rawPayload,
       );
       await _bestEffortUpdateById(
         table: 'tracks',
@@ -912,6 +1005,23 @@ class AdminExternalImportService {
         audioBytes: audioBytes,
         audioFilename: audioFilename,
         artists: artistPayload,
+        externalTrackId: song.id,
+        source: 'jiosaavn',
+        externalUrl: song.permaUrl,
+        imageUrl: song.imageUrl ?? albumImageUrl,
+        externalAlbumId: externalAlbumId,
+        language: song.language,
+        releaseDate: song.releaseDate,
+        hasLyrics: song.hasLyrics,
+        isDrm: song.isDrm,
+        isDolbyContent: song.isDolbyContent,
+        has320kbps: song.has320kbps,
+        encryptedMediaUrl: song.encryptedMediaUrl,
+        encryptedDrmMediaUrl: song.encryptedDrmMediaUrl,
+        encryptedMediaPath: song.encryptedMediaPath,
+        mediaPreviewUrl: song.mediaPreviewUrl,
+        rights: song.rights,
+        externalPayload: song.rawPayload,
       );
       await _bestEffortUpdateById(
         table: 'tracks',
@@ -1008,11 +1118,27 @@ class AdminExternalImportService {
     return segments.join(' • ');
   }
 
-  String _buildArtistBio({required String name, String? contextSummary}) {
+  String _buildArtistBio({
+    required String name,
+    String? contextSummary,
+    String? preferredBio,
+  }) {
+    if (preferredBio != null && preferredBio.trim().isNotEmpty) {
+      return preferredBio.trim();
+    }
     if (contextSummary != null && contextSummary.trim().isNotEmpty) {
       return contextSummary.trim();
     }
     return 'Artist: ${name.trim()}';
+  }
+
+  Future<JioSaavnArtistDetail?> _fetchArtistDetailSafe(String externalArtistId) async {
+    if (externalArtistId.trim().isEmpty) return null;
+    try {
+      return await jioApi.getArtistDetails(externalArtistId);
+    } catch (_) {
+      return null;
+    }
   }
 
   String _buildPlaylistDescription({

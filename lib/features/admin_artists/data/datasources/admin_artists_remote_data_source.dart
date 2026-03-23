@@ -16,6 +16,10 @@ abstract interface class AdminArtistsRemoteDataSource {
   Future<ArtistModel> createArtist({
     String? artistId,
     String? externalArtistId,
+    String? source,
+    String? externalUrl,
+    String? imageUrl,
+    Map<String, dynamic>? externalPayload,
     String? name,
     String? email,
     String? password,
@@ -106,6 +110,10 @@ class AdminArtistsRemoteDataSourceImpl implements AdminArtistsRemoteDataSource {
   Future<ArtistModel> createArtist({
     String? artistId,
     String? externalArtistId,
+    String? source,
+    String? externalUrl,
+    String? imageUrl,
+    Map<String, dynamic>? externalPayload,
     String? name,
     String? email,
     String? password,
@@ -131,6 +139,20 @@ class AdminArtistsRemoteDataSourceImpl implements AdminArtistsRemoteDataSource {
     }
     if (externalArtistId != null && externalArtistId.isNotEmpty) {
       form.fields.add(MapEntry('ext_artist_id', externalArtistId));
+    }
+    if (source != null && source.isNotEmpty) {
+      form.fields.add(MapEntry('source', source));
+    }
+    if (externalUrl != null && externalUrl.isNotEmpty) {
+      form.fields.add(MapEntry('artist_url', externalUrl));
+      form.fields.add(MapEntry('external_url', externalUrl));
+      form.fields.add(MapEntry('perma_url', externalUrl));
+    }
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      form.fields.add(MapEntry('image', imageUrl));
+    }
+    if (externalPayload != null && externalPayload.isNotEmpty) {
+      form.fields.add(MapEntry('external_payload', jsonEncode(externalPayload)));
     }
     // Option B: create user
     if (name != null) form.fields.add(MapEntry('name', name));

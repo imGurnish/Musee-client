@@ -175,7 +175,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         icon: Icons.public,
                         color: Colors.deepOrange,
                         onTap: () {
-                          context.push('/admin/countries');
+                          context.push(Routes.adminCountries);
                         },
                       ),
                       AdminCard(
@@ -184,7 +184,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         icon: Icons.map,
                         color: Colors.purple,
                         onTap: () {
-                          context.push('/admin/regions');
+                          context.push(Routes.adminRegions);
                         },
                       ),
                     ],

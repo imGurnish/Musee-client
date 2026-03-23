@@ -35,6 +35,26 @@ class JioSaavnArtistMeta {
   });
 }
 
+class JioSaavnArtistDetail {
+  final String id;
+  final String name;
+  final String? imageUrl;
+  final String? bio;
+  final String? language;
+  final String? permaUrl;
+  final Map<String, dynamic> rawPayload;
+
+  const JioSaavnArtistDetail({
+    required this.id,
+    required this.name,
+    this.imageUrl,
+    this.bio,
+    this.language,
+    this.permaUrl,
+    this.rawPayload = const {},
+  });
+}
+
 class JioSaavnSongDetail {
   final String id;
   final String title;
@@ -44,9 +64,18 @@ class JioSaavnSongDetail {
   final String? language;
   final String? releaseDate;
   final int duration;
+  final String? permaUrl;
+  final bool? hasLyrics;
+  final bool? isDrm;
+  final bool? isDolbyContent;
+  final bool? has320kbps;
+  final String? encryptedDrmMediaUrl;
+  final String? encryptedMediaPath;
+  final dynamic rights;
   final String? encryptedMediaUrl;
   final String? mediaPreviewUrl;
   final List<JioSaavnArtistMeta> artists;
+  final Map<String, dynamic> rawPayload;
 
   const JioSaavnSongDetail({
     required this.id,
@@ -57,9 +86,18 @@ class JioSaavnSongDetail {
     this.language,
     this.releaseDate,
     required this.duration,
+    this.permaUrl,
+    this.hasLyrics,
+    this.isDrm,
+    this.isDolbyContent,
+    this.has320kbps,
+    this.encryptedDrmMediaUrl,
+    this.encryptedMediaPath,
+    this.rights,
     this.encryptedMediaUrl,
     this.mediaPreviewUrl,
     this.artists = const [],
+    this.rawPayload = const {},
   });
 }
 
@@ -69,8 +107,10 @@ class JioSaavnAlbumDetail {
   final String? imageUrl;
   final String? language;
   final String? releaseDate;
+  final String? permaUrl;
   final List<JioSaavnArtistMeta> artists;
   final List<JioSaavnSongDetail> songs;
+  final Map<String, dynamic> rawPayload;
 
   const JioSaavnAlbumDetail({
     required this.id,
@@ -78,8 +118,10 @@ class JioSaavnAlbumDetail {
     this.imageUrl,
     this.language,
     this.releaseDate,
+    this.permaUrl,
     this.artists = const [],
     this.songs = const [],
+    this.rawPayload = const {},
   });
 }
 
@@ -89,7 +131,9 @@ class JioSaavnPlaylistDetail {
   final String? subtitle;
   final String? imageUrl;
   final String? language;
+  final String? permaUrl;
   final List<JioSaavnSongDetail> songs;
+  final Map<String, dynamic> rawPayload;
 
   const JioSaavnPlaylistDetail({
     required this.id,
@@ -97,7 +141,9 @@ class JioSaavnPlaylistDetail {
     this.subtitle,
     this.imageUrl,
     this.language,
+    this.permaUrl,
     this.songs = const [],
+    this.rawPayload = const {},
   });
 }
 
@@ -255,8 +301,10 @@ class JioSaavnApiClient {
       imageUrl: _toLargeImage(data['image']?.toString()),
       language: language,
       releaseDate: data['release_date']?.toString(),
+      permaUrl: data['perma_url']?.toString(),
       artists: artists,
       songs: songs,
+      rawPayload: data,
     );
   }
 
@@ -282,8 +330,43 @@ class JioSaavnApiClient {
       subtitle: _decodeHtml(data['subtitle']?.toString() ?? data['listname']?.toString() ?? ''),
       imageUrl: _toLargeImage(data['image']?.toString()),
       language: data['language']?.toString(),
+      permaUrl: data['perma_url']?.toString(),
       songs: songs,
+      rawPayload: data,
     );
+  }
+
+  Future<JioSaavnArtistDetail> getArtistDetails(String artistId) async {
+    final token = _normalizeToken(artistId);
+
+    final attempts = <Future<dynamic> Function()>[
+      () => _getJson({
+        '__call': 'webapi.get',
+        'api_version': '4',
+        'token': token,
+        'type': 'artist',
+      }),
+      () => _getJson({
+        '__call': 'artist.getArtistPageDetails',
+        'artistId': token,
+      }),
+      () => _getJson({
+        '__call': 'artist.getDetails',
+        'artistid': token,
+      }),
+    ];
+
+    for (final attempt in attempts) {
+      try {
+        final data = await attempt();
+        final parsed = _extractArtistFromApiResponse(data, token: token);
+        if (parsed != null) {
+          return _artistFromJson(parsed, fallbackId: token);
+        }
+      } catch (_) {}
+    }
+
+    throw Exception('Unable to fetch artist details for token: $token');
   }
 
   Future<Uint8List?> downloadImage(String? url) async {
@@ -361,9 +444,49 @@ class JioSaavnApiClient {
       language: json['language']?.toString(),
       releaseDate: json['release_date']?.toString(),
       duration: int.tryParse(json['duration']?.toString() ?? '0') ?? 0,
+      permaUrl: json['perma_url']?.toString(),
+      hasLyrics: _toBool(json['has_lyrics']),
+      isDrm: _toBool(json['is_drm']),
+      isDolbyContent: _toBool(json['is_dolby_content']),
+      has320kbps: _toBool(json['320kbps'] ?? json['has_320kbps']),
+      encryptedDrmMediaUrl: json['encrypted_drm_media_url']?.toString(),
+      encryptedMediaPath: json['encrypted_media_path']?.toString(),
+      rights: json['rights'],
       encryptedMediaUrl: json['encrypted_media_url']?.toString(),
       mediaPreviewUrl: json['media_preview_url']?.toString() ?? json['vlink']?.toString(),
       artists: artists,
+      rawPayload: json,
+    );
+  }
+
+  JioSaavnArtistDetail _artistFromJson(
+    Map<String, dynamic> json, {
+    required String fallbackId,
+  }) {
+    final id = json['id']?.toString() ??
+        json['artistid']?.toString() ??
+        fallbackId;
+    final name = _decodeHtml(
+      json['name']?.toString() ??
+          json['title']?.toString() ??
+          json['artist']?.toString() ??
+          '',
+    );
+    final bio = _decodeHtml(
+      json['bio']?.toString() ??
+          json['description']?.toString() ??
+          json['artistBio']?.toString() ??
+          '',
+    );
+
+    return JioSaavnArtistDetail(
+      id: id,
+      name: name,
+      imageUrl: _toLargeImage(json['image']?.toString()),
+      bio: bio.isEmpty ? null : bio,
+      language: json['language']?.toString(),
+      permaUrl: json['perma_url']?.toString(),
+      rawPayload: json,
     );
   }
 
@@ -405,6 +528,51 @@ class JioSaavnApiClient {
         }
       }
     }
+    return null;
+  }
+
+  Map<String, dynamic>? _extractArtistFromApiResponse(
+    dynamic data, {
+    required String token,
+  }) {
+    if (data is Map<String, dynamic>) {
+      if (data['artist'] is Map) {
+        return (data['artist'] as Map).cast<String, dynamic>();
+      }
+
+      if (data['artists'] is List) {
+        final artists = data['artists'] as List;
+        if (artists.isNotEmpty && artists.first is Map) {
+          return (artists.first as Map).cast<String, dynamic>();
+        }
+      }
+
+      if (data[token] is Map) {
+        return (data[token] as Map).cast<String, dynamic>();
+      }
+
+      if (data['id'] != null || data['artistid'] != null || data['name'] != null) {
+        return data;
+      }
+
+      for (final value in data.values) {
+        if (value is Map) {
+          final mapped = value.cast<String, dynamic>();
+          if (mapped['id'] != null || mapped['artistid'] != null || mapped['name'] != null) {
+            return mapped;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  bool? _toBool(dynamic value) {
+    if (value == null) return null;
+    if (value is bool) return value;
+    final normalized = value.toString().trim().toLowerCase();
+    if (normalized == '1' || normalized == 'true' || normalized == 'yes') return true;
+    if (normalized == '0' || normalized == 'false' || normalized == 'no') return false;
     return null;
   }
 

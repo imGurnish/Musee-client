@@ -51,7 +51,7 @@ class TrackModel extends Track {
       extTrackId: json['ext_track_id']?.toString(),
       title: json['title']?.toString() ?? '',
       albumId: json['album_id']?.toString(),
-      language: json['language']?.toString(),
+      language: (json['language_code'] ?? json['language'])?.toString(),
       releaseDate: json['release_date']?.toString(),
       lyricsUrl: json['lyrics_url'] as String?,
       duration: (json['duration'] as num?)?.toInt() ?? 0,

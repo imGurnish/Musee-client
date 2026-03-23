@@ -71,33 +71,37 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
           final client = GetIt.I<dio.Dio>();
           final token =
               Supabase.instance.client.auth.currentSession?.accessToken;
-          final res = await client.get(
-            '${AppSecrets.backendUrl}/api/admin/countries',
-            queryParameters: {
-              'page': page,
-              'limit': limit,
-              if (q != null && q.isNotEmpty) 'q': q,
-            },
-            options: dio.Options(
-              headers: {
-                'Accept': 'application/json',
-                if (token != null) 'Authorization': 'Bearer $token',
+          try {
+            final res = await client.get(
+              '${AppSecrets.backendUrl}/api/admin/countries',
+              queryParameters: {
+                'page': page,
+                'limit': limit,
+                if (q != null && q.isNotEmpty) 'q': q,
               },
-            ),
-          );
-          final data = (res.data as Map).cast<String, dynamic>();
-          final items = (data['items'] as List).cast<dynamic>();
-          return UuidPageResult(
-            items: items
-                .map(
-                  (e) => UuidItem(
-                    id: e['country_id'] as String,
-                    label: '${e['code']} • ${e['name']}',
-                  ),
-                )
-                .toList(),
-            total: data['total'] as int,
-          );
+              options: dio.Options(
+                headers: {
+                  'Accept': 'application/json',
+                  if (token != null) 'Authorization': 'Bearer $token',
+                },
+              ),
+            );
+            final data = (res.data as Map).cast<String, dynamic>();
+            final items = (data['items'] as List).cast<dynamic>();
+            return UuidPageResult(
+              items: items
+                  .map(
+                    (e) => UuidItem(
+                      id: e['country_id'] as String,
+                      label: '${e['code']} • ${e['name']}',
+                    ),
+                  )
+                  .toList(),
+              total: data['total'] as int,
+            );
+          } on dio.DioException {
+            return UuidPageResult(items: const [], total: 0);
+          }
         },
       ),
     );
@@ -127,29 +131,33 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
             if (q != null && q.isNotEmpty) 'q': q,
             if (_countryId != null) 'country_id': _countryId,
           };
-          final res = await client.get(
-            '${AppSecrets.backendUrl}/api/admin/regions',
-            queryParameters: qp,
-            options: dio.Options(
-              headers: {
-                'Accept': 'application/json',
-                if (token != null) 'Authorization': 'Bearer $token',
-              },
-            ),
-          );
-          final data = (res.data as Map).cast<String, dynamic>();
-          final items = (data['items'] as List).cast<dynamic>();
-          return UuidPageResult(
-            items: items
-                .map(
-                  (e) => UuidItem(
-                    id: e['region_id'] as String,
-                    label: '${e['code']} • ${e['name']}',
-                  ),
-                )
-                .toList(),
-            total: data['total'] as int,
-          );
+          try {
+            final res = await client.get(
+              '${AppSecrets.backendUrl}/api/admin/regions',
+              queryParameters: qp,
+              options: dio.Options(
+                headers: {
+                  'Accept': 'application/json',
+                  if (token != null) 'Authorization': 'Bearer $token',
+                },
+              ),
+            );
+            final data = (res.data as Map).cast<String, dynamic>();
+            final items = (data['items'] as List).cast<dynamic>();
+            return UuidPageResult(
+              items: items
+                  .map(
+                    (e) => UuidItem(
+                      id: e['region_id'] as String,
+                      label: '${e['code']} • ${e['name']}',
+                    ),
+                  )
+                  .toList(),
+              total: data['total'] as int,
+            );
+          } on dio.DioException {
+            return UuidPageResult(items: const [], total: 0);
+          }
         },
       ),
     );
