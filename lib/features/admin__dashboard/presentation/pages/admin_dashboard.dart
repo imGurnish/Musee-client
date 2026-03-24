@@ -64,14 +64,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: ElevatedButton.icon(
-                            onPressed: () => context.go(Routes.dashboard),
-                            icon: const Icon(Icons.person),
-                            label: const Text('Browse app as user'),
-                          ),
-                        ),
+                        
                       ],
                     );
                   },

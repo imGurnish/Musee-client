@@ -72,6 +72,7 @@ import 'package:musee/features/user_albums/domain/usecases/get_user_album.dart';
 import 'package:musee/features/user_albums/presentation/bloc/user_album_bloc.dart';
 import 'package:musee/features/user__dashboard/data/datasources/user_dashboard_remote_data_source.dart';
 import 'package:musee/features/user__dashboard/data/repositories/user_dashboard_repository_impl.dart';
+import 'package:musee/features/user__dashboard/data/services/user_dashboard_cache_service.dart';
 import 'package:musee/features/user__dashboard/domain/repository/user_dashboard_repository.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_made_for_you.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_trending.dart';
@@ -156,6 +157,14 @@ Future<void> initDependencies() async {
   await imageCacheService.init();
   serviceLocator.registerLazySingleton<ImageCacheService>(
     () => imageCacheService,
+  );
+
+  final userDashboardCacheService = UserDashboardCacheServiceImpl(
+    serviceLocator<SupabaseClient>(),
+  );
+  await userDashboardCacheService.init();
+  serviceLocator.registerLazySingleton<UserDashboardCacheService>(
+    () => userDashboardCacheService,
   );
 
   // Download Manager
@@ -483,7 +492,7 @@ void _initUserDashboard() {
         serviceLocator<ListMadeForYou>(),
         serviceLocator<ListTrending>(),
         trackCache: serviceLocator<TrackCacheService>(),
-        musicProviderRegistry: serviceLocator<MusicProviderRegistry>(),
+        dashboardCache: serviceLocator<UserDashboardCacheService>(),
       ),
     );
 }

@@ -21,7 +21,8 @@ class HorizontalMediaSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SectionHeader(title: title, onSeeAll: onSeeAll),
+        if (title.trim().isNotEmpty)
+          SectionHeader(title: title, onSeeAll: onSeeAll),
         SizedBox(
           height: cardWidth + 84,
           child: ListView.separated(
@@ -37,6 +38,8 @@ class HorizontalMediaSection extends StatelessWidget {
                   imageUrl: item.imageUrl,
                   localImagePath: item.localImagePath,
                   fallbackIcon: item.icon,
+                  mediaTypeLabel: item.mediaTypeLabel,
+                  isCached: item.isCached,
                   onTap: item.onTap,
                 ),
               );
@@ -56,6 +59,8 @@ class MediaItem {
   final String? imageUrl;
   final String? localImagePath;
   final IconData icon;
+  final String mediaTypeLabel;
+  final bool isCached;
   final VoidCallback? onTap;
 
   const MediaItem({
@@ -64,6 +69,8 @@ class MediaItem {
     this.imageUrl,
     this.localImagePath,
     this.icon = Icons.music_note,
+    this.mediaTypeLabel = 'Track',
+    this.isCached = false,
     this.onTap,
   });
 }

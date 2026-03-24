@@ -1,7 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:musee/core/providers/music_provider_registry.dart';
 import 'package:musee/features/user__dashboard/domain/entities/dashboard_album.dart';
+import 'package:musee/features/user__dashboard/data/services/user_dashboard_cache_service.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_made_for_you.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_trending.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
@@ -87,25 +87,33 @@ class UserDashboardState extends Equatable {
 }
 
 class UserDashboardCubit extends Cubit<UserDashboardState> {
+  static const Duration _madeForYouCacheTtl = Duration(hours: 6);
+
   final ListMadeForYou _listMadeForYou;
   final ListTrending _listTrending;
   final TrackCacheService? _trackCache;
-  final MusicProviderRegistry? _musicProviderRegistry;
+  final UserDashboardCacheService? _dashboardCache;
 
   UserDashboardCubit(
     this._listMadeForYou,
     this._listTrending, {
     TrackCacheService? trackCache,
-    MusicProviderRegistry? musicProviderRegistry,
+    UserDashboardCacheService? dashboardCache,
   }) : _trackCache = trackCache,
-       _musicProviderRegistry = musicProviderRegistry,
+       _dashboardCache = dashboardCache,
        super(const UserDashboardState());
 
-  Future<void> load({int page = 0, int limit = 20}) async {
+  Future<void> load({
+    int page = 0,
+    int limit = 20,
+    bool forceRefresh = false,
+  }) async {
+    final usePersistentCache = !forceRefresh && _dashboardCache != null;
+
     emit(
       state.copyWith(
-        loadingMadeForYou: true,
-        loadingTrending: true,
+        loadingMadeForYou: !usePersistentCache,
+        loadingTrending: !usePersistentCache,
         errorMadeForYou: null,
         errorTrending: null,
       ),
@@ -114,59 +122,150 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
     // Load from cache first (instant display)
     await _loadFromCache();
 
-    try {
-      final results = await Future.wait([
-        _listMadeForYou(page: page, limit: limit),
-        _listTrending(page: page, limit: limit),
-      ]);
+    List<DashboardItem>? backendMadeForYou;
+    String? madeForYouError;
 
-      // Mix External Recommendations into "Made For You"
-      final backendMadeForYou = results[0].items;
-      final trending = results[1].items;
-      final recommendations = state.recommendations;
-
-      final mixedMadeForYou = <DashboardItem>[];
-      final seenIds = <String>{};
-
-      void addUnique(DashboardItem item) {
-        if (!seenIds.contains(item.id)) {
-          seenIds.add(item.id);
-          mixedMadeForYou.add(item);
-        }
-      }
-
-      // Interleave: [Rec, Backend, Rec, Backend...]
-      final maxLen = recommendations.length > backendMadeForYou.length
-          ? recommendations.length
-          : backendMadeForYou.length;
-
-      for (var i = 0; i < maxLen; i++) {
-        if (i < recommendations.length) addUnique(recommendations[i]);
-        if (i < backendMadeForYou.length) addUnique(backendMadeForYou[i]);
-      }
-
-      emit(
-        state.copyWith(
-          loadingMadeForYou: false,
-          loadingTrending: false,
-          madeForYou: mixedMadeForYou.isNotEmpty
-              ? mixedMadeForYou
-              : backendMadeForYou,
-          trending: trending,
-          errorMadeForYou: null,
-          errorTrending: null,
-        ),
+    if (usePersistentCache) {
+      backendMadeForYou = await _dashboardCache!.getMadeForYou(
+        page: page,
+        limit: limit,
+        ttl: _madeForYouCacheTtl,
       );
-    } catch (e) {
-      emit(
-        state.copyWith(
-          loadingMadeForYou: false,
-          loadingTrending: false,
-          errorMadeForYou: e.toString(),
-          errorTrending: e.toString(),
-        ),
+    } else {
+    }
+
+    if (backendMadeForYou == null) {
+      try {
+        final madeForYouResult = await _listMadeForYou(page: page, limit: limit);
+        backendMadeForYou = madeForYouResult.items;
+        await _dashboardCache?.cacheMadeForYou(
+          page: page,
+          limit: limit,
+          items: backendMadeForYou,
+        );
+      } catch (e) {
+        madeForYouError = e.toString();
+      }
+    }
+
+    List<DashboardItem>? trending;
+    String? trendingError;
+    if (usePersistentCache) {
+      trending = await _dashboardCache!.getTrending(
+        page: page,
+        limit: limit,
+        ttl: _madeForYouCacheTtl,
       );
     }
+
+    if (trending == null) {
+      try {
+        final trendingResult = await _listTrending(page: page, limit: limit);
+        trending = trendingResult.items;
+        await _dashboardCache?.cacheTrending(
+          page: page,
+          limit: limit,
+          items: trending,
+        );
+      } catch (e) {
+        trendingError = e.toString();
+      }
+    }
+
+    final effectiveBackendMadeForYou =
+        backendMadeForYou ?? state.madeForYou.where((item) {
+          return item.type == DashboardItemType.track ||
+              item.type == DashboardItemType.album ||
+              item.type == DashboardItemType.playlist;
+        }).toList();
+
+    final decoratedMadeForYou = await _decorateWithCacheState(
+      effectiveBackendMadeForYou,
+    );
+    final decoratedTrending = await _decorateWithCacheState(
+      trending ?? state.trending,
+    );
+
+    final mixedMadeForYou = _mixMadeForYouWithRecommendations(
+      decoratedMadeForYou,
+      state.recommendations,
+    );
+
+    emit(
+      state.copyWith(
+        loadingMadeForYou: false,
+        loadingTrending: false,
+        madeForYou: mixedMadeForYou.isNotEmpty
+            ? mixedMadeForYou
+            : decoratedMadeForYou,
+        trending: decoratedTrending,
+        errorMadeForYou: madeForYouError,
+        errorTrending: trendingError,
+      ),
+    );
+  }
+
+  Future<List<DashboardItem>> _decorateWithCacheState(
+    List<DashboardItem> items,
+  ) async {
+    if (_trackCache == null || items.isEmpty) return items;
+
+    final output = <DashboardItem>[];
+    for (final item in items) {
+      switch (item.type) {
+        case DashboardItemType.track:
+          final trackId = item.trackId ?? item.id;
+          final cachedTrack = await _trackCache.getTrack(trackId);
+          output.add(
+            item.copyWith(
+              isCached: cachedTrack != null,
+              localImagePath: cachedTrack?.localImagePath,
+            ),
+          );
+          break;
+        case DashboardItemType.album:
+          final albumId = item.albumId ?? item.id;
+          final cachedAlbum = await _trackCache.getAlbum(albumId);
+          output.add(
+            item.copyWith(
+              isCached: cachedAlbum != null,
+              localImagePath: cachedAlbum?.localCoverPath,
+            ),
+          );
+          break;
+        case DashboardItemType.playlist:
+          output.add(item.copyWith(isCached: false));
+          break;
+      }
+    }
+
+    return output;
+  }
+
+  List<DashboardItem> _mixMadeForYouWithRecommendations(
+    List<DashboardItem> backendMadeForYou,
+    List<DashboardItem> recommendations,
+  ) {
+    final mixedMadeForYou = <DashboardItem>[];
+    final seenIds = <String>{};
+
+    void addUnique(DashboardItem item) {
+      if (!seenIds.contains(item.id)) {
+        seenIds.add(item.id);
+        mixedMadeForYou.add(item);
+      }
+    }
+
+    final maxLen = recommendations.length > backendMadeForYou.length
+        ? recommendations.length
+        : backendMadeForYou.length;
+
+    for (var i = 0; i < maxLen; i++) {
+      if (i < recommendations.length) addUnique(recommendations[i]);
+      if (i < backendMadeForYou.length) addUnique(backendMadeForYou[i]);
+    }
+
+    return mixedMadeForYou;
   }
 
   Future<void> _loadFromCache() async {
@@ -179,8 +278,6 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
       emit(
         state.copyWith(recentlyPlayed: recentlyPlayed, mostPlayed: mostPlayed),
       );
-
-      await _generateRecommendations(recentlyPlayed);
     } catch (_) {
       // Cache errors are non-fatal, just continue
     }
@@ -198,100 +295,6 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
           lastUpdated: DateTime.now(),
         ),
       );
-      // Update recommendations based on new history
-      await _generateRecommendations(recentlyPlayed);
     } catch (_) {}
-  }
-
-  Future<void> _generateRecommendations(List<CachedTrack> history) async {
-    if (_musicProviderRegistry == null || history.isEmpty) return;
-
-    // Find most frequent artist
-    final artistCounts = <String, int>{};
-    for (final track in history) {
-      final artist = track.artistName;
-      if (artist.isNotEmpty && artist != 'Unknown Artist') {
-        // Handle comma separated artists, take first
-        final primary = artist.split(',').first.trim();
-        if (primary.isNotEmpty) {
-          artistCounts[primary] = (artistCounts[primary] ?? 0) + 1;
-        }
-      }
-    }
-
-    if (artistCounts.isEmpty) return;
-
-    // Sort by count desc
-    final sortedArtists = artistCounts.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    final bestArtistName = sortedArtists.first.key;
-
-    try {
-      // Search for this artist (External provider usually gives best variety)
-      final results = await _musicProviderRegistry.search(
-        bestArtistName,
-        limitPerProvider: 5,
-      );
-
-      // Filter out tracks already in recently played
-      final historyTitles = history.map((e) => e.title.toLowerCase()).toSet();
-
-      final items = <DashboardItem>[];
-
-      // Prefer tracks from search results
-      for (final track in results.tracks) {
-        if (historyTitles.contains(track.title.toLowerCase())) continue;
-
-        items.add(
-          DashboardItem(
-            id: track.prefixedId,
-            trackId: track.prefixedId,
-            albumId: track.albumId,
-            title: track.title,
-            coverUrl: track.imageUrl,
-            duration: track.durationSeconds,
-            artists: track.artists
-                .map(
-                  (a) => DashboardArtist(artistId: a.prefixedId, name: a.name),
-                )
-                .toList(),
-            type: DashboardItemType.track,
-          ),
-        );
-      }
-
-      // Also maybe albums?
-      for (final album in results.albums) {
-        items.add(
-          DashboardItem(
-            id: album.prefixedId,
-            albumId: album.prefixedId,
-            title: album.title,
-            coverUrl: album.coverUrl,
-            duration: null,
-            artists: album.artists
-                .map(
-                  (a) => DashboardArtist(artistId: a.prefixedId, name: a.name),
-                )
-                .toList(),
-            type: DashboardItemType.album,
-          ),
-        );
-      }
-
-      // Shuffle/Interleave or just take tracks first
-      // Let's take top 10 items
-      if (items.isNotEmpty) {
-        emit(
-          state.copyWith(
-            recommendations: items.take(10).toList(),
-            recommendationTitle: 'Because you listen to $bestArtistName',
-          ),
-        );
-      }
-    } catch (_) {
-      // ignore
-    }
   }
 }
