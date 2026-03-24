@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart' as dio;
 import 'package:flutter/foundation.dart';
@@ -30,6 +31,7 @@ class AdminExternalImportService {
   final SupabaseClient supabase;
   final dio.Dio _dio;
   String? _cachedValidRegionId;
+  final Map<String, JioSaavnArtistDetail?> _artistDetailCache = {};
 
   AdminExternalImportService({
     required this.jioApi,
@@ -170,10 +172,149 @@ class AdminExternalImportService {
 
       final playlist = await jioApi.getPlaylistDetails(externalPlaylistId);
 
-      final importedTrackIds = <String>[];
+      final albumCache = <String, JioSaavnAlbumDetail>{};
+      final enrichedSongs = <JioSaavnSongDetail>[];
+      final artistExternalIds = <String>{};
+
       for (final song in playlist.songs) {
-        final result = await _importSong(song);
-        importedTrackIds.add(result.entityId);
+        final hydratedSong = await _hydrateSongForImport(song);
+        final mergedArtists = <JioSaavnArtistMeta>[];
+        final dedupeKeys = <String>{};
+        JioSaavnSongDetail? albumMatchedSong;
+
+        void addArtist(JioSaavnArtistMeta artist) {
+          final ext = artist.externalId.trim();
+          final name = artist.name.trim().toLowerCase();
+          final key = '${ext.isNotEmpty ? ext : name}::$name';
+          if (!dedupeKeys.add(key)) return;
+          mergedArtists.add(artist);
+          if (ext.isNotEmpty && ext != 'unknown' && !ext.startsWith('unknown-')) {
+            artistExternalIds.add(ext);
+          }
+        }
+
+        for (final artist in hydratedSong.artists) {
+          addArtist(artist);
+        }
+
+        final albumId = hydratedSong.albumId?.trim();
+        if (albumId != null && albumId.isNotEmpty) {
+          JioSaavnAlbumDetail? albumDetail = albumCache[albumId];
+          if (albumDetail == null) {
+            try {
+              albumDetail = await jioApi.getAlbumDetails(albumId);
+              albumCache[albumId] = albumDetail;
+            } catch (_) {
+              albumDetail = null;
+            }
+          }
+          if (albumDetail != null) {
+            albumMatchedSong = albumDetail.songs
+                .where((track) => track.id.trim().isNotEmpty)
+                .cast<JioSaavnSongDetail?>()
+                .firstWhere(
+                  (track) =>
+                      track != null &&
+                      track.id.trim() == hydratedSong.id.trim(),
+                  orElse: () => null,
+                );
+
+            albumMatchedSong ??= albumDetail.songs
+                .cast<JioSaavnSongDetail?>()
+                .firstWhere(
+                  (track) =>
+                      track != null &&
+                      track.title.trim().toLowerCase() ==
+                          hydratedSong.title.trim().toLowerCase(),
+                  orElse: () => null,
+                );
+
+            if (albumMatchedSong != null) {
+              for (final artist in albumMatchedSong.artists) {
+                addArtist(artist);
+              }
+            }
+            for (final artist in albumDetail.artists) {
+              addArtist(artist);
+            }
+
+            if (mergedArtists.isEmpty) {
+              for (final track in albumDetail.songs) {
+                for (final artist in track.artists) {
+                  addArtist(artist);
+                }
+              }
+            }
+          }
+        }
+
+        enrichedSongs.add(
+          JioSaavnSongDetail(
+            id: hydratedSong.id,
+            title: hydratedSong.title,
+            albumId: _pickFirstNonEmpty(hydratedSong.albumId, albumMatchedSong?.albumId),
+            albumTitle: _pickFirstNonEmpty(
+              hydratedSong.albumTitle,
+              albumMatchedSong?.albumTitle,
+            ),
+            imageUrl: _pickFirstNonEmpty(hydratedSong.imageUrl, albumMatchedSong?.imageUrl),
+            language: _pickFirstNonEmpty(hydratedSong.language, albumMatchedSong?.language),
+            releaseDate: _pickFirstNonEmpty(hydratedSong.releaseDate, albumMatchedSong?.releaseDate),
+            duration: hydratedSong.duration > 0
+                ? hydratedSong.duration
+                : (albumMatchedSong?.duration ?? 0),
+            permaUrl: _pickFirstNonEmpty(hydratedSong.permaUrl, albumMatchedSong?.permaUrl),
+            hasLyrics: hydratedSong.hasLyrics ?? albumMatchedSong?.hasLyrics,
+            isDrm: hydratedSong.isDrm ?? albumMatchedSong?.isDrm,
+            isDolbyContent:
+                hydratedSong.isDolbyContent ?? albumMatchedSong?.isDolbyContent,
+            has320kbps: hydratedSong.has320kbps ?? albumMatchedSong?.has320kbps,
+            encryptedDrmMediaUrl: _pickFirstNonEmpty(
+              hydratedSong.encryptedDrmMediaUrl,
+              albumMatchedSong?.encryptedDrmMediaUrl,
+            ),
+            encryptedMediaPath: _pickFirstNonEmpty(
+              hydratedSong.encryptedMediaPath,
+              albumMatchedSong?.encryptedMediaPath,
+            ),
+            rights: hydratedSong.rights ?? albumMatchedSong?.rights,
+            encryptedMediaUrl: _pickFirstNonEmpty(
+              hydratedSong.encryptedMediaUrl,
+              albumMatchedSong?.encryptedMediaUrl,
+            ),
+            mediaPreviewUrl: _pickFirstNonEmpty(
+              hydratedSong.mediaPreviewUrl,
+              albumMatchedSong?.mediaPreviewUrl,
+            ),
+            artists: mergedArtists,
+            rawPayload: {
+              ...hydratedSong.rawPayload,
+              if (albumMatchedSong != null) ...albumMatchedSong.rawPayload,
+            },
+          ),
+        );
+      }
+
+      for (final artistExternalId in artistExternalIds) {
+        await _fetchArtistDetailSafe(artistExternalId);
+      }
+
+      final importedTrackIds = <String>[];
+      for (final song in enrichedSongs) {
+        try {
+          final result = await _importSong(song);
+          importedTrackIds.add(result.entityId);
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('Skipping playlist track ${song.id}/${song.title}: $e');
+          }
+        }
+      }
+
+      if (importedTrackIds.isEmpty) {
+        throw Exception(
+          'Playlist has no resolvable artist metadata after track, album, and artist API enrichment',
+        );
       }
 
       final playlistId = await _createPlaylist(
@@ -218,11 +359,13 @@ class AdminExternalImportService {
     JioSaavnSongDetail song, {
     String? fallbackAlbumId,
   }) async {
+    final hydratedSong = await _hydrateSongForImport(song);
+
     final existingTrack = await _findExistingByExt(
       table: 'tracks',
       idColumn: 'track_id',
       extColumn: 'ext_track_id',
-      extId: song.id,
+      extId: hydratedSong.id,
     );
     if (existingTrack != null) {
       return ExternalImportResult(
@@ -231,12 +374,15 @@ class AdminExternalImportService {
       );
     }
 
-    final albumId = fallbackAlbumId ?? await _ensureAlbumForSong(song);
+    final albumId = fallbackAlbumId ?? await _ensureAlbumForSong(hydratedSong);
     final artistIds = <String>[];
-    for (final artist in song.artists) {
+    for (final artist in hydratedSong.artists) {
       if (_isUnknownArtist(artist)) continue;
       artistIds.add(
-        await _ensureArtist(artist, contextSummary: _buildTrackArtistBio(song)),
+        await _ensureArtist(
+          artist,
+          contextSummary: _buildTrackArtistBio(hydratedSong),
+        ),
       );
     }
     if (artistIds.isEmpty) {
@@ -246,16 +392,16 @@ class AdminExternalImportService {
       }
     }
     if (artistIds.isEmpty) {
-      throw Exception('Track ${song.title} has no valid artist to import');
+      throw Exception('Track ${hydratedSong.title} has no valid artist to import');
     }
 
-    final audio = await jioApi.downloadSongAudio(song);
+    final audio = await jioApi.downloadSongAudio(hydratedSong);
 
     final createdTrack = await _createTrackWithFallback(
-      song: song,
+      song: hydratedSong,
       albumId: albumId,
-      externalAlbumId: song.albumId,
-      albumImageUrl: song.imageUrl,
+      externalAlbumId: hydratedSong.albumId,
+      albumImageUrl: hydratedSong.imageUrl,
       audioBytes: audio.$1,
       audioFilename: audio.$2,
       artists: artistIds,
@@ -281,7 +427,12 @@ class AdminExternalImportService {
     final albumDetail = await jioApi.getAlbumDetails(extAlbumId);
     final ownerMeta =
         _firstValidArtist(albumDetail.artists) ??
-        _firstValidArtist(song.artists);
+      _firstValidArtist(song.artists) ??
+      _firstValidArtist(
+        albumDetail.songs
+          .expand((track) => track.artists)
+          .toList(),
+      );
     if (ownerMeta == null) {
       throw Exception(
         'Song ${song.title} has no valid artist metadata to import',
@@ -370,12 +521,15 @@ class AdminExternalImportService {
       if (existing != null) return existing;
     }
 
+    final resolvedName = _pickFirstNonEmpty(detail?.name, artist.name);
+    if (resolvedName == null || resolvedName.trim().isEmpty) {
+      throw Exception('Refusing to create unknown artist');
+    }
+
     final avatarBytes = await jioApi.downloadImage(
-      detail?.imageUrl ?? artist.imageUrl,
+      _pickFirstNonEmpty(detail?.imageUrl, artist.imageUrl),
     );
-    final name = (detail?.name ?? artist.name).trim().isEmpty
-        ? 'Unknown Artist'
-        : (detail?.name ?? artist.name).trim();
+    final name = resolvedName.trim();
     final safeLocalPart = name
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
@@ -393,13 +547,13 @@ class AdminExternalImportService {
           : null,
       externalArtistId: ext.isEmpty ? null : ext,
       source: 'jiosaavn',
-      externalUrl: detail?.permaUrl,
-      imageUrl: detail?.imageUrl ?? artist.imageUrl,
+      externalUrl: _pickFirstNonEmpty(detail?.permaUrl, null),
+      imageUrl: _pickFirstNonEmpty(detail?.imageUrl, artist.imageUrl),
       externalPayload: detail?.rawPayload,
       bio: _buildArtistBio(
         name: name,
         contextSummary: contextSummary,
-        preferredBio: detail?.bio,
+        preferredBio: _pickFirstNonEmpty(detail?.bio, null),
       ),
     );
 
@@ -440,17 +594,20 @@ class AdminExternalImportService {
     int? trackCount,
     Map<String, dynamic>? externalPayload,
   }) async {
+    final safeTitle = title.trim().isNotEmpty
+        ? title.trim()
+        : 'Playlist $externalPlaylistId';
     final coverBytes = await jioApi.downloadImage(coverUrl);
     final resolvedDescription =
         (description != null && description.trim().isNotEmpty)
         ? description.trim()
         : _buildPlaylistDescription(
-            title: title,
+            title: safeTitle,
             language: language,
             trackCount: trackCount,
           );
     final form = dio.FormData();
-    form.fields.add(MapEntry('name', title));
+    form.fields.add(MapEntry('name', safeTitle));
     if (resolvedDescription.isNotEmpty) {
       form.fields.add(MapEntry('description', resolvedDescription));
     }
@@ -492,7 +649,7 @@ class AdminExternalImportService {
       );
     } on dio.DioException {
       final fallback = dio.FormData();
-      fallback.fields.add(MapEntry('name', title));
+      fallback.fields.add(MapEntry('name', safeTitle));
       if (resolvedDescription.isNotEmpty) {
         fallback.fields.add(MapEntry('description', resolvedDescription));
       }
@@ -547,6 +704,39 @@ class AdminExternalImportService {
       },
     );
     return playlistId;
+  }
+
+  Future<JioSaavnSongDetail> _hydrateSongForImport(
+    JioSaavnSongDetail song,
+  ) async {
+    if (song.id.trim().isEmpty) return song;
+    try {
+      final detail = await jioApi.getSongDetails(song.id);
+      return JioSaavnSongDetail(
+        id: detail.id,
+        title: detail.title.isNotEmpty ? detail.title : song.title,
+        albumId: detail.albumId ?? song.albumId,
+        albumTitle: detail.albumTitle ?? song.albumTitle,
+        imageUrl: detail.imageUrl ?? song.imageUrl,
+        language: detail.language ?? song.language,
+        releaseDate: detail.releaseDate ?? song.releaseDate,
+        duration: detail.duration > 0 ? detail.duration : song.duration,
+        permaUrl: detail.permaUrl ?? song.permaUrl,
+        hasLyrics: detail.hasLyrics ?? song.hasLyrics,
+        isDrm: detail.isDrm ?? song.isDrm,
+        isDolbyContent: detail.isDolbyContent ?? song.isDolbyContent,
+        has320kbps: detail.has320kbps ?? song.has320kbps,
+        encryptedDrmMediaUrl: detail.encryptedDrmMediaUrl ?? song.encryptedDrmMediaUrl,
+        encryptedMediaPath: detail.encryptedMediaPath ?? song.encryptedMediaPath,
+        rights: detail.rights ?? song.rights,
+        encryptedMediaUrl: detail.encryptedMediaUrl ?? song.encryptedMediaUrl,
+        mediaPreviewUrl: detail.mediaPreviewUrl ?? song.mediaPreviewUrl,
+        artists: detail.artists.isNotEmpty ? detail.artists : song.artists,
+        rawPayload: detail.rawPayload.isNotEmpty ? detail.rawPayload : song.rawPayload,
+      );
+    } catch (_) {
+      return song;
+    }
   }
 
   Future<dynamic> _createArtistWithFallback({
@@ -663,13 +853,11 @@ class AdminExternalImportService {
   bool _isUnknownArtist(JioSaavnArtistMeta artist) {
     final name = artist.name.trim().toLowerCase();
     final ext = artist.externalId.trim().toLowerCase();
-    if (name.isEmpty || name == 'unknown artist' || name == 'unknown') {
-      return true;
-    }
-    if (ext.isEmpty || ext.startsWith('unknown-') || ext == 'unknown') {
-      return true;
-    }
-    return false;
+    final invalidName =
+        name.isEmpty || name == 'unknown artist' || name == 'unknown';
+    final invalidExternalId =
+        ext.isEmpty || ext.startsWith('unknown-') || ext == 'unknown';
+    return invalidName && invalidExternalId;
   }
 
   JioSaavnArtistMeta? _firstValidArtist(List<JioSaavnArtistMeta> artists) {
@@ -1134,11 +1322,23 @@ class AdminExternalImportService {
 
   Future<JioSaavnArtistDetail?> _fetchArtistDetailSafe(String externalArtistId) async {
     if (externalArtistId.trim().isEmpty) return null;
+    if (_artistDetailCache.containsKey(externalArtistId)) {
+      return _artistDetailCache[externalArtistId];
+    }
     try {
-      return await jioApi.getArtistDetails(externalArtistId);
+      final detail = await jioApi.getArtistDetails(externalArtistId);
+      _artistDetailCache[externalArtistId] = detail;
+      return detail;
     } catch (_) {
+      _artistDetailCache[externalArtistId] = null;
       return null;
     }
+  }
+
+  String? _pickFirstNonEmpty(String? preferred, String? fallback) {
+    if (preferred != null && preferred.trim().isNotEmpty) return preferred;
+    if (fallback != null && fallback.trim().isNotEmpty) return fallback;
+    return null;
   }
 
   String _buildPlaylistDescription({

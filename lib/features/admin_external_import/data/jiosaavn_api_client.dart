@@ -285,10 +285,7 @@ class JioSaavnApiClient {
         .map((song) => _songFromJson(song.cast<String, dynamic>()))
         .toList();
 
-    final albumArtistMap = _extractArtistMapFromValue(data['artistMap']);
-    final artists = albumArtistMap.entries
-        .map((entry) => JioSaavnArtistMeta(externalId: entry.value, name: entry.key))
-        .toList();
+    final artists = _extractArtistsFromJson(data);
 
     String? language;
     if (songs.isNotEmpty) {
@@ -318,15 +315,40 @@ class JioSaavnApiClient {
       throw Exception('Invalid playlist details response');
     }
 
-    final songs = ((data['list'] as List?) ?? const [])
-        .whereType<Map>()
-        .map((song) => _songFromJson(song.cast<String, dynamic>()))
-        .where((song) => song.id.isNotEmpty)
-        .toList();
+    final songs = <JioSaavnSongDetail>[];
+
+    final inlineSongs =
+        ((data['songs'] as List?) ??
+            (data['list'] as List?) ??
+            const <dynamic>[])
+            .whereType<Map>()
+            .map((song) => _songFromJson(song.cast<String, dynamic>()))
+            .where((song) => song.id.isNotEmpty)
+            .toList();
+
+    songs.addAll(inlineSongs);
+
+    if (songs.isEmpty) {
+      final contentIds = ((data['content_list'] as List?) ?? const <dynamic>[])
+          .map((entry) => _normalizeToken(entry?.toString() ?? ''))
+          .where((id) => id.isNotEmpty)
+          .toList();
+
+      for (final contentId in contentIds) {
+        try {
+          final detailedSong = await getSongDetails(contentId);
+          if (detailedSong.id.isNotEmpty) {
+            songs.add(detailedSong);
+          }
+        } catch (_) {}
+      }
+    }
 
     return JioSaavnPlaylistDetail(
       id: data['listid']?.toString() ?? playlistId,
-      title: _decodeHtml(data['title']?.toString() ?? ''),
+      title: _decodeHtml(
+        data['title']?.toString() ?? data['listname']?.toString() ?? '',
+      ),
       subtitle: _decodeHtml(data['subtitle']?.toString() ?? data['listname']?.toString() ?? ''),
       imageUrl: _toLargeImage(data['image']?.toString()),
       language: data['language']?.toString(),
@@ -430,10 +452,7 @@ class JioSaavnApiClient {
   }
 
   JioSaavnSongDetail _songFromJson(Map<String, dynamic> json) {
-    final artistMap = _extractArtistMapFromValue(json['artistMap']);
-    final artists = artistMap.entries
-        .map((entry) => JioSaavnArtistMeta(externalId: entry.value, name: entry.key))
-        .toList();
+    final artists = _extractArtistsFromJson(json);
 
     return JioSaavnSongDetail(
       id: json['id']?.toString() ?? '',
@@ -464,6 +483,7 @@ class JioSaavnApiClient {
     required String fallbackId,
   }) {
     final id = json['id']?.toString() ??
+        json['artistId']?.toString() ??
         json['artistid']?.toString() ??
         fallbackId;
     final name = _decodeHtml(
@@ -482,7 +502,7 @@ class JioSaavnApiClient {
     return JioSaavnArtistDetail(
       id: id,
       name: name,
-      imageUrl: _toLargeImage(json['image']?.toString()),
+      imageUrl: _extractImageUrl(json['image']),
       bio: bio.isEmpty ? null : bio,
       language: json['language']?.toString(),
       permaUrl: json['perma_url']?.toString(),
@@ -491,10 +511,179 @@ class JioSaavnApiClient {
   }
 
   Map<String, String> _extractArtistMapFromValue(dynamic value) {
+    final map = <String, String>{};
+
     if (value is Map<String, dynamic>) {
-      return value.map((key, val) => MapEntry(key.toString(), val.toString()));
+      for (final entry in value.entries) {
+        final key = _decodeHtml(entry.key.toString());
+        final val = entry.value;
+
+        if (val is String) {
+          final normalizedId = _normalizeExternalId(val);
+          if (key.isNotEmpty) {
+            map[key] = normalizedId;
+          }
+          continue;
+        }
+
+        if (val is Map) {
+          final artistName = _decodeHtml(
+            val['name']?.toString() ?? key,
+          );
+          final normalizedId = _normalizeExternalId(
+            val['id']?.toString() ?? val['artistid']?.toString() ?? val['artistId']?.toString(),
+          );
+          if (artistName.isNotEmpty) {
+            map[artistName] = normalizedId;
+          }
+          continue;
+        }
+
+        if (val is List) {
+          for (final item in val) {
+            if (item is Map) {
+              final artistName = _decodeHtml(
+                item['name']?.toString() ?? '',
+              );
+              final normalizedId = _normalizeExternalId(
+                item['id']?.toString() ?? item['artistid']?.toString() ?? item['artistId']?.toString(),
+              );
+              if (artistName.isNotEmpty) {
+                map[artistName] = normalizedId;
+              }
+            }
+          }
+        }
+      }
     }
-    return const {};
+
+    return map;
+  }
+
+  List<JioSaavnArtistMeta> _extractArtistsFromJson(Map<String, dynamic> json) {
+    final artistByName = <String, JioSaavnArtistMeta>{};
+
+    void addArtist(String? rawName, String? rawId, {String? rawImage}) {
+      final name = _decodeHtml(rawName?.toString() ?? '');
+      if (name.isEmpty) return;
+      final key = name.toLowerCase();
+      if (key == 'unknown' || key == 'unknown artist') return;
+
+      final id = _normalizeExternalId(rawId);
+      final image = _toLargeImage(rawImage);
+      final existing = artistByName[key];
+
+      if (existing == null) {
+        artistByName[key] = JioSaavnArtistMeta(
+          externalId: id,
+          name: name,
+          imageUrl: image,
+        );
+        return;
+      }
+
+      if (existing.externalId.isEmpty && id.isNotEmpty) {
+        artistByName[key] = JioSaavnArtistMeta(
+          externalId: id,
+          name: existing.name,
+          imageUrl: existing.imageUrl ?? image,
+        );
+      }
+    }
+
+    final artistMap = _extractArtistMapFromValue(json['artistMap']);
+    for (final entry in artistMap.entries) {
+      addArtist(entry.key, entry.value);
+    }
+
+    final directArtists = json['artists'];
+    if (directArtists is List) {
+      for (final item in directArtists) {
+        if (item is Map) {
+          addArtist(
+            item['name']?.toString(),
+            item['id']?.toString() ?? item['artistid']?.toString() ?? item['artistId']?.toString(),
+            rawImage: item['image']?.toString(),
+          );
+        }
+      }
+    }
+
+    _addArtistsFromParallelStrings(
+      addArtist,
+      names: json['primary_artists']?.toString(),
+      ids: json['primary_artists_id']?.toString(),
+    );
+    _addArtistsFromParallelStrings(
+      addArtist,
+      names: json['featured_artists']?.toString(),
+      ids: json['featured_artists_id']?.toString(),
+    );
+    _addArtistsFromParallelStrings(
+      addArtist,
+      names: json['singers']?.toString(),
+      ids: json['singers_id']?.toString(),
+    );
+
+    return artistByName.values.toList();
+  }
+
+  void _addArtistsFromParallelStrings(
+    void Function(String? name, String? id, {String? rawImage}) addArtist, {
+    required String? names,
+    required String? ids,
+  }) {
+    final nameParts = _splitCsvPreserve(names);
+    if (nameParts.isEmpty) return;
+    final idParts = _splitCsvPreserve(ids);
+
+    for (var i = 0; i < nameParts.length; i++) {
+      final id = i < idParts.length ? idParts[i] : null;
+      addArtist(nameParts[i], id);
+    }
+  }
+
+  List<String> _splitCsvPreserve(String? value) {
+    if (value == null) return const [];
+    return value
+        .split(',')
+        .map((part) => _decodeHtml(part).trim())
+        .where((part) => part.isNotEmpty)
+        .toList();
+  }
+
+  String _normalizeExternalId(String? value) {
+    final normalized = _normalizeToken(value ?? '');
+    if (normalized.isEmpty) return '';
+    if (normalized.toLowerCase() == 'unknown' || normalized.toLowerCase().startsWith('unknown-')) {
+      return '';
+    }
+    return normalized;
+  }
+
+  String? _extractImageUrl(dynamic imageValue) {
+    if (imageValue == null) return null;
+    if (imageValue is String) return _toLargeImage(imageValue);
+    if (imageValue is List) {
+      for (final item in imageValue.reversed) {
+        if (item is String && item.isNotEmpty) {
+          return _toLargeImage(item);
+        }
+        if (item is Map) {
+          final link = item['link']?.toString() ?? item['url']?.toString();
+          if (link != null && link.isNotEmpty) {
+            return _toLargeImage(link);
+          }
+        }
+      }
+    }
+    if (imageValue is Map) {
+      final link = imageValue['link']?.toString() ?? imageValue['url']?.toString();
+      if (link != null && link.isNotEmpty) {
+        return _toLargeImage(link);
+      }
+    }
+    return null;
   }
 
   Map<String, dynamic>? _extractSongFromApiResponse(
@@ -552,6 +741,10 @@ class JioSaavnApiClient {
       }
 
       if (data['id'] != null || data['artistid'] != null || data['name'] != null) {
+        return data;
+      }
+
+      if (data['artistId'] != null || data['title'] != null) {
         return data;
       }
 
