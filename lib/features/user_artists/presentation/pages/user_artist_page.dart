@@ -33,13 +33,14 @@ class _UserArtistPageState extends State<UserArtistPage> {
   Widget build(BuildContext context) {
     return BlocProvider<UserArtistBloc>.value(
       value: _bloc,
-      child: const _UserArtistView(),
+      child: _UserArtistView(artistId: widget.artistId),
     );
   }
 }
 
 class _UserArtistView extends StatelessWidget {
-  const _UserArtistView();
+  final String artistId;
+  const _UserArtistView({required this.artistId});
 
   @override
   Widget build(BuildContext context) {
@@ -50,70 +51,163 @@ class _UserArtistView extends StatelessWidget {
         child: BlocBuilder<UserArtistBloc, UserArtistState>(
           builder: (context, state) {
             if (state.isLoading) {
-              return const Center(child: CircularProgressIndicator());
+              return const _ArtistLoadingView();
             }
+
             if (state.error != null) {
               return Center(
-                child: Text('Failed to load artist: ${state.error}'),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.error_outline_rounded,
+                        size: 48,
+                        color: theme.colorScheme.error,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Failed to load artist',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '${state.error}',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: () => context.read<UserArtistBloc>().add(
+                          UserArtistLoadRequested(artistId),
+                        ),
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Try again'),
+                      ),
+                    ],
+                  ),
+                ),
               );
             }
-            final a = state.artist!;
 
-            return CustomScrollView(
-              slivers: [
-                SliverAppBar(
-                  pinned: true,
-                  expandedHeight: 300,
-                  backgroundColor: theme.colorScheme.surface,
-                  flexibleSpace: FlexibleSpaceBar(
-                    collapseMode: CollapseMode.parallax,
-                    background: _ArtistHeader(
-                      name: a.name ?? 'Unknown Artist',
-                      coverUrl: a.coverUrl,
-                      avatarUrl: a.avatarUrl,
-                      monthlyListeners: a.monthlyListeners,
-                      genres: a.genres,
-                    ),
-                  ),
-                ),
+            final artist = state.artist;
+            if (artist == null) {
+              return const Center(child: Text('Artist not found'));
+            }
 
-                // Albums grid
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    child: Text(
-                      'Albums',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
+            return RefreshIndicator.adaptive(
+              onRefresh: () async {
+                context.read<UserArtistBloc>().add(
+                  UserArtistLoadRequested(artistId),
+                );
+              },
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final width = constraints.maxWidth;
+                  final crossAxisCount = width < 420
+                      ? 2
+                      : (width < 760 ? 3 : 4);
+
+                  late final Widget albumsSection;
+                  if (artist.albums.isEmpty) {
+                    albumsSection = SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.album_outlined,
+                                size: 44,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                'No albums available',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                ),
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  sliver: SliverGrid(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      final alb = a.albums[index];
-                      return _AlbumCard(
-                        title: alb.title,
-                        coverUrl: alb.coverUrl,
-                        onTap: () => context.push('/albums/${alb.albumId}'),
-                      );
-                    }, childCount: a.albums.length),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
+                    );
+                  } else {
+                    albumsSection = SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                      sliver: SliverGrid(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final album = artist.albums[index];
+                          return _AlbumCard(
+                            title: album.title,
+                            coverUrl: album.coverUrl,
+                            onTap: () =>
+                                context.push('/albums/${album.albumId}'),
+                          );
+                        }, childCount: artist.albums.length),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxisCount,
                           mainAxisSpacing: 12,
                           crossAxisSpacing: 12,
-                          childAspectRatio: 3 / 4,
+                          childAspectRatio: 0.66,
                         ),
-                  ),
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
-              ],
+                      ),
+                    );
+                  }
+
+                  return CustomScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      SliverAppBar(
+                        pinned: true,
+                        stretch: true,
+                        expandedHeight: 320,
+                        backgroundColor: theme.colorScheme.surface,
+                        surfaceTintColor: theme.colorScheme.surface,
+                        title: Text(
+                          artist.name ?? 'Artist',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        flexibleSpace: FlexibleSpaceBar(
+                          collapseMode: CollapseMode.parallax,
+                          stretchModes: const [
+                            StretchMode.zoomBackground,
+                            StretchMode.fadeTitle,
+                          ],
+                          background: _ArtistHeader(
+                            name: artist.name ?? 'Unknown Artist',
+                            coverUrl: artist.coverUrl,
+                            avatarUrl: artist.avatarUrl,
+                            monthlyListeners: artist.monthlyListeners,
+                            genres: artist.genres,
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                          child: Text(
+                            'Albums',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                      albumsSection,
+                    ],
+                  );
+                },
+              ),
             );
           },
         ),
@@ -129,6 +223,7 @@ class _ArtistHeader extends StatelessWidget {
   final String? avatarUrl;
   final int? monthlyListeners;
   final List<String> genres;
+
   const _ArtistHeader({
     required this.name,
     this.coverUrl,
@@ -141,16 +236,21 @@ class _ArtistHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isNarrow = MediaQuery.of(context).size.width < 600;
+    final textColor = theme.colorScheme.onPrimary;
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Cover backdrop
         if (coverUrl != null)
-          Image.network(coverUrl!, fit: BoxFit.cover)
+          Image.network(
+            coverUrl!,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) {
+              return Container(color: theme.colorScheme.surfaceContainerHigh);
+            },
+          )
         else
           Container(color: theme.colorScheme.surfaceContainerHigh),
-        // Gradient overlay
         DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -158,13 +258,12 @@ class _ArtistHeader extends StatelessWidget {
               end: Alignment.bottomCenter,
               colors: [
                 Colors.black.withValues(alpha: 0.4),
-                Colors.black.withValues(alpha: 0.2),
+                Colors.black.withValues(alpha: 0.1),
                 Colors.black.withValues(alpha: 0.5),
               ],
             ),
           ),
         ),
-        // Foreground content
         Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -179,7 +278,7 @@ class _ArtistHeader extends StatelessWidget {
                     ? const Icon(Icons.person, size: 48)
                     : null,
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -191,38 +290,26 @@ class _ArtistHeader extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: isNarrow
                           ? theme.textTheme.headlineSmall?.copyWith(
-                              color: Colors.white,
+                              color: textColor,
                               fontWeight: FontWeight.w900,
                             )
                           : theme.textTheme.displaySmall?.copyWith(
-                              color: Colors.white,
+                              color: textColor,
                               fontWeight: FontWeight.w900,
                             ),
                     ),
-                    const SizedBox(height: 4),
-                    Row(
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         if (monthlyListeners != null)
-                          Text(
-                            '${_formatNumber(monthlyListeners!)} monthly listeners',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: Colors.white70,
-                            ),
+                          _HeaderChip(
+                            label:
+                                '${_formatNumber(monthlyListeners!)} monthly listeners',
                           ),
-                        if (genres.isNotEmpty) ...[
-                          if (monthlyListeners != null)
-                            const SizedBox(width: 12),
-                          Flexible(
-                            child: Text(
-                              genres.take(3).join(' • '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ),
-                        ],
+                        for (final genre in genres.take(2))
+                          _HeaderChip(label: genre),
                       ],
                     ),
                   ],
@@ -246,35 +333,113 @@ class _AlbumCard extends StatelessWidget {
   final String title;
   final String? coverUrl;
   final VoidCallback onTap;
+
   const _AlbumCard({required this.title, this.coverUrl, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: coverUrl != null && coverUrl!.isNotEmpty
-                  ? Image.network(coverUrl!, fit: BoxFit.cover)
-                  : Container(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      child: const Icon(Icons.album_rounded, size: 48),
-                    ),
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  color: theme.colorScheme.surfaceContainerHighest,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: coverUrl != null && coverUrl!.isNotEmpty
+                      ? Image.network(
+                          coverUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) {
+                            return Center(
+                              child: Icon(
+                                Icons.album_rounded,
+                                size: 44,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            );
+                          },
+                        )
+                      : Center(
+                          child: Icon(
+                            Icons.album_rounded,
+                            size: 44,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeaderChip extends StatelessWidget {
+  final String label;
+  const _HeaderChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.24),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onPrimary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _ArtistLoadingView extends StatelessWidget {
+  const _ArtistLoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 12),
           Text(
-            title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              fontWeight: FontWeight.w700,
+            'Loading artist...',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         ],
