@@ -49,18 +49,40 @@ class CatalogTrack {
   });
 }
 
+class CatalogPlaylist {
+  final String playlistId;
+  final String name;
+  final String? coverUrl;
+  final String? creatorName;
+  final SearchSource source;
+
+  CatalogPlaylist({
+    required this.playlistId,
+    required this.name,
+    this.coverUrl,
+    this.creatorName,
+    this.source = SearchSource.catalog,
+  });
+}
+
 class CatalogSearchResults {
   final List<CatalogTrack> tracks;
   final List<CatalogAlbum> albums;
   final List<CatalogArtist> artists;
+  final List<CatalogPlaylist> playlists;
 
   const CatalogSearchResults({
     this.tracks = const [],
     this.albums = const [],
     this.artists = const [],
+    this.playlists = const [],
   });
 
-  bool get isEmpty => tracks.isEmpty && albums.isEmpty && artists.isEmpty;
+  bool get isEmpty =>
+      tracks.isEmpty &&
+      albums.isEmpty &&
+      artists.isEmpty &&
+      playlists.isEmpty;
 
   /// Merge two search results (e.g., catalog + External).
   CatalogSearchResults merge(CatalogSearchResults other) {
@@ -68,6 +90,7 @@ class CatalogSearchResults {
       tracks: [...tracks, ...other.tracks],
       albums: [...albums, ...other.albums],
       artists: [...artists, ...other.artists],
+      playlists: [...playlists, ...other.playlists],
     );
   }
 }

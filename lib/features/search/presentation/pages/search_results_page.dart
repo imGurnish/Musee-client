@@ -141,21 +141,44 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
   Widget _buildStateBasedContent(BuildContext context, SearchState state) {
     return switch (state) {
       SearchQueryLoading() => const Loader(),
-      SearchResultsLoaded(results: final results) => _buildCatalogSearchResults(
+      SearchResultsLoaded(
+        results: final results,
+        cachedTrackIds: final cachedTrackIds,
+        cachedAlbumIds: final cachedAlbumIds,
+        cachedPlaylistIds: final cachedPlaylistIds,
+        fromOfflineCache: final fromOfflineCache,
+      ) => _buildCatalogSearchResults(
         results,
+        cachedTrackIds: cachedTrackIds,
+        cachedAlbumIds: cachedAlbumIds,
+        cachedPlaylistIds: cachedPlaylistIds,
+        fromOfflineCache: fromOfflineCache,
       ),
       VideosError() => _buildErrorState(),
       _ => _buildInitialState(),
     };
   }
 
-  Widget _buildCatalogSearchResults(CatalogSearchResults results) {
+  Widget _buildCatalogSearchResults(
+    CatalogSearchResults results, {
+    required Set<String> cachedTrackIds,
+    required Set<String> cachedAlbumIds,
+    required Set<String> cachedPlaylistIds,
+    required bool fromOfflineCache,
+  }) {
     if (results.isEmpty) return _buildEmptyState();
 
     final top = _pickTopResult(results);
 
     return CustomScrollView(
       slivers: [
+        if (fromOfflineCache)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _OfflineSearchBanner(),
+            ),
+          ),
         _buildSearchHeader(),
         if (top != null) SliverToBoxAdapter(child: _TopResultCard(top: top)),
         if (results.tracks.isNotEmpty)
@@ -163,7 +186,12 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
             child: _SectionList(
               title: 'Songs',
               children: results.tracks
-                  .map((t) => _TrackTile(track: t))
+                  .map(
+                    (t) => _TrackTile(
+                      track: t,
+                      isCached: cachedTrackIds.contains(t.trackId),
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -181,7 +209,26 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
             child: _SectionList(
               title: 'Albums',
               children: results.albums
-                  .map((a) => _AlbumTile(album: a))
+                  .map(
+                    (a) => _AlbumTile(
+                      album: a,
+                      isCached: cachedAlbumIds.contains(a.albumId),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        if (results.playlists.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _SectionList(
+              title: 'Playlists',
+              children: results.playlists
+                  .map(
+                    (p) => _PlaylistTile(
+                      playlist: p,
+                      isCached: cachedPlaylistIds.contains(p.playlistId),
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -195,6 +242,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
     if (r.artists.isNotEmpty) return r.artists.first;
     if (r.tracks.isNotEmpty) return r.tracks.first;
     if (r.albums.isNotEmpty) return r.albums.first;
+    if (r.playlists.isNotEmpty) return r.playlists.first;
     return null;
   }
 
@@ -351,6 +399,9 @@ class _TopResultCard extends StatelessWidget {
     } else if (top is CatalogArtist) {
       imageUrl = (top as CatalogArtist).avatarUrl;
       fallback = Icons.person;
+    } else if (top is CatalogPlaylist) {
+      imageUrl = (top as CatalogPlaylist).coverUrl;
+      fallback = Icons.queue_music_rounded;
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
@@ -378,6 +429,12 @@ class _TopResultCard extends StatelessWidget {
       title = t.title;
       final artistNames = t.artists.map((a) => a.name ?? a.artistId).join(', ');
       subtitle = 'Song • $artistNames';
+    } else if (top is CatalogPlaylist) {
+      final p = top as CatalogPlaylist;
+      title = p.name;
+      subtitle = p.creatorName?.isNotEmpty == true
+          ? 'Playlist • ${p.creatorName}'
+          : 'Playlist';
     } else {
       final a = top as CatalogAlbum;
       title = a.title;
@@ -407,7 +464,8 @@ class _TopResultCard extends StatelessWidget {
 
 class _TrackTile extends StatelessWidget {
   final CatalogTrack track;
-  const _TrackTile({required this.track});
+  final bool isCached;
+  const _TrackTile({required this.track, required this.isCached});
 
   @override
   Widget build(BuildContext context) {
@@ -426,6 +484,7 @@ class _TrackTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          if (isCached) const _CachedChip(),
 
         ],
       ),
@@ -540,7 +599,8 @@ class _ArtistTile extends StatelessWidget {
 
 class _AlbumTile extends StatelessWidget {
   final CatalogAlbum album;
-  const _AlbumTile({required this.album});
+  final bool isCached;
+  const _AlbumTile({required this.album, required this.isCached});
 
   @override
   Widget build(BuildContext context) {
@@ -570,6 +630,7 @@ class _AlbumTile extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          if (isCached) const _CachedChip(),
 
         ],
       ),
@@ -578,6 +639,108 @@ class _AlbumTile extends StatelessWidget {
       onTap: () {
         context.push('/albums/${album.albumId}');
       },
+    );
+  }
+}
+
+class _PlaylistTile extends StatelessWidget {
+  final CatalogPlaylist playlist;
+  final bool isCached;
+  const _PlaylistTile({required this.playlist, required this.isCached});
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = playlist.creatorName?.isNotEmpty == true
+        ? playlist.creatorName!
+        : 'Playlist';
+
+    return ListTile(
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: playlist.coverUrl != null && playlist.coverUrl!.isNotEmpty
+            ? Image.network(
+                playlist.coverUrl!,
+                width: 48,
+                height: 48,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                    const Icon(Icons.queue_music_rounded),
+              )
+            : const Icon(Icons.queue_music_rounded),
+      ),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              playlist.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (isCached) const _CachedChip(),
+        ],
+      ),
+      subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: const _TypeChip(label: 'Playlist'),
+      onTap: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Playlist details are coming soon')),
+        );
+      },
+    );
+  }
+}
+
+class _CachedChip extends StatelessWidget {
+  const _CachedChip();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(
+        Icons.cloud_done_rounded,
+        size: 12,
+        color: theme.colorScheme.onPrimaryContainer,
+      ),
+    );
+  }
+}
+
+class _OfflineSearchBanner extends StatelessWidget {
+  const _OfflineSearchBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.wifi_off_rounded,
+            size: 18,
+            color: theme.colorScheme.onSecondaryContainer,
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            Icons.storage_rounded,
+            size: 16,
+            color: theme.colorScheme.onSecondaryContainer,
+          ),
+        ],
+      ),
     );
   }
 }

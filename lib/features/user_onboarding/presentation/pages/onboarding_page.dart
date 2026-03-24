@@ -13,10 +13,10 @@ class OnboardingPage extends StatefulWidget {
   final Function(BuildContext)? onCompleted;
 
   const OnboardingPage({
-    Key? key,
+    super.key,
     required this.userId,
     this.onCompleted,
-  }) : super(key: key);
+  });
 
   @override
   State<OnboardingPage> createState() => _OnboardingPageState();

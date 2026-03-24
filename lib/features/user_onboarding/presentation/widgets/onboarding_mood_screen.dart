@@ -6,9 +6,9 @@ class OnboardingMoodScreen extends StatelessWidget {
   final VoidCallback onNext;
 
   const OnboardingMoodScreen({
-    Key? key,
+    super.key,
     required this.onNext,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

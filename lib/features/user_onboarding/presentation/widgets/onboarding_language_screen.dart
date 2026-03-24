@@ -6,9 +6,9 @@ class OnboardingLanguageScreen extends StatelessWidget {
   final VoidCallback onNext;
 
   const OnboardingLanguageScreen({
-    Key? key,
+    super.key,
     required this.onNext,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

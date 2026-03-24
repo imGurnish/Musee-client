@@ -8,8 +8,9 @@ abstract class UserAlbumEvent extends Equatable {
 
 class UserAlbumLoadRequested extends UserAlbumEvent {
   final String albumId;
-  const UserAlbumLoadRequested(this.albumId);
+  final bool forceRefresh;
+  const UserAlbumLoadRequested(this.albumId, {this.forceRefresh = false});
 
   @override
-  List<Object?> get props => [albumId];
+  List<Object?> get props => [albumId, forceRefresh];
 }

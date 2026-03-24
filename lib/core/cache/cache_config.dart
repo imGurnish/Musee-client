@@ -14,4 +14,5 @@ class CacheConfig {
   /// Hive box names
   static const String trackBoxName = 'cached_tracks';
   static const String albumBoxName = 'cached_albums';
+  static const String mediaDetailBoxName = 'cached_media_details';
 }

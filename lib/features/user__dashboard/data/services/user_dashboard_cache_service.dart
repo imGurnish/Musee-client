@@ -104,7 +104,7 @@ class UserDashboardCacheServiceImpl implements UserDashboardCacheService {
     final raw = _cacheBox.get(key);
     if (raw is! Map) return null;
 
-    final payload = Map<String, dynamic>.from(raw as Map);
+    final payload = Map<String, dynamic>.from(raw);
     final cachedAtIso = payload['cached_at']?.toString();
     if (cachedAtIso == null || cachedAtIso.isEmpty) return null;
 
@@ -148,7 +148,7 @@ class UserDashboardCacheServiceImpl implements UserDashboardCacheService {
     final raw = _cacheBox.get(key);
     if (raw is! Map) return null;
 
-    final payload = Map<String, dynamic>.from(raw as Map);
+    final payload = Map<String, dynamic>.from(raw);
     final cachedAtIso = payload['cached_at']?.toString();
     if (cachedAtIso == null || cachedAtIso.isEmpty) return null;
 
@@ -188,7 +188,7 @@ class UserDashboardCacheServiceImpl implements UserDashboardCacheService {
     final raw = _cacheBox.get(key);
     if (raw is! Map) return null;
 
-    final payload = Map<String, dynamic>.from(raw as Map);
+    final payload = Map<String, dynamic>.from(raw);
     final cachedAtIso = payload['cached_at']?.toString();
     if (cachedAtIso == null || cachedAtIso.isEmpty) return null;
 

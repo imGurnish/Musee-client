@@ -43,6 +43,12 @@ abstract class TrackCacheService {
   /// Get all tracks that are available offline
   Future<List<CachedTrack>> getOfflineAvailable();
 
+  /// Get all cached tracks
+  Future<List<CachedTrack>> getAllTracks();
+
+  /// Get all cached albums
+  Future<List<CachedAlbum>> getAllAlbums();
+
   /// Get cache statistics
   Future<CacheStats> getStats();
 }
@@ -188,6 +194,16 @@ class TrackCacheServiceImpl implements TrackCacheService {
   @override
   Future<List<CachedTrack>> getOfflineAvailable() async {
     return _tracks.values.where((t) => t.isAvailableOffline).toList();
+  }
+
+  @override
+  Future<List<CachedTrack>> getAllTracks() async {
+    return _tracks.values.toList();
+  }
+
+  @override
+  Future<List<CachedAlbum>> getAllAlbums() async {
+    return _albums.values.toList();
   }
 
   @override

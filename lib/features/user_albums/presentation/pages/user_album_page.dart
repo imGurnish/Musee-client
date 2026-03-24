@@ -103,6 +103,7 @@ class _UserAlbumView extends StatelessWidget {
                 .where((t) => t.isExplicit)
                 .length;
             final releaseYear = _releaseYear(album.releaseDate);
+            final canPlayAlbum = album.tracks.isNotEmpty;
 
             Future<void> playTrack(
               String trackId, {
@@ -162,85 +163,110 @@ class _UserAlbumView extends StatelessWidget {
                       horizontal: 16,
                       vertical: 14,
                     ),
-                    child: Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        FilledButton.icon(
-                          onPressed: album.tracks.isEmpty
-                              ? null
-                              : () async {
-                                  final first = album.tracks.first;
-                                  final artists = first.artists.isNotEmpty
-                                      ? (first.artists.first.name ??
-                                            primaryArtist)
-                                      : primaryArtist;
-                                  await playTrack(
-                                    first.trackId,
-                                    title: first.title,
-                                    artist: artists,
-                                  );
-                                },
-                          icon: const Icon(Icons.play_arrow_rounded),
-                          label: const Text('Play Album'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: album.tracks.isEmpty
-                              ? null
-                              : () async {
-                                  final randomTrack = album
-                                      .tracks[Random().nextInt(trackCount)];
-                                  final artists = randomTrack.artists.isNotEmpty
-                                      ? randomTrack.artists
-                                            .map(
-                                              (a) => a.name ?? 'Unknown Artist',
-                                            )
-                                            .join(', ')
-                                      : primaryArtist;
-                                  await playTrack(
-                                    randomTrack.trackId,
-                                    title: randomTrack.title,
-                                    artist: artists,
-                                  );
-                                },
-                          icon: const Icon(Icons.shuffle_rounded),
-                          label: const Text('Shuffle'),
-                        ),
-                        FilledButton.tonalIcon(
-                          onPressed: album.tracks.isEmpty
-                              ? null
-                              : () async {
-                                  final queueItems = album.tracks.map((track) {
-                                    final artists = track.artists.isNotEmpty
-                                        ? track.artists
-                                              .map(
-                                                (a) =>
-                                                    a.name ?? 'Unknown Artist',
-                                              )
-                                              .join(', ')
-                                        : primaryArtist;
-                                    return QueueItem(
-                                      trackId: track.trackId,
-                                      title: track.title,
-                                      artist: artists,
-                                      album: album.title,
-                                      imageUrl: album.coverUrl,
-                                      durationSeconds: track.duration,
-                                    );
-                                  }).toList();
-                                  await playerCubit.addToQueue(queueItems);
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Added $trackCount tracks to queue',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                          icon: const Icon(Icons.queue_music_rounded),
-                          label: const Text('Queue All'),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 44,
+                              height: 44,
+                              child: IconButton.filled(
+                                onPressed: canPlayAlbum
+                                    ? () async {
+                                        final first = album.tracks.first;
+                                        final artists = first.artists.isNotEmpty
+                                            ? (first.artists.first.name ??
+                                                  primaryArtist)
+                                            : primaryArtist;
+                                        await playTrack(
+                                          first.trackId,
+                                          title: first.title,
+                                          artist: artists,
+                                        );
+                                      }
+                                    : null,
+                                icon: const Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: 22,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            OutlinedButton.icon(
+                              onPressed: canPlayAlbum
+                                  ? () async {
+                                      final randomTrack =
+                                          album.tracks[Random().nextInt(trackCount)];
+                                      final artists =
+                                          randomTrack.artists.isNotEmpty
+                                          ? randomTrack.artists
+                                                .map(
+                                                  (a) =>
+                                                      a.name ?? 'Unknown Artist',
+                                                )
+                                                .join(', ')
+                                          : primaryArtist;
+                                      await playTrack(
+                                        randomTrack.trackId,
+                                        title: randomTrack.title,
+                                        artist: artists,
+                                      );
+                                    }
+                                  : null,
+                              icon: const Icon(Icons.shuffle_rounded),
+                              label: const Text('Shuffle'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(0, 40),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            FilledButton.tonalIcon(
+                              onPressed: album.tracks.isEmpty
+                                  ? null
+                                  : () async {
+                                      final queueItems = album.tracks.map((
+                                        track,
+                                      ) {
+                                        final artists = track.artists.isNotEmpty
+                                            ? track.artists
+                                                  .map(
+                                                    (a) =>
+                                                        a.name ??
+                                                        'Unknown Artist',
+                                                  )
+                                                  .join(', ')
+                                            : primaryArtist;
+                                        return QueueItem(
+                                          trackId: track.trackId,
+                                          title: track.title,
+                                          artist: artists,
+                                          album: album.title,
+                                          imageUrl: album.coverUrl,
+                                          durationSeconds: track.duration,
+                                        );
+                                      }).toList();
+                                      await playerCubit.addToQueue(queueItems);
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Added $trackCount tracks to queue',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                              icon: const Icon(Icons.queue_music_rounded),
+                              label: const Text('Queue All'),
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(0, 40),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -301,7 +327,7 @@ class _UserAlbumView extends StatelessWidget {
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 12,
-                              vertical: 8,
+                              vertical: 10,
                             ),
                             child: Row(
                               children: [
@@ -343,31 +369,6 @@ class _UserAlbumView extends StatelessWidget {
                                                   ),
                                             ),
                                           ),
-                                          if (t.isExplicit)
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 6,
-                                                    vertical: 2,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: theme
-                                                    .colorScheme
-                                                    .surfaceContainerHighest,
-                                                borderRadius:
-                                                    BorderRadius.circular(6),
-                                              ),
-                                              child: Text(
-                                                'E',
-                                                style: theme
-                                                    .textTheme
-                                                    .labelSmall
-                                                    ?.copyWith(
-                                                      fontWeight:
-                                                          FontWeight.w800,
-                                                    ),
-                                              ),
-                                            ),
                                         ],
                                       ),
                                       const SizedBox(height: 2),
@@ -377,6 +378,36 @@ class _UserAlbumView extends StatelessWidget {
                                         overflow: TextOverflow.ellipsis,
                                         style: theme.textTheme.bodySmall,
                                       ),
+                                      if (album.isTrackCached(t.trackId) ||
+                                          album.isTrackOffline(t.trackId) ||
+                                          t.isExplicit)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 6),
+                                          child: Wrap(
+                                            spacing: 6,
+                                            runSpacing: 4,
+                                            children: [
+                                              if (t.isExplicit)
+                                                _TrackStatusChip(
+                                                  icon: Icons.explicit_rounded,
+                                                  foregroundColor: theme
+                                                      .colorScheme
+                                                      .onTertiaryContainer,
+                                                  backgroundColor: theme
+                                                      .colorScheme
+                                                      .tertiaryContainer,
+                                                ),
+                                              if (album.isTrackCached(t.trackId))
+                                                const _TrackStatusChip(
+                                                  icon: Icons.cloud_done_rounded,
+                                                ),
+                                              if (album.isTrackOffline(t.trackId))
+                                                const _TrackStatusChip(
+                                                  icon: Icons.offline_bolt_rounded,
+                                                ),
+                                            ],
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -470,7 +501,7 @@ class _UserAlbumView extends StatelessWidget {
                             child: ListView.separated(
                               scrollDirection: Axis.horizontal,
                               itemCount: album.artists.length,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const SizedBox(width: 12),
                               itemBuilder: (context, index) {
                                 final artist = album.artists[index];
@@ -493,6 +524,35 @@ class _UserAlbumView extends StatelessWidget {
         ),
       ),
       bottomNavigationBar: const BottomNavBar(selectedIndex: 0),
+    );
+  }
+}
+
+class _TrackStatusChip extends StatelessWidget {
+  final IconData icon;
+  final Color? foregroundColor;
+  final Color? backgroundColor;
+
+  const _TrackStatusChip({
+    required this.icon,
+    this.foregroundColor,
+    this.backgroundColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: backgroundColor ?? theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(
+        icon,
+        size: 13,
+        color: foregroundColor ?? theme.colorScheme.onSurfaceVariant,
+      ),
     );
   }
 }
@@ -538,7 +598,7 @@ class _AlbumHeader extends StatelessWidget {
                 : Image.network(
                     coverUrl!,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
+                    errorBuilder: (_, _, _) => Container(
                       color: theme.colorScheme.surfaceContainerHighest,
                       child: const Icon(Icons.album_rounded, size: 64),
                     ),
@@ -555,7 +615,7 @@ class _AlbumHeader extends StatelessWidget {
                 child: Image.network(
                   coverUrl!,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
                 ),
               ),
             DecoratedBox(

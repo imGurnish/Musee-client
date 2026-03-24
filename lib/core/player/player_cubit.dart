@@ -665,7 +665,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
       if (_listeningHistoryRepository != null) {
         try {
-          final recommendation = await _listeningHistoryRepository!.getRecommendations(
+          final recommendation = await _listeningHistoryRepository.getRecommendations(
             limit: needed * 3,
             type: 'discovery',
             includeReasons: false,

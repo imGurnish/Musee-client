@@ -154,18 +154,23 @@ class SearchRemoteDataSourceImpl implements SearchRemoteDataSource {
       final artistsUri = Uri.parse(
         '${AppSecrets.backendUrl}/api/user/artists?page=0&limit=$limit&q=$q',
       );
+      final playlistsUri = Uri.parse(
+        '${AppSecrets.backendUrl}/api/playlists?page=0&limit=$limit&q=$q',
+      );
 
       final responses = await Future.wait(
         [
           http.get(tracksUri, headers: headers),
           http.get(albumsUri, headers: headers),
           http.get(artistsUri, headers: headers),
+          http.get(playlistsUri, headers: headers),
         ].map((f) => f.timeout(const Duration(seconds: 30))),
       );
 
       List<dynamic> tracks = const [];
       List<dynamic> albums = const [];
       List<dynamic> artists = const [];
+      List<dynamic> playlists = const [];
 
       if (responses[0].statusCode == 200) {
         final obj = json.decode(responses[0].body);
@@ -179,11 +184,16 @@ class SearchRemoteDataSourceImpl implements SearchRemoteDataSource {
         final obj = json.decode(responses[2].body);
         artists = _extractItems(obj);
       }
+      if (responses[3].statusCode == 200) {
+        final obj = json.decode(responses[3].body);
+        playlists = _extractItems(obj);
+      }
 
       return CatalogSearchResultsModel.fromThreeLists(
         tracks: tracks,
         albums: albums,
         artists: artists,
+        playlists: playlists,
       );
     } catch (e) {
       if (kDebugMode) print('Catalog search exception: $e');

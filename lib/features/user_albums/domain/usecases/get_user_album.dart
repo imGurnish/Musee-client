@@ -5,5 +5,6 @@ class GetUserAlbum {
   final UserAlbumsRepository _repo;
   GetUserAlbum(this._repo);
 
-  Future<UserAlbumDetail> call(String albumId) => _repo.getAlbum(albumId);
+  Future<UserAlbumDetail> call(String albumId, {bool forceRefresh = false}) =>
+      _repo.getAlbum(albumId, forceRefresh: forceRefresh);
 }

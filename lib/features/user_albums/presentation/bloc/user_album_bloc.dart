@@ -18,7 +18,10 @@ class UserAlbumBloc extends Bloc<UserAlbumEvent, UserAlbumState> {
   ) async {
     emit(const UserAlbumState.loading());
     try {
-      final album = await _getAlbum(event.albumId);
+      final album = await _getAlbum(
+        event.albumId,
+        forceRefresh: event.forceRefresh,
+      );
       emit(UserAlbumState.loaded(album));
     } catch (e) {
       emit(UserAlbumState.error(e.toString()));

@@ -7,7 +7,7 @@ import 'package:musee/features/admin_import/data/models/import_models.dart';
 import 'package:musee/features/admin_import/presentation/bloc/admin_import_bloc.dart';
 
 class AdminImportPage extends StatefulWidget {
-  const AdminImportPage({Key? key}) : super(key: key);
+  const AdminImportPage({super.key});
 
   @override
   State<AdminImportPage> createState() => _AdminImportPageState();
@@ -204,7 +204,7 @@ class _AdminImportPageState extends State<AdminImportPage> {
                     width: 56,
                     height: 56,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
+                    errorBuilder: (_, _, _) =>
                         const Icon(Icons.album, size: 56),
                   )
                 : const Icon(Icons.album, size: 56),
@@ -238,7 +238,7 @@ class _AdminImportPageState extends State<AdminImportPage> {
                     width: 56,
                     height: 56,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
+                    errorBuilder: (_, _, _) =>
                         const Icon(Icons.music_note, size: 56),
                   )
                 : const Icon(Icons.music_note, size: 56),
@@ -278,7 +278,7 @@ class _AdminImportPageState extends State<AdminImportPage> {
                     width: 56,
                     height: 56,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
+                    errorBuilder: (_, _, _) =>
                         const Icon(Icons.person, size: 56),
                   )
                 : const Icon(Icons.person, size: 56),
@@ -509,10 +509,10 @@ class AdminImportAlbumDetailsSheet extends StatefulWidget {
   final Function(JioAlbumModel, String, String?) onImport;
 
   const AdminImportAlbumDetailsSheet({
-    Key? key,
+    super.key,
     required this.album,
     required this.onImport,
-  }) : super(key: key);
+  });
 
   @override
   State<AdminImportAlbumDetailsSheet> createState() =>
@@ -568,7 +568,7 @@ class _AdminImportAlbumDetailsSheetState
                     width: 100,
                     height: 100,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
+                    errorBuilder: (_, _, _) =>
                         const Icon(Icons.album, size: 100),
                   ),
                 const SizedBox(width: 16),

@@ -6,9 +6,9 @@ class OnboardingArtistScreen extends StatefulWidget {
   final VoidCallback onNext;
 
   const OnboardingArtistScreen({
-    Key? key,
+    super.key,
     required this.onNext,
-  }) : super(key: key);
+  });
 
   @override
   State<OnboardingArtistScreen> createState() => _OnboardingArtistScreenState();

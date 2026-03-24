@@ -6,9 +6,9 @@ class OnboardingRandomnessScreen extends StatelessWidget {
   final VoidCallback onNext;
 
   const OnboardingRandomnessScreen({
-    Key? key,
+    super.key,
     required this.onNext,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

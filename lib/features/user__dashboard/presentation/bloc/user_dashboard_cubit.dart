@@ -126,7 +126,7 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
     String? madeForYouError;
 
     if (usePersistentCache) {
-      backendMadeForYou = await _dashboardCache!.getMadeForYou(
+      backendMadeForYou = await _dashboardCache.getMadeForYou(
         page: page,
         limit: limit,
         ttl: _madeForYouCacheTtl,
@@ -151,7 +151,7 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
     List<DashboardItem>? trending;
     String? trendingError;
     if (usePersistentCache) {
-      trending = await _dashboardCache!.getTrending(
+      trending = await _dashboardCache.getTrending(
         page: page,
         limit: limit,
         ttl: _madeForYouCacheTtl,
