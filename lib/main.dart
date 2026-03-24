@@ -1,3 +1,4 @@
+import 'package:device_preview/device_preview.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -39,12 +40,12 @@ void main() async {
         BlocProvider(create: (_) => serviceLocator<PlayerCubit>()),
         BlocProvider(create: (_) => serviceLocator<DownloadManager>()),
       ],
-      // child: DevicePreview(
-      //   builder: (BuildContext context) {
-      //     return const MyApp();
-      //   },
-      // ),
-      child: MyApp(),
+      child: DevicePreview(
+        builder: (BuildContext context) {
+          return const MyApp();
+        },
+      ),
+      // child: MyApp(),
     ),
   );
 }

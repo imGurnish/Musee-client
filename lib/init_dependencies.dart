@@ -89,12 +89,19 @@ import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.d
 import 'package:musee/features/player/data/datasources/player_remote_data_source.dart';
 import 'package:musee/features/player/data/repositories/player_repository_impl.dart';
 import 'package:musee/features/player/domain/repository/player_repository.dart';
+import 'package:musee/features/listening_history/data/datasources/listening_history_remote_data_source.dart';
+import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:musee/features/admin_external_import/data/jiosaavn_api_client.dart';
 import 'package:musee/features/admin_external_import/data/admin_external_import_service.dart';
+import 'package:musee/features/user_onboarding/data/datasources/onboarding_remote_data_source.dart';
+import 'package:musee/features/user_onboarding/data/repositories/onboarding_repository_impl.dart';
+import 'package:musee/features/user_onboarding/domain/repository/onboarding_repository.dart';
+import 'package:musee/features/user_onboarding/domain/usecases/onboarding_usecases.dart';
+import 'package:musee/features/user_onboarding/presentation/bloc/onboarding_bloc.dart';
 
 // New infrastructure services
 import 'package:musee/core/providers/providers.dart';
@@ -160,6 +167,9 @@ Future<void> initDependencies() async {
     ),
   );
 
+  // Listening history and recommendations
+  _initListeningHistory();
+
   // Register player with repository and cache services
   serviceLocator
     ..registerLazySingleton<PlayerDataSource>(
@@ -175,6 +185,8 @@ Future<void> initDependencies() async {
         audioCache: serviceLocator<AudioCacheService>(),
         imageCache: serviceLocator<ImageCacheService>(),
         musicProviderRegistry: serviceLocator<MusicProviderRegistry>(),
+        listeningHistoryRepository: serviceLocator<ListeningHistoryRepository>(),
+        supabaseClient: serviceLocator<SupabaseClient>(),
       ),
     );
 
@@ -208,6 +220,7 @@ Future<void> initDependencies() async {
   _initUserArtists();
   _initUserDashboard();
   _initSearch();
+  _initUserOnboarding();
 }
 
 void _initAuth() {
@@ -488,4 +501,66 @@ void _initSearch() {
     // use cases
     ..registerFactory(() => GetSuggestions(serviceLocator()))
     ..registerFactory(() => GetSearchResults(serviceLocator()));
+}
+
+void _initListeningHistory() {
+  serviceLocator
+    ..registerLazySingleton<ListeningHistoryRemoteDataSource>(
+      () => ListeningHistoryRemoteDataSourceImpl(
+        dio: serviceLocator<Dio>(),
+        baseUrl: AppSecrets.backendUrl,
+        supabaseClient: serviceLocator<SupabaseClient>(),
+      ),
+    )
+    ..registerLazySingleton<ListeningHistoryRepository>(
+      () => ListeningHistoryRepositoryImpl(
+        remoteDataSource: serviceLocator<ListeningHistoryRemoteDataSource>(),
+      ),
+    );
+}
+
+void _initUserOnboarding() {
+  serviceLocator
+    // datasource
+    ..registerLazySingleton<OnboardingRemoteDataSource>(
+      () => OnboardingRemoteDataSourceImpl(
+        supabaseClient: serviceLocator<SupabaseClient>(),
+      ),
+    )
+    // repository
+    ..registerLazySingleton<OnboardingRepository>(
+      () => OnboardingRepositoryImpl(
+        remoteDataSource: serviceLocator<OnboardingRemoteDataSource>(),
+      ),
+    )
+    // use cases
+    ..registerFactory(
+      () => GetAvailableLanguagesUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    ..registerFactory(
+      () => GetAvailableGenresUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    ..registerFactory(
+      () => GetAvailableMoodsUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    ..registerFactory(
+      () => SearchArtistsUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    ..registerFactory(
+      () => SaveOnboardingPreferencesUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    ..registerFactory(
+      () => GetUserOnboardingPreferencesUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    // bloc
+    ..registerFactory(
+      () => OnboardingBloc(
+        getAvailableLanguagesUseCase: serviceLocator<GetAvailableLanguagesUseCase>(),
+        getAvailableGenresUseCase: serviceLocator<GetAvailableGenresUseCase>(),
+        getAvailableMoodsUseCase: serviceLocator<GetAvailableMoodsUseCase>(),
+        searchArtistsUseCase: serviceLocator<SearchArtistsUseCase>(),
+        saveOnboardingPreferencesUseCase: serviceLocator<SaveOnboardingPreferencesUseCase>(),
+        getUserOnboardingPreferencesUseCase: serviceLocator<GetUserOnboardingPreferencesUseCase>(),
+      ),
+    );
 }

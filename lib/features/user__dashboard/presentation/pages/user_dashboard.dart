@@ -12,11 +12,15 @@ import 'package:musee/core/common/navigation/routes.dart';
 import 'package:musee/core/common/entities/user.dart';
 import 'package:musee/features/user__dashboard/presentation/bloc/user_dashboard_cubit.dart';
 import 'package:get_it/get_it.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:musee/features/user__dashboard/domain/entities/dashboard_album.dart'; // contains DashboardItem
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
+import 'package:musee/features/user_onboarding/presentation/bloc/onboarding_bloc.dart';
+import 'package:musee/features/user_onboarding/presentation/pages/onboarding_page.dart';
+import 'package:musee/init_dependencies.dart';
 
 class UserDashboard extends StatefulWidget {
   const UserDashboard({super.key});
@@ -26,11 +30,61 @@ class UserDashboard extends StatefulWidget {
 }
 
 class _UserDashboardState extends State<UserDashboard> {
+  bool _hasCheckedOnboarding = false;
+  bool _isShowingOnboarding = false;
+
   @override
   void initState() {
     super.initState();
     if (kDebugMode) {
       debugPrint("UserDashboard initialized");
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndShowOnboardingIfMissing();
+    });
+  }
+
+  Future<void> _checkAndShowOnboardingIfMissing() async {
+    if (!mounted || _hasCheckedOnboarding || _isShowingOnboarding) {
+      return;
+    }
+
+    _hasCheckedOnboarding = true;
+
+    final appUserState = context.read<AppUserCubit>().state;
+    if (appUserState is! AppUserLoggedIn) {
+      return;
+    }
+
+    final userId = appUserState.user.id;
+    final supabase = serviceLocator<SupabaseClient>();
+
+    try {
+      final result = await supabase
+          .from('user_onboarding_preferences')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      final hasPreferences = result != null;
+      if (!hasPreferences && mounted) {
+        _isShowingOnboarding = true;
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => BlocProvider(
+              create: (_) => serviceLocator<OnboardingBloc>(),
+              child: OnboardingPage(
+                userId: userId,
+              ),
+            ),
+          ),
+        );
+        _isShowingOnboarding = false;
+      }
+    } catch (_) {
+      return;
     }
   }
 

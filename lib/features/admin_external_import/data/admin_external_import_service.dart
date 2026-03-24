@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart' as dio;
@@ -31,7 +32,31 @@ class AdminExternalImportService {
   final SupabaseClient supabase;
   final dio.Dio _dio;
   String? _cachedValidRegionId;
+  int? _cachedJioProviderId;
+  bool _externalRefWritesDisabled = false;
   final Map<String, JioSaavnArtistDetail?> _artistDetailCache = {};
+
+  ({String refTable, String idColumn})? _externalRefConfigForEntity({
+    required String table,
+    required String extColumn,
+  }) {
+    final t = table.trim().toLowerCase();
+    final c = extColumn.trim().toLowerCase();
+
+    if (t == 'track' || t == 'tracks' || c == 'ext_track_id') {
+      return (refTable: 'track_external_refs', idColumn: 'track_id');
+    }
+    if (t == 'album' || t == 'albums' || c == 'ext_album_id') {
+      return (refTable: 'album_external_refs', idColumn: 'album_id');
+    }
+    if (t == 'artist' || t == 'artists' || c == 'ext_artist_id') {
+      return (refTable: 'artist_external_refs', idColumn: 'artist_id');
+    }
+    if (t == 'playlist' || t == 'playlists' || c == 'ext_playlist_id') {
+      return (refTable: 'playlist_external_refs', idColumn: 'playlist_id');
+    }
+    return null;
+  }
 
   AdminExternalImportService({
     required this.jioApi,
@@ -302,7 +327,7 @@ class AdminExternalImportService {
       final importedTrackIds = <String>[];
       for (final song in enrichedSongs) {
         try {
-          final result = await _importSong(song);
+          final result = await _importSongWithRetry(song);
           importedTrackIds.add(result.entityId);
         } catch (e) {
           if (kDebugMode) {
@@ -408,6 +433,38 @@ class AdminExternalImportService {
     );
 
     return ExternalImportResult(entityId: createdTrack.trackId);
+  }
+
+  Future<ExternalImportResult> _importSongWithRetry(
+    JioSaavnSongDetail song, {
+    int maxAttempts = 3,
+  }) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await _importSong(song);
+      } catch (e) {
+        lastError = e;
+        final canRetry = _isRetryableImportError(e);
+        if (!canRetry || attempt == maxAttempts) {
+          rethrow;
+        }
+        final delay = Duration(milliseconds: 400 * attempt);
+        await Future.delayed(delay);
+      }
+    }
+    throw Exception(lastError?.toString() ?? 'Unknown import failure');
+  }
+
+  bool _isRetryableImportError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('timeoutexception') ||
+        message.contains('connection closed') ||
+        message.contains('connection terminated') ||
+        message.contains('handshakeexception') ||
+        message.contains('socketexception') ||
+        message.contains('failed host lookup') ||
+        message.contains('future not completed');
   }
 
   Future<String> _ensureAlbumForSong(JioSaavnSongDetail song) async {
@@ -568,6 +625,23 @@ class AdminExternalImportService {
   }) async {
     if (extId.trim().isEmpty) return null;
     try {
+      final providerId = await _resolveJioProviderId();
+      final config = _externalRefConfigForEntity(table: table, extColumn: extColumn);
+      if (config != null) {
+
+        final row = await supabase
+            .from(config.refTable)
+            .select(config.idColumn)
+            .eq('provider_id', providerId)
+            .eq('external_id', extId)
+            .maybeSingle();
+
+        if (row is Map<String, dynamic>) {
+          return row[config.idColumn]?.toString();
+        }
+        return null;
+      }
+
       final row = await supabase
           .from(table)
           .select(idColumn)
@@ -582,6 +656,82 @@ class AdminExternalImportService {
       }
     }
     return null;
+  }
+
+  Future<int> _resolveJioProviderId() async {
+    if (_cachedJioProviderId != null) {
+      return _cachedJioProviderId!;
+    }
+
+    try {
+      final row = await supabase
+          .from('external_providers')
+          .select('provider_id')
+          .eq('code', 'jiosaavn')
+          .maybeSingle();
+      if (row is Map<String, dynamic>) {
+        final id = (row['provider_id'] as num?)?.toInt();
+        if (id != null) {
+          _cachedJioProviderId = id;
+          return id;
+        }
+      }
+    } catch (_) {}
+
+    _cachedJioProviderId = 1;
+    return _cachedJioProviderId!;
+  }
+
+  Future<void> _upsertExternalRef({
+    required String entityTable,
+    required String entityId,
+    required String externalId,
+    String? externalUrl,
+    String? imageUrl,
+    Map<String, dynamic>? rawPayload,
+    Map<String, dynamic>? extra,
+  }) async {
+    if (externalId.trim().isEmpty) return;
+    if (_externalRefWritesDisabled) return;
+
+    final providerId = await _resolveJioProviderId();
+    final config = _externalRefConfigForEntity(table: entityTable, extColumn: '');
+    if (config == null) return;
+
+    final payload = <String, dynamic>{
+      config.idColumn: entityId,
+      'provider_id': providerId,
+      'external_id': externalId,
+      if (externalUrl != null && externalUrl.isNotEmpty) 'external_url': externalUrl,
+      if (imageUrl != null && imageUrl.isNotEmpty) 'image_url': imageUrl,
+      if (rawPayload != null && rawPayload.isNotEmpty) 'raw_payload': rawPayload,
+      ...?extra,
+    };
+
+    try {
+      await supabase
+          .from(config.refTable)
+          .upsert(payload, onConflict: 'provider_id,external_id');
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+      final isRlsDenied = msg.contains('42501') ||
+          msg.contains('code: 42501') ||
+          msg.contains('row-level security') ||
+          msg.contains('violates row-level security policy') ||
+          msg.contains('forbidden');
+      if (isRlsDenied) {
+        _externalRefWritesDisabled = true;
+        if (kDebugMode) {
+          debugPrint(
+            'external ref writes disabled due to RLS for this session (${config.refTable})',
+          );
+        }
+        return;
+      }
+      if (kDebugMode) {
+        debugPrint('upsertExternalRef failed for ${config.refTable}/$externalId: $e');
+      }
+    }
   }
 
   Future<String> _createPlaylist({
@@ -698,10 +848,17 @@ class AdminExternalImportService {
       idColumn: 'playlist_id',
       idValue: playlistId,
       values: {
-        'ext_playlist_id': externalPlaylistId,
         if (language != null && language.trim().isNotEmpty)
           'genres': [language.trim()],
       },
+    );
+    await _upsertExternalRef(
+      entityTable: 'playlists',
+      entityId: playlistId,
+      externalId: externalPlaylistId,
+      externalUrl: externalUrl,
+      imageUrl: coverUrl,
+      rawPayload: externalPayload,
     );
     return playlistId;
   }
@@ -787,11 +944,18 @@ class AdminExternalImportService {
         table: 'artists',
         idColumn: 'artist_id',
         idValue: created.id,
-        values: {
-          if (externalArtistId != null && externalArtistId.isNotEmpty)
-            'ext_artist_id': externalArtistId,
-        },
+        values: const {},
       );
+      if (externalArtistId != null && externalArtistId.isNotEmpty) {
+        await _upsertExternalRef(
+          entityTable: 'artists',
+          entityId: created.id,
+          externalId: externalArtistId,
+          externalUrl: externalUrl,
+          imageUrl: imageUrl,
+          rawPayload: externalPayload,
+        );
+      }
       return created;
     } on dio.DioException catch (e) {
       final recoveredUserId = await _findUserIdByEmail(email);
@@ -841,11 +1005,18 @@ class AdminExternalImportService {
         table: 'artists',
         idColumn: 'artist_id',
         idValue: created.id,
-        values: {
-          if (externalArtistId != null && externalArtistId.isNotEmpty)
-            'ext_artist_id': externalArtistId,
-        },
+        values: const {},
       );
+      if (externalArtistId != null && externalArtistId.isNotEmpty) {
+        await _upsertExternalRef(
+          entityTable: 'artists',
+          entityId: created.id,
+          externalId: externalArtistId,
+          externalUrl: externalUrl,
+          imageUrl: imageUrl,
+          rawPayload: externalPayload,
+        );
+      }
       return created;
     }
   }
@@ -911,11 +1082,16 @@ class AdminExternalImportService {
         idColumn: 'artist_id',
         idValue: created.id,
         values: {
-          if (externalArtistId != null && externalArtistId.isNotEmpty)
-            'ext_artist_id': externalArtistId,
           if (regionId != null && regionId.isNotEmpty) 'region_id': regionId,
         },
       );
+      if (externalArtistId != null && externalArtistId.isNotEmpty) {
+        await _upsertExternalRef(
+          entityTable: 'artists',
+          entityId: created.id,
+          externalId: externalArtistId,
+        );
+      }
       return created;
     } on dio.DioException {
       final already = await _findArtistByUserId(userId);
@@ -925,11 +1101,16 @@ class AdminExternalImportService {
           idColumn: 'artist_id',
           idValue: already,
           values: {
-            if (externalArtistId != null && externalArtistId.isNotEmpty)
-              'ext_artist_id': externalArtistId,
             if (regionId != null && regionId.isNotEmpty) 'region_id': regionId,
           },
         );
+        if (externalArtistId != null && externalArtistId.isNotEmpty) {
+          await _upsertExternalRef(
+            entityTable: 'artists',
+            entityId: already,
+            externalId: externalArtistId,
+          );
+        }
         return artistsApi.getArtist(already);
       }
       return null;
@@ -1088,11 +1269,17 @@ class AdminExternalImportService {
         idColumn: 'album_id',
         idValue: created.id,
         values: {
-          'ext_album_id': externalAlbumId,
           if (releaseDate != null && releaseDate.isNotEmpty)
             'release_date': releaseDate,
-          if (language != null && language.isNotEmpty) 'language': language,
         },
+      );
+      await _upsertExternalRef(
+        entityTable: 'albums',
+        entityId: created.id,
+        externalId: externalAlbumId,
+        externalUrl: externalUrl,
+        imageUrl: imageUrl,
+        rawPayload: externalPayload,
       );
       return created;
     } on dio.DioException {
@@ -1117,11 +1304,17 @@ class AdminExternalImportService {
         idColumn: 'album_id',
         idValue: created.id,
         values: {
-          'ext_album_id': externalAlbumId,
           if (releaseDate != null && releaseDate.isNotEmpty)
             'release_date': releaseDate,
-          if (language != null && language.isNotEmpty) 'language': language,
         },
+      );
+      await _upsertExternalRef(
+        entityTable: 'albums',
+        entityId: created.id,
+        externalId: externalAlbumId,
+        externalUrl: externalUrl,
+        imageUrl: imageUrl,
+        rawPayload: externalPayload,
       );
       return created;
     }
@@ -1173,12 +1366,38 @@ class AdminExternalImportService {
         table: 'tracks',
         idColumn: 'track_id',
         idValue: created.trackId,
-        values: {
-          'ext_track_id': song.id,
+        values: const {},
+      );
+      await _upsertExternalRef(
+        entityTable: 'tracks',
+        entityId: created.trackId,
+        externalId: song.id,
+        externalUrl: song.permaUrl,
+        imageUrl: song.imageUrl ?? albumImageUrl,
+        rawPayload: song.rawPayload,
+        extra: {
+          if (externalAlbumId != null && externalAlbumId.isNotEmpty)
+            'external_album_id': externalAlbumId,
           if (song.language != null && song.language!.isNotEmpty)
             'language': song.language,
           if (song.releaseDate != null && song.releaseDate!.isNotEmpty)
             'release_date': song.releaseDate,
+          if (song.hasLyrics != null) 'has_lyrics': song.hasLyrics,
+          if (song.isDrm != null) 'is_drm': song.isDrm,
+          if (song.isDolbyContent != null)
+            'is_dolby_content': song.isDolbyContent,
+          if (song.has320kbps != null) 'has_320kbps': song.has320kbps,
+          if (song.encryptedMediaUrl != null && song.encryptedMediaUrl!.isNotEmpty)
+            'encrypted_media_url': song.encryptedMediaUrl,
+          if (song.encryptedDrmMediaUrl != null &&
+              song.encryptedDrmMediaUrl!.isNotEmpty)
+            'encrypted_drm_media_url': song.encryptedDrmMediaUrl,
+          if (song.encryptedMediaPath != null &&
+              song.encryptedMediaPath!.isNotEmpty)
+            'encrypted_media_path': song.encryptedMediaPath,
+          if (song.mediaPreviewUrl != null && song.mediaPreviewUrl!.isNotEmpty)
+            'media_preview_url': song.mediaPreviewUrl,
+          if (song.rights != null) 'rights': song.rights,
         },
       );
       return created;
@@ -1215,12 +1434,38 @@ class AdminExternalImportService {
         table: 'tracks',
         idColumn: 'track_id',
         idValue: created.trackId,
-        values: {
-          'ext_track_id': song.id,
+        values: const {},
+      );
+      await _upsertExternalRef(
+        entityTable: 'tracks',
+        entityId: created.trackId,
+        externalId: song.id,
+        externalUrl: song.permaUrl,
+        imageUrl: song.imageUrl ?? albumImageUrl,
+        rawPayload: song.rawPayload,
+        extra: {
+          if (externalAlbumId != null && externalAlbumId.isNotEmpty)
+            'external_album_id': externalAlbumId,
           if (song.language != null && song.language!.isNotEmpty)
             'language': song.language,
           if (song.releaseDate != null && song.releaseDate!.isNotEmpty)
             'release_date': song.releaseDate,
+          if (song.hasLyrics != null) 'has_lyrics': song.hasLyrics,
+          if (song.isDrm != null) 'is_drm': song.isDrm,
+          if (song.isDolbyContent != null)
+            'is_dolby_content': song.isDolbyContent,
+          if (song.has320kbps != null) 'has_320kbps': song.has320kbps,
+          if (song.encryptedMediaUrl != null && song.encryptedMediaUrl!.isNotEmpty)
+            'encrypted_media_url': song.encryptedMediaUrl,
+          if (song.encryptedDrmMediaUrl != null &&
+              song.encryptedDrmMediaUrl!.isNotEmpty)
+            'encrypted_drm_media_url': song.encryptedDrmMediaUrl,
+          if (song.encryptedMediaPath != null &&
+              song.encryptedMediaPath!.isNotEmpty)
+            'encrypted_media_path': song.encryptedMediaPath,
+          if (song.mediaPreviewUrl != null && song.mediaPreviewUrl!.isNotEmpty)
+            'media_preview_url': song.mediaPreviewUrl,
+          if (song.rights != null) 'rights': song.rights,
         },
       );
       return created;

@@ -6,12 +6,16 @@ import 'package:bloc/bloc.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/features/player/domain/repository/player_repository.dart';
+import 'package:musee/features/listening_history/data/models/listening_history_models.dart';
+import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
 import 'package:musee/core/providers/music_provider_registry.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import 'player_state.dart';
 
@@ -22,9 +26,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   final AudioCacheService? _audioCache;
   final ImageCacheService? _imageCache;
   final MusicProviderRegistry? _musicProviderRegistry;
+  final ListeningHistoryRepository? _listeningHistoryRepository;
+  final SupabaseClient? _supabaseClient;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration?>? _durationSub;
   StreamSubscription<PlayerState>? _playerStateSub;
+  Timer? _snapshotLogTimer;
+  DateTime? _currentTrackStartedAt;
+  String? _currentTrackIdForLogging;
 
   PlayerCubit({
     PlayerRepository? repository,
@@ -32,12 +41,16 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     AudioCacheService? audioCache,
     ImageCacheService? imageCache,
     MusicProviderRegistry? musicProviderRegistry,
+     ListeningHistoryRepository? listeningHistoryRepository,
+     SupabaseClient? supabaseClient,
   }) : _player = AudioPlayer(),
        _repo = repository,
        _trackCache = trackCache,
        _audioCache = audioCache,
        _imageCache = imageCache,
        _musicProviderRegistry = musicProviderRegistry,
+       _listeningHistoryRepository = listeningHistoryRepository,
+       _supabaseClient = supabaseClient,
        super(const PlayerViewState()) {
     _init();
   }
@@ -210,6 +223,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> playTrack(PlayerTrack track) async {
+    if (track.trackId != null && state.track?.trackId != track.trackId) {
+      await _logCurrentTrackPlay(wasSkipped: true);
+    }
+
     emit(state.copyWith(track: track, buffering: true));
 
     // Cache metadata if we have a track ID (e.g. from Search)
@@ -235,6 +252,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         AudioSource.uri(uri, headers: headers.isEmpty ? null : headers),
       );
       await _player.play();
+      _markTrackSessionStart(track.trackId);
+      await _refreshQueueIfNeeded();
     } catch (e) {
       emit(state.copyWith(buffering: false, playing: false));
     }
@@ -249,6 +268,44 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     String? album,
     String? imageUrl,
   }) async {
+    if (state.track?.trackId != null && state.track?.trackId != trackId) {
+      await _logCurrentTrackPlay(wasSkipped: true);
+    }
+
+    final repo = _repo;
+    if (repo != null) {
+      try {
+        final expanded = await repo.playQueueFrom(
+          trackId: trackId,
+          expand: true,
+          metadata: {
+            if (title != null && title.isNotEmpty) 'title': title,
+            if (artist != null && artist.isNotEmpty) 'artist': artist,
+            if (imageUrl != null && imageUrl.isNotEmpty) 'cover_url': imageUrl,
+          },
+        );
+        final items = await _mapToQueueItems(expanded);
+        int newIndex = items.indexWhere((q) => q.trackId == trackId);
+        if (newIndex < 0 && items.isNotEmpty) {
+          final fallback = QueueItem(
+            trackId: trackId,
+            title: title ?? 'Unknown Title',
+            artist: artist ?? 'Unknown Artist',
+            album: album,
+            imageUrl: imageUrl,
+            uid: const Uuid().v4(),
+          );
+          items.insert(0, fallback);
+          newIndex = 0;
+        }
+        emit(state.copyWith(queue: items, currentIndex: newIndex));
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] playQueueFrom failed, fallback to local play: $e');
+        }
+      }
+    }
+
     final url = await _fetchPlayableUrl(trackId);
     if (url == null) {
       // Could throw or emit error state if needed
@@ -300,6 +357,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> playFromQueueTrackId(String trackId) async {
+    if (state.track?.trackId != null && state.track?.trackId != trackId) {
+      await _logCurrentTrackPlay(wasSkipped: true);
+    }
+
     final repo = _repo;
     if (repo != null) {
       try {
@@ -418,6 +479,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> _playNextInternal({bool userInitiated = false}) async {
+    await _logCurrentTrackPlay(wasSkipped: userInitiated);
+
     final currentIdx = state.currentIndex;
 
     // Check if there's a next track
@@ -453,8 +516,98 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     try {
       await _player.setAudioSource(AudioSource.uri(Uri.parse(url)));
       await _player.play();
+      _markTrackSessionStart(item.trackId);
     } catch (_) {
       emit(state.copyWith(buffering: false, playing: false));
+    }
+  }
+
+  void _markTrackSessionStart(String? trackId) {
+    if (trackId == null || trackId.isEmpty) return;
+    _snapshotLogTimer?.cancel();
+    _currentTrackIdForLogging = trackId;
+    _currentTrackStartedAt = DateTime.now();
+
+    _snapshotLogTimer = Timer(const Duration(seconds: 12), () async {
+      if (state.track?.trackId == trackId && _player.playing) {
+        await _logCurrentTrackPlay(wasSkipped: false, preserveSession: true);
+      }
+    });
+  }
+
+  Future<void> _logCurrentTrackPlay({
+    required bool wasSkipped,
+    bool preserveSession = false,
+  }) async {
+    final listeningRepo = _listeningHistoryRepository;
+    final supabase = _supabaseClient;
+    final trackId = _currentTrackIdForLogging ?? state.track?.trackId;
+
+    if (listeningRepo == null || supabase == null || trackId == null) return;
+
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) return;
+
+    final startedAt = _currentTrackStartedAt;
+    final playerPositionSeconds = _player.position.inSeconds;
+    final fallbackElapsedSeconds = startedAt == null
+        ? 0
+        : DateTime.now().difference(startedAt).inSeconds;
+    final timeListenedSeconds = playerPositionSeconds > 0
+        ? playerPositionSeconds
+        : fallbackElapsedSeconds;
+
+    if (timeListenedSeconds < 3) {
+      if (!preserveSession) {
+        _currentTrackStartedAt = null;
+        _currentTrackIdForLogging = null;
+      }
+      return;
+    }
+
+    final currentQueueItem = (state.currentIndex >= 0 && state.currentIndex < state.queue.length)
+        ? state.queue[state.currentIndex]
+        : null;
+
+    final totalDurationSeconds = state.duration.inSeconds > 0
+        ? state.duration.inSeconds
+        : (currentQueueItem?.durationSeconds ?? 0);
+    final completionPercentage = totalDurationSeconds > 0
+        ? ((timeListenedSeconds / totalDurationSeconds) * 100).clamp(0, 100).toDouble()
+        : 0.0;
+
+    final deviceType = kIsWeb
+        ? 'web'
+        : (Platform.isAndroid || Platform.isIOS ? 'mobile' : 'desktop');
+
+    final listeningContext = state.currentIndex >= 0 ? 'playlist' : 'library';
+
+    try {
+      await listeningRepo.logTrackPlay(
+        TrackPlayData(
+          userId: userId,
+          trackId: trackId,
+          timeListenedSeconds: timeListenedSeconds,
+          totalDurationSeconds: totalDurationSeconds,
+          completionPercentage: completionPercentage,
+          wasSkipped: wasSkipped,
+          skipAtSeconds: wasSkipped ? timeListenedSeconds : null,
+          listeningContext: listeningContext,
+          contextId: null,
+          deviceType: deviceType,
+        ),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Failed to log track play: $e');
+      }
+    } finally {
+      if (!preserveSession) {
+        _snapshotLogTimer?.cancel();
+        _snapshotLogTimer = null;
+        _currentTrackStartedAt = null;
+        _currentTrackIdForLogging = null;
+      }
     }
   }
 
@@ -478,12 +631,65 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   Future<void> _refreshQueueIfNeeded() async {
     final remaining = state.queue.length - (state.currentIndex + 1);
+    final needed = 10 - remaining;
 
-    // 1. Client-side Smart Fill (External Recommendations)
-    if (remaining < 3 &&
-        state.queue.isNotEmpty &&
-        _musicProviderRegistry != null &&
-        _repo != null) {
+    // 1. If no queue exists but a track is currently playing, seed queue from that track
+    if (state.queue.isEmpty && state.track?.trackId != null && _repo != null) {
+      try {
+        final expanded = await _repo.playQueueFrom(
+          trackId: state.track!.trackId!,
+          expand: true,
+          metadata: {
+            'title': state.track!.title,
+            'artist': state.track!.artist,
+            if (state.track!.imageUrl != null) 'cover_url': state.track!.imageUrl,
+          },
+        );
+        final items = await _mapToQueueItems(expanded);
+        final seededIndex = items.indexWhere((q) => q.trackId == state.track!.trackId);
+        emit(state.copyWith(queue: items, currentIndex: seededIndex >= 0 ? seededIndex : 0));
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] Queue seed failed: $e');
+        }
+      }
+    }
+
+    final refreshedRemaining = state.queue.length - (state.currentIndex + 1);
+    final refreshedNeeded = 10 - refreshedRemaining;
+
+    // 2. Recommendation-based smart fill to always keep next 10 ready
+    if (refreshedNeeded > 0 && state.queue.isNotEmpty && _repo != null) {
+      final existingIds = state.queue.map((q) => q.trackId).toSet();
+      int remainingNeeded = refreshedNeeded;
+
+      if (_listeningHistoryRepository != null) {
+        try {
+          final recommendation = await _listeningHistoryRepository!.getRecommendations(
+            limit: needed * 3,
+            type: 'discovery',
+            includeReasons: false,
+          );
+
+          final recommendedTrackIds = recommendation.trackIds
+              .where((id) => id.isNotEmpty && !existingIds.contains(id))
+              .take(remainingNeeded)
+              .toList();
+
+          if (recommendedTrackIds.isNotEmpty) {
+            await _repo.addToQueue(trackIds: recommendedTrackIds);
+            existingIds.addAll(recommendedTrackIds);
+            remainingNeeded -= recommendedTrackIds.length;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[PlayerCubit] Recommendation fill failed: $e');
+          }
+        }
+      }
+
+      // 3. Fallback smart fill from provider search if recommendations are insufficient
+      if (remainingNeeded > 0 && _musicProviderRegistry != null) {
       try {
         final seed = state.queue.last;
         // Use artist as seed for recommendations
@@ -492,14 +698,13 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           // Search for similar tracks
           final results = await _musicProviderRegistry.search(
             seedQuery,
-            limitPerProvider: 5,
+            limitPerProvider: remainingNeeded + 3,
           );
 
           // Filter duplicates (already in queue)
-          final existingIds = state.queue.map((q) => q.trackId).toSet();
           final newTracks = results.tracks
               .where((t) => !existingIds.contains(t.prefixedId))
-              .take(5)
+              .take(remainingNeeded)
               .toList();
 
           if (newTracks.isNotEmpty) {
@@ -527,9 +732,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       } catch (e) {
         if (kDebugMode) debugPrint('[PlayerCubit] Smart auto-fill failed: $e');
       }
+      }
     }
 
-    // 2. Sync with Backend
+    // 4. Sync with Backend
     final repo = _repo;
     if (repo == null) return;
     try {
@@ -546,6 +752,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   @override
   Future<void> close() async {
+    await _logCurrentTrackPlay(wasSkipped: true);
+    _snapshotLogTimer?.cancel();
     await _positionSub?.cancel();
     await _durationSub?.cancel();
     await _playerStateSub?.cancel();
