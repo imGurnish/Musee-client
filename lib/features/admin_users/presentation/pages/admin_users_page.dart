@@ -34,9 +34,9 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     super.dispose();
   }
 
-  void _goCreatePage() => context.go('/admin/users/create-new');
+  void _goCreatePage() => context.push('/admin/users/create-new');
 
-  void _goDetail(User user) => context.go('/admin/users/${user.id}');
+  void _goDetail(User user) => context.push('/admin/users/${user.id}');
 
   @override
   Widget build(BuildContext context) {
