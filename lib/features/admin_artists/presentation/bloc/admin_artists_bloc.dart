@@ -61,7 +61,6 @@ class AdminArtistsBloc extends Bloc<AdminArtistsEvent, AdminArtistsState> {
         artistId: event.artistId,
         name: event.name,
         email: event.email,
-        password: event.password,
         bio: event.bio,
         coverBytes: event.coverBytes,
         coverFilename: event.coverFilename,

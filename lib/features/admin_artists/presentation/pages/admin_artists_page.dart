@@ -484,7 +484,6 @@ class _CreateArtistDialogState extends State<_CreateArtistDialog> {
   final _artistIdCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
-  final _passwordCtrl = TextEditingController();
   final _regionIdCtrl = TextEditingController();
   final _bioCtrl = TextEditingController();
   List<int>? _avatarBytes;
@@ -497,7 +496,6 @@ class _CreateArtistDialogState extends State<_CreateArtistDialog> {
     _artistIdCtrl.dispose();
     _nameCtrl.dispose();
     _emailCtrl.dispose();
-    _passwordCtrl.dispose();
     _regionIdCtrl.dispose();
     _bioCtrl.dispose();
     super.dispose();
@@ -539,7 +537,6 @@ class _CreateArtistDialogState extends State<_CreateArtistDialog> {
         artistId: _linkExisting ? _artistIdCtrl.text.trim() : null,
         name: !_linkExisting ? _nameCtrl.text.trim() : null,
         email: !_linkExisting ? _emailCtrl.text.trim() : null,
-        password: !_linkExisting ? _passwordCtrl.text : null,
         regionId: !_linkExisting ? _regionIdCtrl.text.trim() : null,
         bio: _bioCtrl.text.trim(),
         coverBytes: _coverBytes,
@@ -604,28 +601,21 @@ class _CreateArtistDialogState extends State<_CreateArtistDialog> {
                   TextFormField(
                     controller: _emailCtrl,
                     decoration: const InputDecoration(labelText: 'User email'),
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _passwordCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'User password (optional)',
-                    ),
-                    obscureText: true,
-                    // Password is optional when creating a new artist user
-                    validator: (v) => null,
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty) return 'Required';
+                      final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+                      if (!emailRegex.hasMatch(value)) return 'Enter a valid email';
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _regionIdCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Region ID (required)',
+                      labelText: 'Region ID (optional)',
                     ),
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Region ID is required'
-                        : null,
                   ),
                 ],
                 const SizedBox(height: 8),

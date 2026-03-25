@@ -13,7 +13,6 @@ abstract interface class AdminArtistsRepository {
     String? externalArtistId,
     String? name,
     String? email,
-    String? password,
     required String bio,
     List<int>? coverBytes,
     String? coverFilename,

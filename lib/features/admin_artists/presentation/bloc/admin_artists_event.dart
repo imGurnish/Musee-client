@@ -13,7 +13,6 @@ class CreateArtistEvent extends AdminArtistsEvent {
   final String? artistId; // Option A
   final String? name; // Option B
   final String? email;
-  final String? password;
   final String bio; // required
   final List<int>? coverBytes;
   final String? coverFilename;
@@ -31,7 +30,6 @@ class CreateArtistEvent extends AdminArtistsEvent {
     this.artistId,
     this.name,
     this.email,
-    this.password,
     required this.bio,
     this.coverBytes,
     this.coverFilename,

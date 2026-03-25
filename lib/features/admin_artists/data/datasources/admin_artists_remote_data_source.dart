@@ -22,7 +22,6 @@ abstract interface class AdminArtistsRemoteDataSource {
     Map<String, dynamic>? externalPayload,
     String? name,
     String? email,
-    String? password,
     required String bio,
     Uint8List? coverBytes,
     String? coverFilename,
@@ -116,7 +115,6 @@ class AdminArtistsRemoteDataSourceImpl implements AdminArtistsRemoteDataSource {
     Map<String, dynamic>? externalPayload,
     String? name,
     String? email,
-    String? password,
     required String bio,
     Uint8List? coverBytes,
     String? coverFilename,
@@ -157,7 +155,6 @@ class AdminArtistsRemoteDataSourceImpl implements AdminArtistsRemoteDataSource {
     // Option B: create user
     if (name != null) form.fields.add(MapEntry('name', name));
     if (email != null) form.fields.add(MapEntry('email', email));
-    if (password != null) form.fields.add(MapEntry('password', password));
     // Optionals
     if (genres != null) form.fields.add(MapEntry('genres', jsonEncode(genres)));
     if (debutYear != null) {

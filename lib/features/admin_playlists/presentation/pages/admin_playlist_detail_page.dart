@@ -239,7 +239,7 @@ class _AdminPlaylistDetailPageState extends State<AdminPlaylistDetailPage> {
         physics: const NeverScrollableScrollPhysics(),
         shrinkWrap: true,
         itemCount: tracks.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
+        separatorBuilder: (_, _) => const Divider(height: 1),
         itemBuilder: (context, index) {
           final track = tracks[index];
           final duration = _formatDuration(track.duration);
@@ -367,7 +367,7 @@ class _AdminPlaylistDetailPageState extends State<AdminPlaylistDetailPage> {
       child: ListView.separated(
         shrinkWrap: true,
         itemCount: state.searchResults.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
+        separatorBuilder: (_, _) => const Divider(height: 1),
         itemBuilder: (context, index) {
           final track = state.searchResults[index];
           final alreadyInPlaylist = playlistTrackIds.contains(track.trackId);
@@ -432,7 +432,7 @@ class _AdminPlaylistDetailPageState extends State<AdminPlaylistDetailPage> {
   String _formatDuration(int seconds) {
     final minutes = seconds ~/ 60;
     final secs = seconds % 60;
-    return '${minutes}:${secs.toString().padLeft(2, '0')}';
+    return '$minutes:${secs.toString().padLeft(2, '0')}';
   }
 }
 
@@ -459,7 +459,7 @@ class _PlaylistHeader extends StatelessWidget {
                   playlist.coverUrl ??
                       'https://xvpputhovrhgowfkjhfv.supabase.co/storage/v1/object/public/covers/playlists/default_cover.png',
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
+                  errorBuilder: (_, _, _) => Container(
                     color: Colors.grey[300],
                     child: const Icon(Icons.music_note),
                   ),

@@ -9,7 +9,6 @@ class CreateArtistParams {
   final String? externalArtistId;
   final String? name; // Option B: create user
   final String? email;
-  final String? password;
   final String bio; // required by backend
   final List<int>? coverBytes;
   final String? coverFilename;
@@ -28,7 +27,6 @@ class CreateArtistParams {
     this.externalArtistId,
     this.name,
     this.email,
-    this.password,
     required this.bio,
     this.coverBytes,
     this.coverFilename,
@@ -55,7 +53,6 @@ class CreateArtist implements UseCase<Artist, CreateArtistParams> {
       externalArtistId: params.externalArtistId,
       name: params.name,
       email: params.email,
-      password: params.password,
       bio: params.bio,
       coverBytes: params.coverBytes,
       coverFilename: params.coverFilename,

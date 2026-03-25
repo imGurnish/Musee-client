@@ -2,16 +2,11 @@ import 'package:musee/features/admin_playlists/domain/entities/playlist.dart';
 
 class PlaylistTrackModel extends PlaylistTrack {
   PlaylistTrackModel({
-    required String trackId,
-    required String title,
-    required int duration,
-    required DateTime createdAt,
-  }) : super(
-    trackId: trackId,
-    title: title,
-    duration: duration,
-    createdAt: createdAt,
-  );
+    required super.trackId,
+    required super.title,
+    required super.duration,
+    required super.createdAt,
+  });
 
   factory PlaylistTrackModel.fromJson(Map<String, dynamic> json) {
     return PlaylistTrackModel(
@@ -36,40 +31,25 @@ class PlaylistTrackModel extends PlaylistTrack {
 
 class PlaylistModel extends Playlist {
   PlaylistModel({
-    required String playlistId,
-    required String name,
-    String? description,
-    String? coverUrl,
-    String? language,
-    required bool isPublic,
-    required int likesCount,
-    required int totalTracks,
-    int? duration,
-    required DateTime createdAt,
-    required DateTime updatedAt,
-    List<PlaylistTrack>? tracks,
-  }) : super(
-    playlistId: playlistId,
-    name: name,
-    description: description,
-    coverUrl: coverUrl,
-    language: language,
-    isPublic: isPublic,
-    likesCount: likesCount,
-    totalTracks: totalTracks,
-    duration: duration,
-    createdAt: createdAt,
-    updatedAt: updatedAt,
-    tracks: tracks,
-  );
+    required super.playlistId,
+    required super.name,
+    super.description,
+    super.coverUrl,
+    super.language,
+    required super.isPublic,
+    required super.likesCount,
+    required super.totalTracks,
+    super.duration,
+    required super.createdAt,
+    required super.updatedAt,
+    super.tracks,
+  });
 
   factory PlaylistModel.fromJson(Map<String, dynamic> json) {
     final directTracksData = json['tracks'] as List?;
     final nestedTracksData = json['playlist_tracks'] as List?;
 
-    final tracks = (directTracksData != null
-            ? directTracksData
-            : (nestedTracksData ?? []).map((e) => e is Map ? e['tracks'] : null).toList())
+    final tracks = (directTracksData ?? (nestedTracksData ?? []).map((e) => e is Map ? e['tracks'] : null).toList())
         .whereType<Map>()
         .map((e) => PlaylistTrackModel.fromJson(Map<String, dynamic>.from(e)))
         .toList();

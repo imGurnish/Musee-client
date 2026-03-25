@@ -25,7 +25,6 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
   final _artistIdCtrl = TextEditingController(); // existing
   final _nameCtrl = TextEditingController(); // new user optional
   final _emailCtrl = TextEditingController(); // new user optional
-  final _passwordCtrl = TextEditingController(); // new user optional
 
   final _bioCtrl = TextEditingController(); // required
 
@@ -53,7 +52,6 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
     _artistIdCtrl.dispose();
     _nameCtrl.dispose();
     _emailCtrl.dispose();
-    _passwordCtrl.dispose();
     _bioCtrl.dispose();
     _genresCtrl.dispose();
     _debutYearCtrl.dispose();
@@ -194,7 +192,6 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
         artistId: _linkExisting ? _artistIdCtrl.text.trim() : null,
         name: !_linkExisting ? _nameCtrl.text.trim().takeIfNotEmpty() : null,
         email: !_linkExisting ? _emailCtrl.text.trim().takeIfNotEmpty() : null,
-        password: !_linkExisting ? _passwordCtrl.text.takeIfNotEmpty() : null,
         bio: _bioCtrl.text.trim(),
         coverBytes: _coverBytes?.toList(),
         coverFilename: _coverFilename,
@@ -268,23 +265,26 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
                   TextFormField(
                     controller: _nameCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'User name (optional)',
+                      labelText: 'User name (required)',
                     ),
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'User name is required'
+                        : null,
                   ),
                   const SizedBox(height: 8),
                   TextFormField(
                     controller: _emailCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'User email (optional)',
+                      labelText: 'User email (required)',
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _passwordCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'User password (optional)',
-                    ),
-                    obscureText: true,
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (v) {
+                      final value = v?.trim() ?? '';
+                      if (value.isEmpty) return 'User email is required';
+                      final emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+                      if (!emailRegex.hasMatch(value)) return 'Enter a valid email';
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -314,13 +314,9 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
                         child: TextFormField(
                           readOnly: true,
                           decoration: InputDecoration(
-                            labelText: 'Region (required)',
+                            labelText: 'Region (optional)',
                             hintText: _regionLabel ?? 'Select region',
                           ),
-                          validator: (v) =>
-                              (_regionId == null || _regionId!.isEmpty)
-                              ? 'Region is required'
-                              : null,
                           onTap: _pickRegion,
                         ),
                       ),

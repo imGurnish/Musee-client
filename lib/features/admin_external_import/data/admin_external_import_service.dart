@@ -926,7 +926,6 @@ class AdminExternalImportService {
       final created = await artistsApi.createArtist(
         name: name,
         email: email,
-        password: 'Temp@123456!',
         bio: bio,
         // Keep payload minimal for multipart to avoid backend array parsing
         // issues (genres must be an actual array on server side).
@@ -989,7 +988,6 @@ class AdminExternalImportService {
       final created = await artistsApi.createArtist(
         name: name,
         email: email,
-        password: 'Temp@123456!',
         bio: bio,
         avatarBytes: avatarBytes,
         avatarFilename: avatarFilename,
