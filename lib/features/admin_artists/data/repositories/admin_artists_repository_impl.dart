@@ -138,4 +138,16 @@ class AdminArtistsRepositoryImpl implements AdminArtistsRepository {
       return left(Failure(e.toString()));
     }
   }
+
+  @override
+  Future<Either<Failure, void>> deleteArtists(List<String> ids) async {
+    try {
+      await remote.deleteArtists(ids);
+      return right(null);
+    } on DioException catch (e) {
+      return left(Failure(e.message ?? 'Network error'));
+    } catch (e) {
+      return left(Failure(e.toString()));
+    }
+  }
 }

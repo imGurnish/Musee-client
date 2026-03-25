@@ -52,6 +52,8 @@ abstract interface class AdminArtistsRemoteDataSource {
   });
 
   Future<void> deleteArtist(String id);
+
+  Future<void> deleteArtists(List<String> ids);
 }
 
 class AdminArtistsRemoteDataSourceImpl implements AdminArtistsRemoteDataSource {
@@ -257,6 +259,15 @@ class AdminArtistsRemoteDataSourceImpl implements AdminArtistsRemoteDataSource {
   Future<void> deleteArtist(String id) async {
     await _dio.delete(
       '$basePath/$id',
+      options: dio.Options(headers: _authHeader()),
+    );
+  }
+
+  @override
+  Future<void> deleteArtists(List<String> ids) async {
+    await _dio.post(
+      '$basePath/bulk-delete',
+      data: {'ids': ids},
       options: dio.Options(headers: _authHeader()),
     );
   }

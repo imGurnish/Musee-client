@@ -33,6 +33,7 @@ import 'package:musee/features/admin_artists/domain/usecases/get_artist.dart';
 import 'package:musee/features/admin_artists/domain/usecases/create_artist.dart';
 import 'package:musee/features/admin_artists/domain/usecases/update_artist.dart';
 import 'package:musee/features/admin_artists/domain/usecases/delete_artist.dart';
+import 'package:musee/features/admin_artists/domain/usecases/delete_artists.dart';
 import 'package:musee/features/admin_artists/presentation/bloc/admin_artists_bloc.dart';
 import 'package:musee/features/admin_albums/data/datasources/admin_albums_remote_data_source.dart';
 import 'package:musee/features/admin_albums/data/repositories/admin_albums_repository_impl.dart';
@@ -333,6 +334,7 @@ void _initAdminArtists() {
     ..registerFactory(() => CreateArtist(serviceLocator()))
     ..registerFactory(() => UpdateArtist(serviceLocator()))
     ..registerFactory(() => DeleteArtist(serviceLocator()))
+    ..registerFactory(() => DeleteArtists(serviceLocator()))
     // bloc
     ..registerFactory(
       () => AdminArtistsBloc(
@@ -340,6 +342,7 @@ void _initAdminArtists() {
         create: serviceLocator(),
         update: serviceLocator(),
         delete: serviceLocator(),
+        deleteMany: serviceLocator(),
       ),
     );
 }

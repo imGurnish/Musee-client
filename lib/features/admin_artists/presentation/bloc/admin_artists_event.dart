@@ -79,3 +79,8 @@ class DeleteArtistEvent extends AdminArtistsEvent {
   final String id;
   DeleteArtistEvent(this.id);
 }
+
+class DeleteArtistsEvent extends AdminArtistsEvent {
+  final List<String> ids;
+  DeleteArtistsEvent(this.ids);
+}

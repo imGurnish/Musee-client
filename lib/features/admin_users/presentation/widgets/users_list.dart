@@ -28,63 +28,116 @@ class UsersList extends StatelessWidget {
         return Material(
           color: theme.cardColor,
           borderRadius: BorderRadius.circular(12),
-          child: ListTile(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 8,
-            ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
             onTap: () => onEdit(u),
-            leading: CircleAvatar(
-              radius: 22,
-              backgroundImage: u.avatarUrl.isNotEmpty
-                  ? NetworkImage(u.avatarUrl)
-                  : null,
-              child: u.avatarUrl.isEmpty
-                  ? Text(u.name.isNotEmpty ? u.name[0].toUpperCase() : '?')
-                  : null,
-            ),
-            title: Text(u.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (u.email != null)
-                  Text(u.email!, maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(
-                  '${u.userType.value} • ${u.subscriptionType.value}',
-                  style: theme.textTheme.bodySmall,
-                ),
-                Text(
-                  'Last: ${u.lastLoginAt?.toLocal().toString().split('.').first ?? '—'}',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-            ),
-            trailing: Wrap(
-              spacing: 4,
-              children: [
-                Checkbox(
-                  value: selected,
-                  onChanged: (v) => onSelect(u, v ?? false),
-                ),
-                IconButton(
-                  tooltip: 'Edit',
-                  icon: const Icon(Icons.edit),
-                  onPressed: () => onEdit(u),
-                ),
-                IconButton(
-                  tooltip: 'Delete',
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => onDelete(u),
-                ),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundImage: u.avatarUrl.isNotEmpty
+                            ? NetworkImage(u.avatarUrl)
+                            : null,
+                        child: u.avatarUrl.isEmpty
+                            ? Text(
+                                u.name.isNotEmpty
+                                    ? u.name[0].toUpperCase()
+                                    : '?',
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              u.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleSmall,
+                            ),
+                            if (u.email != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  u.email!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                              ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                _Tag(label: u.userType.value),
+                                _Tag(label: u.subscriptionType.value),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Last login: ${u.lastLoginAt?.toLocal().toString().split('.').first ?? '—'}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: selected,
+                        onChanged: (v) => onSelect(u, v ?? false),
+                      ),
+                      Text(selected ? 'Selected' : 'Select'),
+                      const Spacer(),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.edit, size: 16),
+                        label: const Text('Edit'),
+                        onPressed: () => onEdit(u),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton.tonalIcon(
+                        icon: const Icon(Icons.delete_outline, size: 16),
+                        label: const Text('Delete'),
+                        onPressed: () => onDelete(u),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class _Tag extends StatelessWidget {
+  final String label;
+  const _Tag({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(label, style: theme.textTheme.labelSmall),
     );
   }
 }
