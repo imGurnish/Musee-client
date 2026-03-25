@@ -7,7 +7,6 @@ import 'package:musee/core/common/cubit/app_user_cubit.dart';
 import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 import 'package:musee/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:musee/features/user__dashboard/presentation/widgets/horizontal_media_section.dart';
-import 'package:musee/features/user__dashboard/presentation/widgets/media_card.dart';
 import 'package:musee/features/user__dashboard/presentation/widgets/section_header.dart';
 import 'package:go_router/go_router.dart';
 import 'package:musee/core/common/navigation/routes.dart';

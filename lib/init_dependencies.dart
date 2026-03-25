@@ -64,6 +64,14 @@ import 'package:musee/features/admin_tracks/domain/usecases/link_track_artist.da
 import 'package:musee/features/admin_tracks/domain/usecases/update_track_artist_role.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/unlink_track_artist.dart';
 import 'package:musee/features/admin_tracks/presentation/bloc/admin_tracks_bloc.dart';
+import 'package:musee/features/admin_playlists/data/datasources/admin_playlists_remote_data_source.dart';
+import 'package:musee/features/admin_playlists/data/repositories/admin_playlists_repository_impl.dart';
+import 'package:musee/features/admin_playlists/domain/repositories/admin_playlists_repository.dart';
+import 'package:musee/features/admin_playlists/domain/usecases/get_playlist_details.dart';
+import 'package:musee/features/admin_playlists/domain/usecases/search_tracks.dart';
+import 'package:musee/features/admin_playlists/domain/usecases/add_track_to_playlist.dart';
+import 'package:musee/features/admin_playlists/domain/usecases/remove_track_from_playlist.dart';
+import 'package:musee/features/admin_playlists/presentation/bloc/admin_playlist_detail_bloc.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/features/user_albums/data/datasources/user_albums_remote_data_source.dart';
 import 'package:musee/features/user_albums/data/repositories/user_albums_repository_impl.dart';
@@ -220,6 +228,8 @@ Future<void> initDependencies() async {
   _initAdminPlans();
   // admin tracks
   _initAdminTracks();
+  // admin playlists
+  _initAdminPlaylists();
 
   serviceLocator.registerLazySingleton<JioSaavnApiClient>(() => JioSaavnApiClient());
   serviceLocator.registerLazySingleton<AdminExternalImportService>(
@@ -426,6 +436,38 @@ void _initAdminTracks() {
         linkArtist: serviceLocator(),
         updateArtistRole: serviceLocator(),
         unlinkArtist: serviceLocator(),
+      ),
+    );
+}
+
+void _initAdminPlaylists() {
+  serviceLocator
+    // datasource
+    ..registerLazySingleton<AdminPlaylistsRemoteDataSource>(
+      () => AdminPlaylistsRemoteDataSourceImpl(
+        dio: serviceLocator<Dio>(),
+        baseUrl: AppSecrets.backendUrl,
+        supabase: serviceLocator<SupabaseClient>(),
+      ),
+    )
+    // repository
+    ..registerLazySingleton<AdminPlaylistsRepository>(
+      () => AdminPlaylistsRepositoryImpl(
+        remoteDataSource: serviceLocator(),
+      ),
+    )
+    // use cases
+    ..registerFactory(() => GetPlaylistDetails(serviceLocator()))
+    ..registerFactory(() => SearchTracks(serviceLocator()))
+    ..registerFactory(() => AddTrackToPlaylist(serviceLocator()))
+    ..registerFactory(() => RemoveTrackFromPlaylist(serviceLocator()))
+    // bloc
+    ..registerFactory(
+      () => AdminPlaylistDetailBloc(
+        getPlaylistDetails: serviceLocator(),
+        searchTracks: serviceLocator(),
+        addTrackToPlaylist: serviceLocator(),
+        removeTrackFromPlaylist: serviceLocator(),
       ),
     );
 }

@@ -28,6 +28,8 @@ import 'package:musee/features/admin_external_import/presentation/pages/admin_ex
 import 'package:musee/features/admin_external_import/presentation/pages/admin_external_album_import_page.dart';
 import 'package:musee/features/admin_external_import/presentation/pages/admin_external_playlist_import_page.dart';
 import 'package:musee/features/admin_playlists/presentation/pages/admin_playlists_page.dart';
+import 'package:musee/features/admin_playlists/presentation/pages/admin_playlist_detail_page.dart';
+import 'package:musee/features/admin_playlists/presentation/bloc/admin_playlist_detail_bloc.dart';
 import 'package:musee/features/admin_countries/presentation/pages/admin_countries_page.dart';
 import 'package:musee/features/admin_regions/presentation/pages/admin_regions_page.dart';
 import 'package:musee/init_dependencies.dart';
@@ -249,6 +251,19 @@ class AppGoRouter {
           path: Routes.adminPlaylists,
           name: 'admin_playlists',
           builder: (context, state) => const AdminPlaylistsPage(),
+        ),
+
+        GoRoute(
+          path: '/admin/playlists/:id',
+          name: 'admin_playlist_detail',
+          builder: (context, state) {
+            final playlistId = state.pathParameters['id'] ?? '';
+            return BlocProvider(
+              create: (context) =>
+                  serviceLocator<AdminPlaylistDetailBloc>(),
+              child: AdminPlaylistDetailPage(playlistId: playlistId),
+            );
+          },
         ),
 
         GoRoute(

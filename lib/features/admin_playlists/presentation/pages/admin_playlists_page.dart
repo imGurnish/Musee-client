@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart' as dio;
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
+import 'package:go_router/go_router.dart';
 import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -247,6 +248,11 @@ class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
                       itemBuilder: (context, index) {
                         final row = _items[index];
                         return ListTile(
+                          onTap: () {
+                            context.push(
+                              '/admin/playlists/${row['playlist_id']}',
+                            );
+                          },
                           title: Text(row['name']?.toString() ?? 'Untitled'),
                           subtitle: Text(
                             'playlist_id: ${row['playlist_id']}\n'

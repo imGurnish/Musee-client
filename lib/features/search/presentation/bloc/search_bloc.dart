@@ -65,19 +65,10 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         final isOnline = await (_connectivity?.checkConnectivity() ??
             Future<bool>.value(true));
 
-        if (!isOnline) {
-          final offline = await _searchCached(event.query);
-          final enrichedOffline = await _enrichCacheStatus(offline);
-          emit(
-            SearchResultsLoaded(
-              offline,
-              cachedTrackIds: enrichedOffline.cachedTrackIds,
-              cachedAlbumIds: enrichedOffline.cachedAlbumIds,
-              cachedPlaylistIds: enrichedOffline.cachedPlaylistIds,
-              fromOfflineCache: true,
-            ),
+        if (kDebugMode && !isOnline) {
+          print(
+            '[SearchBloc] Connectivity reported offline; attempting backend search before cache fallback.',
           );
-          return;
         }
 
         final results = await getSearchResults(event.query);

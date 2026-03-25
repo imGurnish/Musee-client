@@ -841,27 +841,6 @@ class _ResultTileContainer extends StatelessWidget {
   }
 }
 
-class _CachedChip extends StatelessWidget {
-  const _CachedChip();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Icon(
-        Icons.cloud_done_rounded,
-        size: 12,
-        color: theme.colorScheme.onPrimaryContainer,
-      ),
-    );
-  }
-}
-
 class _ArtworkCacheBadge extends StatelessWidget {
   final bool visible;
   const _ArtworkCacheBadge({required this.visible});
