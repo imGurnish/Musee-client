@@ -90,7 +90,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('User detail'),
+        title: const Text('Admin User Details'),
         actions: [
           IconButton(
             tooltip: 'Back to users',
@@ -145,10 +145,18 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                                 decoration: const InputDecoration(
                                   labelText: 'Email *',
                                 ),
-                                validator: (v) =>
-                                    (v == null || v.trim().isEmpty)
-                                    ? 'Required'
-                                    : null,
+                                keyboardType: TextInputType.emailAddress,
+                                validator: (v) {
+                                  final value = v?.trim() ?? '';
+                                  if (value.isEmpty) return 'Required';
+                                  final emailRegex = RegExp(
+                                    r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                                  );
+                                  if (!emailRegex.hasMatch(value)) {
+                                    return 'Enter a valid email';
+                                  }
+                                  return null;
+                                },
                               ),
                             ),
                           ],

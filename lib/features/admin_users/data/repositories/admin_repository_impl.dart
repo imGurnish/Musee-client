@@ -110,4 +110,16 @@ class AdminRepositoryImpl implements AdminRepository {
       return left(Failure(e.toString()));
     }
   }
+
+  @override
+  Future<Either<Failure, void>> deleteUsers(List<String> ids) async {
+    try {
+      await remote.deleteUsers(ids);
+      return right(null);
+    } on DioException catch (e) {
+      return left(Failure(e.message ?? 'Network error'));
+    } catch (e) {
+      return left(Failure(e.toString()));
+    }
+  }
 }

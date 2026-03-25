@@ -23,6 +23,7 @@ import 'package:musee/features/admin_users/domain/usecases/get_user.dart';
 import 'package:musee/features/admin_users/domain/usecases/create_user.dart';
 import 'package:musee/features/admin_users/domain/usecases/update_user.dart';
 import 'package:musee/features/admin_users/domain/usecases/delete_user.dart';
+import 'package:musee/features/admin_users/domain/usecases/delete_users.dart';
 import 'package:musee/features/admin_users/presentation/bloc/admin_users_bloc.dart';
 import 'package:musee/features/admin_artists/data/datasources/admin_artists_remote_data_source.dart';
 import 'package:musee/features/admin_artists/data/repositories/admin_artists_repository_impl.dart';
@@ -300,6 +301,7 @@ void _initAdminUsers() {
     ..registerFactory(() => CreateUser(serviceLocator()))
     ..registerFactory(() => UpdateUser(serviceLocator()))
     ..registerFactory(() => DeleteUser(serviceLocator()))
+    ..registerFactory(() => DeleteUsers(serviceLocator()))
     // bloc
     ..registerFactory(
       () => AdminUsersBloc(
@@ -307,6 +309,7 @@ void _initAdminUsers() {
         createUser: serviceLocator(),
         updateUser: serviceLocator(),
         deleteUser: serviceLocator(),
+        deleteUsers: serviceLocator(),
       ),
     );
 }

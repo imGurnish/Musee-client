@@ -49,3 +49,8 @@ final class DeleteUserEvent extends AdminUsersEvent {
   final String id;
   DeleteUserEvent(this.id);
 }
+
+final class DeleteUsersEvent extends AdminUsersEvent {
+  final List<String> ids;
+  DeleteUsersEvent(this.ids);
+}

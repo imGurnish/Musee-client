@@ -21,6 +21,7 @@ class AdminUsersPage extends StatefulWidget {
 class _AdminUsersPageState extends State<AdminUsersPage> {
   final TextEditingController _searchCtrl = TextEditingController();
   int _limit = 20;
+  final Set<String> _selectedUserIds = <String>{};
 
   @override
   void initState() {
@@ -38,6 +39,80 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
 
   void _goDetail(User user) => context.push('/admin/users/${user.id}');
 
+  Future<void> _confirmDeleteOne(User user) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete user?'),
+        content: Text(
+          'Are you sure you want to delete ${user.name}? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      context.read<AdminUsersBloc>().add(DeleteUserEvent(user.id));
+      setState(() => _selectedUserIds.remove(user.id));
+    }
+  }
+
+  Future<void> _confirmDeleteSelected() async {
+    final count = _selectedUserIds.length;
+    if (count == 0) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete selected users?'),
+        content: Text('Delete $count selected user(s)? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete All'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      context.read<AdminUsersBloc>().add(
+        DeleteUsersEvent(_selectedUserIds.toList(growable: false)),
+      );
+      setState(() => _selectedUserIds.clear());
+    }
+  }
+
+  void _toggleSelectUser(User user, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedUserIds.add(user.id);
+      } else {
+        _selectedUserIds.remove(user.id);
+      }
+    });
+  }
+
+  void _toggleSelectAllVisible(List<User> users, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedUserIds.addAll(users.map((e) => e.id));
+      } else {
+        _selectedUserIds.removeAll(users.map((e) => e.id));
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -45,6 +120,12 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       appBar: AppBar(
         title: const Text('Admin • Users'),
         actions: [
+          if (_selectedUserIds.isNotEmpty)
+            IconButton(
+              onPressed: _confirmDeleteSelected,
+              icon: const Icon(Icons.delete_sweep_outlined),
+              tooltip: 'Delete selected (${_selectedUserIds.length})',
+            ),
           IconButton(
             onPressed: _goCreatePage,
             icon: const Icon(Icons.person_add_alt_1),
@@ -169,6 +250,14 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                   }
                   if (state is AdminUsersPageLoaded) {
                     final users = state.items;
+                    final visibleIds = users.map((u) => u.id).toSet();
+                    final stale = _selectedUserIds.difference(visibleIds);
+                    if (stale.isNotEmpty) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        setState(() => _selectedUserIds.removeAll(stale));
+                      });
+                    }
                     final totalPages = (state.total / state.limit).ceil().clamp(
                       1,
                       999999,
@@ -183,68 +272,21 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                   ? UsersList(
                                       users: users,
                                       onEdit: _goDetail,
-                                      onDelete: (u) async {
-                                        final confirm = await showDialog<bool>(
-                                          context: context,
-                                          builder: (ctx) => AlertDialog(
-                                            title: const Text('Delete user?'),
-                                            content: Text(
-                                              'Are you sure you want to delete ${u.name}? This cannot be undone.',
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx, false),
-                                                child: const Text('Cancel'),
-                                              ),
-                                              FilledButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx, true),
-                                                child: const Text('Delete'),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                        if (confirm == true &&
-                                            context.mounted) {
-                                          context.read<AdminUsersBloc>().add(
-                                            DeleteUserEvent(u.id),
-                                          );
-                                        }
-                                      },
+                                      onDelete: _confirmDeleteOne,
+                                      selectedIds: _selectedUserIds,
+                                      onSelect: _toggleSelectUser,
                                     )
                                   : UsersTable(
                                       users: users,
                                       onEdit: _goDetail,
-                                      onDelete: (u) async {
-                                        final confirm = await showDialog<bool>(
-                                          context: context,
-                                          builder: (ctx) => AlertDialog(
-                                            title: const Text('Delete user?'),
-                                            content: Text(
-                                              'Are you sure you want to delete ${u.name}? This cannot be undone.',
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx, false),
-                                                child: const Text('Cancel'),
-                                              ),
-                                              FilledButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx, true),
-                                                child: const Text('Delete'),
-                                              ),
-                                            ],
+                                      onDelete: _confirmDeleteOne,
+                                      selectedIds: _selectedUserIds,
+                                      onToggleSelectAll: (selected) =>
+                                          _toggleSelectAllVisible(
+                                            users,
+                                            selected,
                                           ),
-                                        );
-                                        if (confirm == true &&
-                                            context.mounted) {
-                                          context.read<AdminUsersBloc>().add(
-                                            DeleteUserEvent(u.id),
-                                          );
-                                        }
-                                      },
+                                      onSelect: _toggleSelectUser,
                                     ),
                             ),
                             const SizedBox(height: 8),

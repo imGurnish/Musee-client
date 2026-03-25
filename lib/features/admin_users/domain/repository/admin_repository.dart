@@ -28,4 +28,6 @@ abstract interface class AdminRepository {
   });
 
   Future<Either<Failure, void>> deleteUser(String id);
+
+  Future<Either<Failure, void>> deleteUsers(List<String> ids);
 }

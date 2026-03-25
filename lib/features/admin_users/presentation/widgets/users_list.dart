@@ -5,11 +5,15 @@ class UsersList extends StatelessWidget {
   final List<User> users;
   final void Function(User user) onEdit;
   final void Function(User user) onDelete;
+  final Set<String> selectedIds;
+  final void Function(User user, bool selected) onSelect;
   const UsersList({
     super.key,
     required this.users,
     required this.onEdit,
     required this.onDelete,
+    required this.selectedIds,
+    required this.onSelect,
   });
 
   @override
@@ -20,6 +24,7 @@ class UsersList extends StatelessWidget {
       separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
         final u = users[i];
+        final selected = selectedIds.contains(u.id);
         return Material(
           color: theme.cardColor,
           borderRadius: BorderRadius.circular(12),
@@ -61,6 +66,10 @@ class UsersList extends StatelessWidget {
             trailing: Wrap(
               spacing: 4,
               children: [
+                Checkbox(
+                  value: selected,
+                  onChanged: (v) => onSelect(u, v ?? false),
+                ),
                 IconButton(
                   tooltip: 'Edit',
                   icon: const Icon(Icons.edit),
