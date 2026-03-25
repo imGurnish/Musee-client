@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart' as dio;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
@@ -21,6 +22,7 @@ class AdminArtistCreatePage extends StatefulWidget {
 class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
   final _formKey = GlobalKey<FormState>();
   bool _linkExisting = true;
+  bool _saving = false;
 
   final _artistIdCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
@@ -167,6 +169,7 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
   }
 
   Future<void> _submit() async {
+    if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
 
     Map<String, dynamic>? social;
@@ -193,6 +196,8 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
     final debutYear = int.tryParse(_debutYearCtrl.text.trim());
     final monthly = int.tryParse(_monthlyListenersCtrl.text.trim());
 
+    setState(() => _saving = true);
+
     context.read<AdminArtistsBloc>().add(
       CreateArtistEvent(
         artistId: _linkExisting ? _artistIdCtrl.text.trim() : null,
@@ -212,8 +217,6 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
         dateOfBirth: _dob,
       ),
     );
-
-    Navigator.of(context).pop();
   }
 
   Future<void> _pickDateOfBirth() async {
@@ -228,20 +231,71 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
     if (picked != null) setState(() => _dob = picked);
   }
 
+  Future<void> _pickCoverFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    if (file.bytes == null) return;
+    setState(() {
+      _coverBytes = file.bytes;
+      _coverFilename = file.name;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Create Artist')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+      appBar: AppBar(
+        title: const Text('Create Artist'),
+        actions: [
+          if (_saving)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: 'Create',
+              icon: const Icon(Icons.check),
+              onPressed: _submit,
+            ),
+        ],
+      ),
+      body: BlocListener<AdminArtistsBloc, AdminArtistsState>(
+        listener: (context, state) {
+          if (!_saving) return;
+          if (state is AdminArtistsFailure) {
+            setState(() => _saving = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(state.message)),
+            );
+            return;
+          }
+          if (state is AdminArtistsPageLoaded) {
+            setState(() => _saving = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Artist created')),
+            );
+            Navigator.of(context).pop();
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 // Link vs Create section
                 Card(
                   elevation: 0,
@@ -575,31 +629,66 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
                           ),
                           onTap: _pickDateOfBirth,
                         ),
+                        const SizedBox(height: 10),
+                        _CoverPickerTile(
+                          pickedName: _coverFilename,
+                          onPick: _pickCoverFile,
+                          onClear: () => setState(() {
+                            _coverBytes = null;
+                            _coverFilename = null;
+                          }),
+                        ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
-                    ),
-                    const SizedBox(width: 12),
-                    FilledButton.icon(
-                      onPressed: _submit,
-                      icon: const Icon(Icons.check),
-                      label: const Text('Create'),
-                    ),
-                  ],
                 ),
               ],
             ),
           ),
         ),
       ),
+      ),
+    );
+  }
+}
+
+class _CoverPickerTile extends StatelessWidget {
+  final String? pickedName;
+  final VoidCallback onPick;
+  final VoidCallback onClear;
+
+  const _CoverPickerTile({
+    required this.pickedName,
+    required this.onPick,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.image_outlined, size: 18),
+        const SizedBox(width: 8),
+        const Expanded(child: Text('Artist Cover (optional)')),
+        if (pickedName != null)
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(
+                pickedName!,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ),
+        if (pickedName != null)
+          IconButton(
+            tooltip: 'Clear',
+            icon: const Icon(Icons.close),
+            onPressed: onClear,
+          ),
+        FilledButton.tonal(onPressed: onPick, child: const Text('Choose')),
+      ],
     );
   }
 }

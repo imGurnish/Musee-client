@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:dio/dio.dart' as dio;
 import 'package:flutter/foundation.dart';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:get_it/get_it.dart';
@@ -28,6 +27,7 @@ class _DetailData {
 
 class _AdminArtistDetailPageState extends State<AdminArtistDetailPage> {
   late Future<_DetailData> _future;
+  bool _saving = false;
 
   final _formKey = GlobalKey<FormState>();
   final _bioCtrl = TextEditingController();
@@ -151,7 +151,9 @@ class _AdminArtistDetailPageState extends State<AdminArtistDetailPage> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
 
     final artistBody = _buildPatchBody();
     final bool hasCoverFile = _coverBytes != null && _coverFilename != null;
@@ -237,6 +239,8 @@ class _AdminArtistDetailPageState extends State<AdminArtistDetailPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -348,11 +352,21 @@ class _AdminArtistDetailPageState extends State<AdminArtistDetailPage> {
           appBar: AppBar(
             title: const Text('Artist Details'),
             actions: [
-              IconButton(
-                onPressed: _save,
-                icon: const Icon(Icons.save_outlined),
-                tooltip: 'Save',
-              ),
+              if (_saving)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              else
+                IconButton(
+                  onPressed: _save,
+                  icon: const Icon(Icons.save_outlined),
+                  tooltip: 'Save',
+                ),
             ],
           ),
           body: Padding(
@@ -562,58 +576,17 @@ class _AdminArtistDetailPageState extends State<AdminArtistDetailPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          if (artist.coverUrl != null &&
-                              artist.coverUrl!.trim().isNotEmpty)
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: Image.network(
-                                artist.coverUrl!,
-                                height: 140,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  height: 140,
-                                  alignment: Alignment.center,
-                                  color: theme.colorScheme.surfaceContainerHighest,
-                                  child: const Text('Cover preview unavailable'),
-                                ),
-                              ),
-                            ),
-                          if (artist.coverUrl != null &&
-                              artist.coverUrl!.trim().isNotEmpty)
-                            const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 10,
-                            runSpacing: 8,
-                            children: [
-                              FilledButton.tonalIcon(
-                                onPressed: _pickCoverFile,
-                                icon: const Icon(Icons.upload_file_outlined),
-                                label: const Text('Pick Cover Image'),
-                              ),
-                              if (_coverFilename != null)
-                                OutlinedButton.icon(
-                                  onPressed: () {
-                                    setState(() {
-                                      _coverBytes = null;
-                                      _coverFilename = null;
-                                    });
-                                  },
-                                  icon: const Icon(Icons.clear),
-                                  label: const Text('Clear Selection'),
-                                ),
-                            ],
-                          ),
-                          if (_coverFilename != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              'Selected: $_coverFilename',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ],
-                          const SizedBox(height: 10),
-                          Text(
-                            'Backend supports both cover file upload and cover_url field updates.',
-                            style: theme.textTheme.bodySmall,
+                          _CoverPickerRow(
+                            coverUrl: artist.coverUrl,
+                            previewBytes: _coverBytes,
+                            pickedName: _coverFilename,
+                            onPick: _pickCoverFile,
+                            onClear: () {
+                              setState(() {
+                                _coverBytes = null;
+                                _coverFilename = null;
+                              });
+                            },
                           ),
                           const SizedBox(height: 10),
                           TextFormField(
@@ -674,6 +647,77 @@ class _SectionCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CoverPickerRow extends StatelessWidget {
+  final String? coverUrl;
+  final Uint8List? previewBytes;
+  final String? pickedName;
+  final VoidCallback onPick;
+  final VoidCallback onClear;
+
+  const _CoverPickerRow({
+    required this.coverUrl,
+    required this.previewBytes,
+    required this.pickedName,
+    required this.onPick,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRemote = coverUrl != null && coverUrl!.trim().isNotEmpty;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: 72,
+            height: 72,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: previewBytes != null
+                ? Image.memory(previewBytes!, fit: BoxFit.cover)
+                : hasRemote
+                ? Image.network(
+                    coverUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const Icon(Icons.image_outlined),
+                  )
+                : const Icon(Icons.image_outlined),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(pickedName ?? 'No image selected'),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.image),
+                    label: const Text('Choose cover'),
+                    onPressed: onPick,
+                  ),
+                  if (pickedName != null)
+                    TextButton.icon(
+                      icon: const Icon(Icons.clear),
+                      label: const Text('Clear'),
+                      onPressed: onClear,
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
