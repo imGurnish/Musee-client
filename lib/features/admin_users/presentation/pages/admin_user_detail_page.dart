@@ -22,6 +22,7 @@ class AdminUserDetailPage extends StatefulWidget {
 class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   User? _user;
   bool _loading = true;
+  bool _saving = false;
   String? _error;
 
   final _formKey = GlobalKey<FormState>();
@@ -93,11 +94,21 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
       appBar: AppBar(
         title: const Text('Admin User Details'),
         actions: [
-          IconButton(
-            tooltip: 'Save Changes',
-            icon: const Icon(Icons.save),
-            onPressed: () => _onSave(),
-          ),
+          if (_saving)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: 'Save Changes',
+              icon: const Icon(Icons.save),
+              onPressed: _onSave,
+            ),
         ],
       ),
       body: _loading
@@ -329,37 +340,43 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   }
 
   Future<void> _onSave() async {
+    if (_saving) return;
     if (_formKey.currentState?.validate() != true) return;
-    final update = serviceLocator<UpdateUser>();
-    final prevAvatar = _user!.avatarUrl;
-    final res = await update(
-      UpdateUserParams(
-        id: _user!.id,
-        name: _nameCtrl.text.trim(),
-        email: _emailCtrl.text.trim(),
-        subscriptionType: _subscriptionType,
-        planId: _selectedPlan?.id,
-        avatarBytes: _avatarFile?.bytes,
-        avatarFilename: _avatarFile?.name,
-      ),
-    );
-    res.fold((f) => _snack(f.message, error: true), (updated) async {
-      // Update local state with server response so UI reflects new values
-      setState(() {
-        _user = updated;
-        _avatarFile = null;
+    setState(() => _saving = true);
+    try {
+      final update = serviceLocator<UpdateUser>();
+      final prevAvatar = _user!.avatarUrl;
+      final res = await update(
+        UpdateUserParams(
+          id: _user!.id,
+          name: _nameCtrl.text.trim(),
+          email: _emailCtrl.text.trim(),
+          subscriptionType: _subscriptionType,
+          planId: _selectedPlan?.id,
+          avatarBytes: _avatarFile?.bytes,
+          avatarFilename: _avatarFile?.name,
+        ),
+      );
+      res.fold((f) => _snack(f.message, error: true), (updated) async {
+        setState(() {
+          _user = updated;
+          _avatarFile = null;
+        });
+        try {
+          if (prevAvatar.isNotEmpty) {
+            await NetworkImage(prevAvatar).evict();
+          }
+          if (updated.avatarUrl.isNotEmpty) {
+            await NetworkImage(updated.avatarUrl).evict();
+          }
+        } catch (_) {}
+        _snack('Saved');
       });
-      // Evict old and new avatar URLs to force refresh
-      try {
-        if (prevAvatar.isNotEmpty) {
-          await NetworkImage(prevAvatar).evict();
-        }
-        if (updated.avatarUrl.isNotEmpty) {
-          await NetworkImage(updated.avatarUrl).evict();
-        }
-      } catch (_) {}
-      _snack('Saved');
-    });
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
   }
 
   void _snack(String msg, {bool error = false}) {

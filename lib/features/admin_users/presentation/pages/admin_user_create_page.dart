@@ -26,6 +26,7 @@ class _AdminUserCreatePageState extends State<AdminUserCreatePage> {
   Plan? _selectedPlan;
   List<Plan> _plans = [];
   bool _loadingPlans = true;
+  bool _saving = false;
   PlatformFile? _avatarFile;
 
   @override
@@ -218,16 +219,24 @@ class _AdminUserCreatePageState extends State<AdminUserCreatePage> {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: () => context.pop(),
+                            onPressed: _saving ? null : () => context.pop(),
                             child: const Text('Cancel'),
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: FilledButton.icon(
-                            onPressed: _onSubmit,
-                            icon: const Icon(Icons.person_add_alt_1),
-                            label: const Text('Create User'),
+                            onPressed: _saving ? null : _onSubmit,
+                            icon: _saving
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.person_add_alt_1),
+                            label: Text(_saving ? 'Saving...' : 'Create User'),
                           ),
                         ),
                       ],
@@ -243,7 +252,9 @@ class _AdminUserCreatePageState extends State<AdminUserCreatePage> {
   }
 
   Future<void> _onSubmit() async {
+    if (_saving) return;
     if (_formKey.currentState?.validate() != true) return;
+    setState(() => _saving = true);
 
     final create = serviceLocator<CreateUser>();
     final res = await create(
@@ -258,10 +269,17 @@ class _AdminUserCreatePageState extends State<AdminUserCreatePage> {
     );
 
     if (!mounted) return;
-    res.fold((f) => _showSnack(f.message, isError: true), (_) {
-      _showSnack('User created');
-      context.go('/admin/users');
-    });
+    res.fold(
+      (f) {
+        setState(() => _saving = false);
+        _showSnack(f.message, isError: true);
+      },
+      (_) {
+        setState(() => _saving = false);
+        _showSnack('User created');
+        context.go('/admin/users');
+      },
+    );
   }
 
   void _showSnack(String msg, {bool isError = false}) {
