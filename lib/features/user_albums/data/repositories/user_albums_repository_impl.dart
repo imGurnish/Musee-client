@@ -36,13 +36,8 @@ class UserAlbumsRepositoryImpl implements UserAlbumsRepository {
     }
 
     final isOnline = await _connectivity.checkConnectivity();
-    if (!isOnline) {
-      if (cachedPayload != null) {
-        return _albumFromCachePayload(cachedPayload);
-      }
-      throw Exception(
-        'Album not available offline yet. Open this album once while online to cache it.',
-      );
+    if (!isOnline && cachedPayload != null) {
+      return _albumFromCachePayload(cachedPayload);
     }
 
     final isUuid = RegExp(
@@ -50,39 +45,81 @@ class UserAlbumsRepositoryImpl implements UserAlbumsRepository {
       caseSensitive: false,
     ).hasMatch(albumId);
 
-    if (!isUuid) {
-      final album = await _registry.getAlbumWithTracks(albumId);
-      if (album == null) {
-        throw Exception('External album not found');
+    try {
+      if (!isUuid) {
+        final album = await _registry.getAlbumWithTracks(albumId);
+        if (album == null) {
+          throw Exception('External album not found');
+        }
+
+        final detail = UserAlbumDetail(
+          albumId: album.prefixedId,
+          title: album.title,
+          coverUrl: album.coverUrl,
+          releaseDate: DateTime.now().toIso8601String(),
+          artists: album.artists
+              .map(
+                (a) => UserAlbumArtist(
+                  artistId: a.prefixedId,
+                  name: a.name,
+                  avatarUrl: null,
+                ),
+              )
+              .toList(),
+          tracks: (album.tracks ?? [])
+              .map(
+                (t) => UserAlbumTrack(
+                  trackId: t.prefixedId,
+                  title: t.title,
+                  duration: t.durationSeconds ?? 0,
+                  isExplicit: t.isExplicit,
+                  artists: t.artists
+                      .map(
+                        (a) => UserAlbumArtist(
+                          artistId: a.prefixedId,
+                          name: a.name,
+                          avatarUrl: null,
+                        ),
+                      )
+                      .toList(),
+                ),
+              )
+              .toList(),
+        );
+
+        await _detailCache.cacheAlbum(albumId, _albumToCachePayload(detail));
+        await _seedTrackMetadata(detail);
+        return _withTrackCacheFlags(detail, isFromCache: false);
       }
 
+      final dto = await _remote.getAlbum(albumId);
       final detail = UserAlbumDetail(
-        albumId: album.prefixedId,
-        title: album.title,
-        coverUrl: album.coverUrl,
-        releaseDate: DateTime.now().toIso8601String(),
-        artists: album.artists
+        albumId: dto.albumId,
+        title: dto.title,
+        coverUrl: dto.coverUrl,
+        releaseDate: dto.releaseDate,
+        artists: dto.artists
             .map(
               (a) => UserAlbumArtist(
-                artistId: a.prefixedId,
+                artistId: a.artistId,
                 name: a.name,
-                avatarUrl: null,
+                avatarUrl: a.avatarUrl,
               ),
             )
             .toList(),
-        tracks: (album.tracks ?? [])
+        tracks: dto.tracks
             .map(
               (t) => UserAlbumTrack(
-                trackId: t.prefixedId,
+                trackId: t.trackId,
                 title: t.title,
-                duration: t.durationSeconds ?? 0,
+                duration: t.duration,
                 isExplicit: t.isExplicit,
                 artists: t.artists
                     .map(
                       (a) => UserAlbumArtist(
-                        artistId: a.prefixedId,
+                        artistId: a.artistId,
                         name: a.name,
-                        avatarUrl: null,
+                        avatarUrl: a.avatarUrl,
                       ),
                     )
                     .toList(),
@@ -94,47 +131,19 @@ class UserAlbumsRepositoryImpl implements UserAlbumsRepository {
       await _detailCache.cacheAlbum(albumId, _albumToCachePayload(detail));
       await _seedTrackMetadata(detail);
       return _withTrackCacheFlags(detail, isFromCache: false);
+    } catch (_) {
+      if (cachedPayload != null) {
+        return _albumFromCachePayload(cachedPayload);
+      }
+
+      if (!isOnline) {
+        throw Exception(
+          'Album not available offline yet. Open this album once while online to cache it.',
+        );
+      }
+
+      rethrow;
     }
-
-    final dto = await _remote.getAlbum(albumId);
-    final detail = UserAlbumDetail(
-      albumId: dto.albumId,
-      title: dto.title,
-      coverUrl: dto.coverUrl,
-      releaseDate: dto.releaseDate,
-      artists: dto.artists
-          .map(
-            (a) => UserAlbumArtist(
-              artistId: a.artistId,
-              name: a.name,
-              avatarUrl: a.avatarUrl,
-            ),
-          )
-          .toList(),
-      tracks: dto.tracks
-          .map(
-            (t) => UserAlbumTrack(
-              trackId: t.trackId,
-              title: t.title,
-              duration: t.duration,
-              isExplicit: t.isExplicit,
-              artists: t.artists
-                  .map(
-                    (a) => UserAlbumArtist(
-                      artistId: a.artistId,
-                      name: a.name,
-                      avatarUrl: a.avatarUrl,
-                    ),
-                  )
-                  .toList(),
-            ),
-          )
-          .toList(),
-    );
-
-    await _detailCache.cacheAlbum(albumId, _albumToCachePayload(detail));
-    await _seedTrackMetadata(detail);
-    return _withTrackCacheFlags(detail, isFromCache: false);
   }
 
   bool _isExpired(Map<String, dynamic> payload) {
