@@ -121,9 +121,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
         if (url != null) {
           // 4. Cache metadata and streaming URL (and download image)
-          // Run in background to not block playback start completely?
-          // Ideally we await it ensuring metadata exists before adding to Recently Played UI update cycle
-          await _cacheTrackMetadata(trackId, url);
+          // Run in background so playback start is not blocked.
+          unawaited(_cacheTrackMetadata(trackId, url));
 
           return url;
         }
@@ -253,7 +252,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       );
       await _player.play();
       _markTrackSessionStart(track.trackId);
-      await _refreshQueueIfNeeded();
+      unawaited(_refreshQueueIfNeeded());
     } catch (e) {
       emit(state.copyWith(buffering: false, playing: false));
     }
@@ -274,36 +273,38 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     final repo = _repo;
     if (repo != null) {
-      try {
-        final expanded = await repo.playQueueFrom(
-          trackId: trackId,
-          expand: true,
-          metadata: {
-            if (title != null && title.isNotEmpty) 'title': title,
-            if (artist != null && artist.isNotEmpty) 'artist': artist,
-            if (imageUrl != null && imageUrl.isNotEmpty) 'cover_url': imageUrl,
-          },
-        );
-        final items = await _mapToQueueItems(expanded);
-        int newIndex = items.indexWhere((q) => q.trackId == trackId);
-        if (newIndex < 0 && items.isNotEmpty) {
-          final fallback = QueueItem(
+      unawaited(() async {
+        try {
+          final expanded = await repo.playQueueFrom(
             trackId: trackId,
-            title: title ?? 'Unknown Title',
-            artist: artist ?? 'Unknown Artist',
-            album: album,
-            imageUrl: imageUrl,
-            uid: const Uuid().v4(),
+            expand: true,
+            metadata: {
+              if (title != null && title.isNotEmpty) 'title': title,
+              if (artist != null && artist.isNotEmpty) 'artist': artist,
+              if (imageUrl != null && imageUrl.isNotEmpty) 'cover_url': imageUrl,
+            },
           );
-          items.insert(0, fallback);
-          newIndex = 0;
+          final items = await _mapToQueueItems(expanded);
+          int newIndex = items.indexWhere((q) => q.trackId == trackId);
+          if (newIndex < 0 && items.isNotEmpty) {
+            final fallback = QueueItem(
+              trackId: trackId,
+              title: title ?? 'Unknown Title',
+              artist: artist ?? 'Unknown Artist',
+              album: album,
+              imageUrl: imageUrl,
+              uid: const Uuid().v4(),
+            );
+            items.insert(0, fallback);
+            newIndex = 0;
+          }
+          emit(state.copyWith(queue: items, currentIndex: newIndex));
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[PlayerCubit] playQueueFrom failed (background sync): $e');
+          }
         }
-        emit(state.copyWith(queue: items, currentIndex: newIndex));
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('[PlayerCubit] playQueueFrom failed, fallback to local play: $e');
-        }
-      }
+      }());
     }
 
     final url = await _fetchPlayableUrl(trackId);
@@ -361,28 +362,36 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       await _logCurrentTrackPlay(wasSkipped: true);
     }
 
+    final localIdx = state.queue.indexWhere((q) => q.trackId == trackId);
+    if (localIdx >= 0) {
+      await _playAtIndex(localIdx);
+      unawaited(_refreshQueueIfNeeded());
+    }
+
     final repo = _repo;
     if (repo != null) {
-      try {
-        final expanded = await repo.playQueueFrom(
-          trackId: trackId,
-          expand: true,
-        );
-        final items = await _mapToQueueItems(expanded);
-        emit(state.copyWith(queue: items));
-      } catch (_) {}
+      unawaited(() async {
+        try {
+          final expanded = await repo.playQueueFrom(
+            trackId: trackId,
+            expand: true,
+          );
+          final items = await _mapToQueueItems(expanded);
+          final currentTrackId = state.track?.trackId;
+          final syncedIndex = currentTrackId == null
+              ? -1
+              : items.indexWhere((q) => q.trackId == currentTrackId);
+          emit(state.copyWith(queue: items, currentIndex: syncedIndex));
+        } catch (_) {}
+      }());
     }
-    // Find index locally
-    final idx = state.queue.indexWhere((q) => q.trackId == trackId);
-    if (idx >= 0) {
-      await _playAtIndex(idx);
-      await _refreshQueueIfNeeded();
-    } else {
+
+    if (localIdx < 0) {
       // Fallback: play single by resolving URL
       final url = await _fetchPlayableUrl(trackId);
       if (url != null) {
         await playTrack(
-          PlayerTrack(url: url, title: 'Unknown', artist: 'Unknown'),
+          PlayerTrack(trackId: trackId, url: url, title: 'Unknown', artist: 'Unknown'),
         );
       }
     }
@@ -489,32 +498,44 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       // This is cleaner and avoids index confusion
       final nextIndex = currentIdx + 1;
       await _playAtIndex(nextIndex);
-      await _refreshQueueIfNeeded();
+      unawaited(_refreshQueueIfNeeded());
     } else {
       // End of queue - stop playback
       await _player.stop();
       emit(state.copyWith(playing: false));
-      await _refreshQueueIfNeeded();
+      unawaited(_refreshQueueIfNeeded());
     }
   }
 
   Future<void> _playAtIndex(int index) async {
     if (index < 0 || index >= state.queue.length) return;
     final item = state.queue[index];
-    final url = await _fetchPlayableUrl(item.trackId);
-    if (url == null) return;
-    final track = PlayerTrack(
+
+    final provisionalTrack = PlayerTrack(
       trackId: item.trackId,
-      url: url,
+      url: state.track?.url ?? '',
       title: item.title.isEmpty ? 'Unknown Title' : item.title,
       artist: item.artist.isEmpty ? 'Unknown Artist' : item.artist,
       album: item.album,
       imageUrl: item.imageUrl,
       localImagePath: item.localImagePath,
     );
-    emit(state.copyWith(track: track, buffering: true, currentIndex: index));
+    emit(state.copyWith(track: provisionalTrack, buffering: true, currentIndex: index));
+
+    final url = await _fetchPlayableUrl(item.trackId);
+    if (url == null) {
+      emit(state.copyWith(buffering: false, playing: false));
+      return;
+    }
+
+    final track = provisionalTrack.copyWith(url: url);
+
     try {
-      await _player.setAudioSource(AudioSource.uri(Uri.parse(url)));
+      final uri = url.startsWith('http') || url.startsWith('https')
+          ? Uri.parse(url)
+          : Uri.file(url);
+
+      await _player.setAudioSource(AudioSource.uri(uri));
       await _player.play();
       _markTrackSessionStart(item.trackId);
     } catch (_) {
