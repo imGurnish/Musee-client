@@ -21,6 +21,13 @@ Future<void> showPlayerBottomSheet(
 }) async {
   final cubit = GetIt.I<PlayerCubit>();
 
+  Future<void> ensureAutoPlay() async {
+    final s = cubit.state;
+    if (!s.playing && !s.buffering && s.track != null) {
+      await cubit.ensurePlaying();
+    }
+  }
+
   if (trackId != null && (audioUrl == null || audioUrl.isEmpty)) {
     // Play by ID (resolves URL and caches metadata)
     // We don't check for "different track" here because playTrackById handles resolution
@@ -37,6 +44,8 @@ Future<void> showPlayerBottomSheet(
         album: album,
         imageUrl: imageUrl,
       );
+    } else {
+      await ensureAutoPlay();
     }
   } else if (audioUrl != null && audioUrl.isNotEmpty) {
     final track = PlayerTrack(
@@ -54,6 +63,8 @@ Future<void> showPlayerBottomSheet(
     final isDifferentTrack = currentUrl == null || currentUrl != audioUrl;
     if (isDifferentTrack) {
       await cubit.playTrack(track);
+    } else {
+      await ensureAutoPlay();
     }
   }
 

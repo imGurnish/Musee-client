@@ -108,14 +108,16 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     // 2. Check if we have a cached streaming URL (avoids API call)
     final cachedTrack = await _trackCache?.getTrack(trackId);
-    if (!forceRefresh && cachedTrack?.streamingUrl != null) {
+    if (!forceRefresh &&
+        cachedTrack?.streamingUrl != null &&
+        cachedTrack!.streamingUrl!.trim().isNotEmpty) {
       // NOTE: We could add expiry check here if needed
       if (kDebugMode) {
         debugPrint(
           '[PlayerCubit] Using cached streaming URL for track: $trackId',
         );
       }
-      return cachedTrack!.streamingUrl;
+      return cachedTrack.streamingUrl;
     }
 
     // 3. Fetch from MusicProviderRegistry (Backend or External)
@@ -123,7 +125,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       try {
         final url = await _musicProviderRegistry.getStreamUrl(trackId);
 
-        if (url != null) {
+        if (url != null && url.trim().isNotEmpty) {
           // 4. Cache metadata and streaming URL (and download image)
           // Run in background so playback start is not blocked.
           unawaited(_cacheTrackMetadata(trackId, url));
@@ -230,7 +232,11 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       unawaited(_logCurrentTrackPlay(wasSkipped: true));
     }
 
-    emit(state.copyWith(track: track, buffering: true));
+    final switchToken = ++_trackSwitchToken;
+    _playbackReassertTimer?.cancel();
+    _isTrackSwitchInProgress = true;
+
+    emit(state.copyWith(track: track, buffering: true, playing: false));
 
     // Cache metadata if we have a track ID (e.g. from Search)
     if (track.trackId != null && track.url.isNotEmpty && _trackCache != null) {
@@ -243,22 +249,96 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     try {
       final headers = track.headers ?? const <String, String>{};
 
-      Uri uri;
-      if (track.url.startsWith('http') || track.url.startsWith('https')) {
-        uri = Uri.parse(track.url);
-      } else {
-        // Assume local file path - crucial for Windows playback of downloaded files
-        uri = Uri.file(track.url);
+      Uri toUri(String inputUrl) {
+        if (inputUrl.startsWith('http') || inputUrl.startsWith('https')) {
+          return Uri.parse(inputUrl);
+        }
+        return Uri.file(inputUrl);
       }
 
       await _player.setAudioSource(
-        AudioSource.uri(uri, headers: headers.isEmpty ? null : headers),
+        AudioSource.uri(
+          toUri(track.url),
+          headers: headers.isEmpty ? null : headers,
+        ),
       );
-      await _player.play();
+
+      final started = await _ensurePlaybackStarted();
+      if (!started) {
+        throw StateError('Playback did not start for selected track');
+      }
+
+      if (switchToken == _trackSwitchToken) {
+        emit(state.copyWith(track: track, buffering: false, playing: true));
+        _schedulePlaybackReassertion(switchToken);
+      }
+
       _markTrackSessionStart(track.trackId);
       unawaited(_refreshQueueIfNeeded());
     } catch (e) {
-      emit(state.copyWith(buffering: false, playing: false));
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Primary playTrack start failed: $e');
+      }
+
+      try {
+        if (track.trackId == null) {
+          throw StateError('Cannot refresh URL for ad-hoc track');
+        }
+
+        final refreshedUrl = await _fetchPlayableUrl(
+          track.trackId!,
+          forceRefresh: true,
+        );
+
+        if (refreshedUrl == null || refreshedUrl.trim().isEmpty) {
+          throw StateError('Refreshed URL unavailable');
+        }
+
+        final refreshedTrack = track.copyWith(url: refreshedUrl);
+        final headers = refreshedTrack.headers ?? const <String, String>{};
+
+        Uri toUri(String inputUrl) {
+          if (inputUrl.startsWith('http') || inputUrl.startsWith('https')) {
+            return Uri.parse(inputUrl);
+          }
+          return Uri.file(inputUrl);
+        }
+
+        if (switchToken != _trackSwitchToken) return;
+
+        emit(state.copyWith(track: refreshedTrack, buffering: true, playing: false));
+
+        await _player.setAudioSource(
+          AudioSource.uri(
+            toUri(refreshedTrack.url),
+            headers: headers.isEmpty ? null : headers,
+          ),
+        );
+
+        final started = await _ensurePlaybackStarted();
+        if (!started) {
+          throw StateError('Playback did not start after URL refresh');
+        }
+
+        if (switchToken == _trackSwitchToken) {
+          emit(state.copyWith(track: refreshedTrack, buffering: false, playing: true));
+          _schedulePlaybackReassertion(switchToken);
+        }
+
+        _markTrackSessionStart(refreshedTrack.trackId);
+        unawaited(_refreshQueueIfNeeded());
+      } catch (retryError) {
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] Retry playTrack start failed: $retryError');
+        }
+        if (switchToken == _trackSwitchToken) {
+          emit(state.copyWith(buffering: false, playing: false));
+        }
+      }
+    } finally {
+      if (switchToken == _trackSwitchToken) {
+        _isTrackSwitchInProgress = false;
+      }
     }
   }
 
@@ -763,6 +843,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     } else {
       await _player.play();
     }
+  }
+
+  Future<void> ensurePlaying() async {
+    if (state.buffering) return;
+    if (_player.playing) return;
+    await _player.play();
   }
 
   Future<void> seek(Duration position) async {
