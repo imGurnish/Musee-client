@@ -32,8 +32,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   StreamSubscription<Duration?>? _durationSub;
   StreamSubscription<PlayerState>? _playerStateSub;
   Timer? _snapshotLogTimer;
+  Timer? _playbackReassertTimer;
   DateTime? _currentTrackStartedAt;
   String? _currentTrackIdForLogging;
+  bool _isTrackSwitchInProgress = false;
+  bool _isAdvancingNext = false;
+  int _trackSwitchToken = 0;
 
   PlayerCubit({
     PlayerRepository? repository,
@@ -75,8 +79,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       emit(state.copyWith(playing: playing, buffering: buffering));
 
       // Auto-advance when current track completes
-      if (ps.processingState == ProcessingState.completed) {
-        await _playNextInternal();
+      if (ps.processingState == ProcessingState.completed && !_isTrackSwitchInProgress && !_isAdvancingNext) {
+        unawaited(_playNextInternal());
       }
     });
 
@@ -88,7 +92,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   // Resolve playable URL with cache-first strategy
-  Future<String?> _fetchPlayableUrl(String trackId) async {
+  Future<String?> _fetchPlayableUrl(String trackId, {bool forceRefresh = false}) async {
     // 1. Check local audio cache first (for offline playback)
     if (_audioCache != null && !kIsWeb) {
       final localPath = await _audioCache.getLocalAudioPath(trackId);
@@ -104,7 +108,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     // 2. Check if we have a cached streaming URL (avoids API call)
     final cachedTrack = await _trackCache?.getTrack(trackId);
-    if (cachedTrack?.streamingUrl != null) {
+    if (!forceRefresh && cachedTrack?.streamingUrl != null) {
       // NOTE: We could add expiry check here if needed
       if (kDebugMode) {
         debugPrint(
@@ -223,7 +227,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   Future<void> playTrack(PlayerTrack track) async {
     if (track.trackId != null && state.track?.trackId != track.trackId) {
-      await _logCurrentTrackPlay(wasSkipped: true);
+      unawaited(_logCurrentTrackPlay(wasSkipped: true));
     }
 
     emit(state.copyWith(track: track, buffering: true));
@@ -268,7 +272,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     String? imageUrl,
   }) async {
     if (state.track?.trackId != null && state.track?.trackId != trackId) {
-      await _logCurrentTrackPlay(wasSkipped: true);
+      unawaited(_logCurrentTrackPlay(wasSkipped: true));
     }
 
     final repo = _repo;
@@ -359,7 +363,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   Future<void> playFromQueueTrackId(String trackId) async {
     if (state.track?.trackId != null && state.track?.trackId != trackId) {
-      await _logCurrentTrackPlay(wasSkipped: true);
+      unawaited(_logCurrentTrackPlay(wasSkipped: true));
     }
 
     final localIdx = state.queue.indexWhere((q) => q.trackId == trackId);
@@ -475,10 +479,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   Future<void> next({bool userInitiated = true}) async {
     // userInitiated true when tapped button; false when auto-advance
+    if (_isTrackSwitchInProgress || _isAdvancingNext) return;
     await _playNextInternal(userInitiated: userInitiated);
   }
 
   Future<void> previous() async {
+    if (_isTrackSwitchInProgress) return;
     final idx = state.currentIndex;
     if (idx > 0) {
       await _playAtIndex(idx - 1);
@@ -488,27 +494,39 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> _playNextInternal({bool userInitiated = false}) async {
-    await _logCurrentTrackPlay(wasSkipped: userInitiated);
+    if (_isAdvancingNext) return;
+    _isAdvancingNext = true;
+    unawaited(_logCurrentTrackPlay(wasSkipped: userInitiated));
 
-    final currentIdx = state.currentIndex;
+    try {
+      final currentIdx = state.currentIndex;
 
-    // Check if there's a next track
-    if (currentIdx + 1 < state.queue.length) {
-      // Simply advance to next track - don't remove current
-      // This is cleaner and avoids index confusion
-      final nextIndex = currentIdx + 1;
-      await _playAtIndex(nextIndex);
-      unawaited(_refreshQueueIfNeeded());
-    } else {
-      // End of queue - stop playback
-      await _player.stop();
-      emit(state.copyWith(playing: false));
-      unawaited(_refreshQueueIfNeeded());
+      // Check if there's a next track
+      if (currentIdx + 1 < state.queue.length) {
+        // Simply advance to next track - don't remove current
+        // This is cleaner and avoids index confusion
+        final nextIndex = currentIdx + 1;
+        await _playAtIndex(nextIndex);
+        unawaited(_refreshQueueIfNeeded());
+      } else {
+        // End of queue - stop playback
+        await _player.stop();
+        emit(state.copyWith(playing: false));
+        unawaited(_refreshQueueIfNeeded());
+      }
+    } finally {
+      _isAdvancingNext = false;
     }
   }
 
   Future<void> _playAtIndex(int index) async {
     if (index < 0 || index >= state.queue.length) return;
+    if (_isTrackSwitchInProgress) return;
+
+    _isTrackSwitchInProgress = true;
+    final switchToken = ++_trackSwitchToken;
+    _playbackReassertTimer?.cancel();
+
     final item = state.queue[index];
 
     final provisionalTrack = PlayerTrack(
@@ -520,11 +538,19 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       imageUrl: item.imageUrl,
       localImagePath: item.localImagePath,
     );
-    emit(state.copyWith(track: provisionalTrack, buffering: true, currentIndex: index));
+    emit(state.copyWith(track: provisionalTrack, buffering: true, currentIndex: index, playing: false));
 
     final url = await _fetchPlayableUrl(item.trackId);
     if (url == null) {
-      emit(state.copyWith(buffering: false, playing: false));
+      if (switchToken == _trackSwitchToken) {
+        emit(state.copyWith(buffering: false, playing: false));
+        _isTrackSwitchInProgress = false;
+      }
+      return;
+    }
+
+    if (switchToken != _trackSwitchToken) {
+      _isTrackSwitchInProgress = false;
       return;
     }
 
@@ -536,11 +562,109 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           : Uri.file(url);
 
       await _player.setAudioSource(AudioSource.uri(uri));
-      await _player.play();
+      final started = await _ensurePlaybackStarted();
+      if (!started) {
+        throw StateError('Playback did not start after source switch');
+      }
+      if (switchToken == _trackSwitchToken) {
+        emit(state.copyWith(track: track, buffering: false, playing: true, currentIndex: index));
+        _schedulePlaybackReassertion(switchToken);
+      }
       _markTrackSessionStart(item.trackId);
-    } catch (_) {
-      emit(state.copyWith(buffering: false, playing: false));
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Primary play failed for ${item.trackId}: $e');
+      }
+
+      try {
+        final refreshedUrl = await _fetchPlayableUrl(item.trackId, forceRefresh: true);
+        if (refreshedUrl == null) {
+          emit(state.copyWith(buffering: false, playing: false));
+          return;
+        }
+
+        final refreshedTrack = provisionalTrack.copyWith(url: refreshedUrl);
+        if (switchToken != _trackSwitchToken) {
+          _isTrackSwitchInProgress = false;
+          return;
+        }
+        emit(state.copyWith(track: refreshedTrack, buffering: true, currentIndex: index, playing: false));
+
+        final refreshedUri = refreshedUrl.startsWith('http') || refreshedUrl.startsWith('https')
+            ? Uri.parse(refreshedUrl)
+            : Uri.file(refreshedUrl);
+
+        await _player.setAudioSource(AudioSource.uri(refreshedUri));
+        final started = await _ensurePlaybackStarted();
+        if (!started) {
+          throw StateError('Playback did not start after retry source switch');
+        }
+        if (switchToken == _trackSwitchToken) {
+          emit(state.copyWith(track: refreshedTrack, buffering: false, playing: true, currentIndex: index));
+          _schedulePlaybackReassertion(switchToken);
+        }
+        _markTrackSessionStart(item.trackId);
+      } catch (retryError) {
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] Retry play failed for ${item.trackId}: $retryError');
+        }
+        if (switchToken == _trackSwitchToken) {
+          emit(state.copyWith(buffering: false, playing: false));
+        }
+      }
+    } finally {
+      if (switchToken == _trackSwitchToken) {
+        _isTrackSwitchInProgress = false;
+      }
     }
+  }
+
+  Future<bool> _ensurePlaybackStarted({
+    int maxAttempts = 5,
+    Duration perAttemptTimeout = const Duration(milliseconds: 900),
+  }) async {
+    for (var attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      if (_player.playing) return true;
+
+      await _player.play();
+
+      if (_player.playing) return true;
+
+      try {
+        await _player.playerStateStream
+            .firstWhere((state) => state.playing)
+            .timeout(perAttemptTimeout);
+
+        if (_player.playing) return true;
+      } catch (_) {
+        // Continue retry loop.
+      }
+    }
+
+    return _player.playing;
+  }
+
+  void _schedulePlaybackReassertion(int switchToken) {
+    _playbackReassertTimer?.cancel();
+    _playbackReassertTimer = Timer(const Duration(milliseconds: 900), () async {
+      if (switchToken != _trackSwitchToken) return;
+      if (_isTrackSwitchInProgress) return;
+
+      final current = _player.playerState;
+      if (!current.playing && current.processingState != ProcessingState.completed) {
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] Reasserting playback after switch token=$switchToken');
+        }
+        try {
+          await _player.play();
+          emit(state.copyWith(playing: _player.playing, buffering: false));
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[PlayerCubit] Reassert play failed: $e');
+          }
+        }
+      }
+    });
   }
 
   void _markTrackSessionStart(String? trackId) {
@@ -775,6 +899,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   Future<void> close() async {
     await _logCurrentTrackPlay(wasSkipped: true);
     _snapshotLogTimer?.cancel();
+    _playbackReassertTimer?.cancel();
     await _positionSub?.cancel();
     await _durationSub?.cancel();
     await _playerStateSub?.cancel();
