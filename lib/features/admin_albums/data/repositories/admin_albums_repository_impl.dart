@@ -110,6 +110,18 @@ class AdminAlbumsRepositoryImpl implements AdminAlbumsRepository {
   }
 
   @override
+  Future<Either<Failure, void>> deleteAlbums(List<String> ids) async {
+    try {
+      await remote.deleteAlbums(ids);
+      return right(null);
+    } on DioException catch (e) {
+      return left(Failure(e.message ?? 'Network error'));
+    } catch (e) {
+      return left(Failure(e.toString()));
+    }
+  }
+
+  @override
   Future<Either<Failure, Map<String, dynamic>>> addArtist({
     required String albumId,
     required String artistId,

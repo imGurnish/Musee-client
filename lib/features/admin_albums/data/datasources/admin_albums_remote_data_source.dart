@@ -39,6 +39,7 @@ abstract interface class AdminAlbumsRemoteDataSource {
     String? coverFilename,
   });
   Future<void> deleteAlbum(String id);
+  Future<void> deleteAlbums(List<String> ids);
 
   Future<Map<String, dynamic>> addArtist({
     required String albumId,
@@ -252,6 +253,15 @@ class AdminAlbumsRemoteDataSourceImpl implements AdminAlbumsRemoteDataSource {
   Future<void> deleteAlbum(String id) async {
     await _dio.delete(
       '$basePath/$id',
+      options: dio.Options(headers: _authHeader()),
+    );
+  }
+
+  @override
+  Future<void> deleteAlbums(List<String> ids) async {
+    await _dio.post(
+      '$basePath/bulk-delete',
+      data: {'ids': ids},
       options: dio.Options(headers: _authHeader()),
     );
   }

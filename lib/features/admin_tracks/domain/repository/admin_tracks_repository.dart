@@ -44,6 +44,7 @@ abstract class AdminTracksRepository {
   });
 
   Future<Either<Failure, void>> deleteTrack(String id);
+  Future<Either<Failure, void>> deleteTracks(List<String> ids);
 
   // Artist management
   Future<Either<Failure, void>> linkArtistToTrack({

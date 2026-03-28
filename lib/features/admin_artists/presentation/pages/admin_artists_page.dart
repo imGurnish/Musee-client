@@ -97,16 +97,6 @@ class _AdminArtistsPageState extends State<AdminArtistsPage> {
     });
   }
 
-  void _toggleSelectAllVisible(List<Artist> artists, bool selected) {
-    setState(() {
-      if (selected) {
-        _selectedArtistIds.addAll(artists.map((e) => e.id));
-      } else {
-        _selectedArtistIds.removeAll(artists.map((e) => e.id));
-      }
-    });
-  }
-
   void _clearSelection() => setState(_selectedArtistIds.clear);
 
   @override
@@ -356,7 +346,6 @@ class _AdminArtistsPageState extends State<AdminArtistsPage> {
                         (state.total / state.limit).ceil().clamp(1, 999999);
                     return LayoutBuilder(
                       builder: (context, c) {
-                        final isMobile = c.maxWidth < 700;
                         return Column(
                           children: [
                             Expanded(

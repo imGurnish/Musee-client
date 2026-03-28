@@ -54,12 +54,16 @@ class _AdminTrackDetailPageState extends State<AdminTrackDetailPage> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;
     });
     final get = serviceLocator<GetTrack>();
     final res = await get(GetTrackParams(widget.trackId));
+
+    if (!mounted) return;
+
     res.fold(
       (f) => setState(() {
         _error = f.message;
@@ -151,6 +155,7 @@ class _AdminTrackDetailPageState extends State<AdminTrackDetailPage> {
     if (_track == null) return;
     if (_saving) return;
     final duration = int.tryParse(_durationCtrl.text.trim());
+    if (!mounted) return;
     setState(() => _saving = true);
     final update = serviceLocator<UpdateTrack>();
     final res = await update(
@@ -170,12 +175,17 @@ class _AdminTrackDetailPageState extends State<AdminTrackDetailPage> {
         videoFilename: _videoFile?.name,
       ),
     );
+
+    if (!mounted) return;
+
     res.fold(
       (f) {
         _showSnack(f.message, error: true);
+        if (!mounted) return;
         setState(() => _saving = false);
       },
       (t) async {
+        if (!mounted) return;
         setState(() {
           _track = t;
           _audioFile = null;

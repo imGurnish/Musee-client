@@ -137,6 +137,18 @@ class AdminTracksRepositoryImpl implements AdminTracksRepository {
   }
 
   @override
+  Future<Either<Failure, void>> deleteTracks(List<String> ids) async {
+    try {
+      await remote.deleteTracks(ids);
+      return right(null);
+    } on DioException catch (e) {
+      return left(Failure(e.message ?? 'Network error'));
+    } catch (e) {
+      return left(Failure(e.toString()));
+    }
+  }
+
+  @override
   Future<Either<Failure, void>> linkArtistToTrack({
     required String trackId,
     required String artistId,

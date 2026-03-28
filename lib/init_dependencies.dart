@@ -43,6 +43,7 @@ import 'package:musee/features/admin_albums/domain/usecases/get_album.dart';
 import 'package:musee/features/admin_albums/domain/usecases/create_album.dart';
 import 'package:musee/features/admin_albums/domain/usecases/update_album.dart';
 import 'package:musee/features/admin_albums/domain/usecases/delete_album.dart';
+import 'package:musee/features/admin_albums/domain/usecases/delete_albums.dart';
 import 'package:musee/features/admin_albums/domain/usecases/album_artists_ops.dart';
 import 'package:musee/features/admin_albums/presentation/bloc/admin_albums_bloc.dart';
 import 'package:musee/features/admin_plans/data/datasources/admin_plans_remote_data_source.dart';
@@ -62,6 +63,7 @@ import 'package:musee/features/admin_tracks/domain/usecases/get_track.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/create_track.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/update_track.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/delete_track.dart';
+import 'package:musee/features/admin_tracks/domain/usecases/delete_tracks.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/link_track_artist.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/update_track_artist_role.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/unlink_track_artist.dart';
@@ -366,6 +368,7 @@ void _initAdminAlbums() {
     ..registerFactory(() => CreateAlbum(serviceLocator()))
     ..registerFactory(() => UpdateAlbum(serviceLocator()))
     ..registerFactory(() => DeleteAlbum(serviceLocator()))
+    ..registerFactory(() => DeleteAlbums(serviceLocator()))
     ..registerFactory(() => AddAlbumArtist(serviceLocator()))
     ..registerFactory(() => UpdateAlbumArtistRole(serviceLocator()))
     ..registerFactory(() => RemoveAlbumArtist(serviceLocator()))
@@ -376,6 +379,7 @@ void _initAdminAlbums() {
         create: serviceLocator(),
         update: serviceLocator(),
         delete: serviceLocator(),
+        deleteMany: serviceLocator(),
       ),
     );
 }
@@ -429,6 +433,7 @@ void _initAdminTracks() {
     ..registerFactory(() => CreateTrack(serviceLocator()))
     ..registerFactory(() => UpdateTrack(serviceLocator()))
     ..registerFactory(() => DeleteTrack(serviceLocator()))
+    ..registerFactory(() => DeleteTracks(serviceLocator()))
     ..registerFactory(() => LinkTrackArtist(serviceLocator()))
     ..registerFactory(() => UpdateTrackArtistRole(serviceLocator()))
     ..registerFactory(() => UnlinkTrackArtist(serviceLocator()))
@@ -439,6 +444,7 @@ void _initAdminTracks() {
         create: serviceLocator(),
         update: serviceLocator(),
         delete: serviceLocator(),
+        deleteMany: serviceLocator(),
         linkArtist: serviceLocator(),
         updateArtistRole: serviceLocator(),
         unlinkArtist: serviceLocator(),

@@ -73,6 +73,11 @@ class DeleteTrackEvent extends AdminTracksEvent {
   DeleteTrackEvent(this.id);
 }
 
+class DeleteTracksEvent extends AdminTracksEvent {
+  final List<String> ids;
+  DeleteTracksEvent(this.ids);
+}
+
 class LinkArtistToTrackEvent extends AdminTracksEvent {
   final String trackId;
   final String artistId;

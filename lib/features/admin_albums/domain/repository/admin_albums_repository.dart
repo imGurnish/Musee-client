@@ -28,6 +28,7 @@ abstract interface class AdminAlbumsRepository {
     String? coverFilename,
   });
   Future<Either<Failure, void>> deleteAlbum(String id);
+  Future<Either<Failure, void>> deleteAlbums(List<String> ids);
 
   Future<Either<Failure, Map<String, dynamic>>> addArtist({
     required String albumId,

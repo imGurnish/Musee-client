@@ -78,6 +78,7 @@ abstract interface class AdminTracksRemoteDataSource {
   });
 
   Future<void> deleteTrack(String id);
+  Future<void> deleteTracks(List<String> ids);
 
   // Artist management
   Future<void> linkArtistToTrack({
@@ -465,6 +466,15 @@ class AdminTracksRemoteDataSourceImpl implements AdminTracksRemoteDataSource {
   Future<void> deleteTrack(String id) async {
     await _dio.delete(
       '$basePath/$id',
+      options: dio.Options(headers: _authHeader()),
+    );
+  }
+
+  @override
+  Future<void> deleteTracks(List<String> ids) async {
+    await _dio.post(
+      '$basePath/bulk-delete',
+      data: {'ids': ids},
       options: dio.Options(headers: _authHeader()),
     );
   }
