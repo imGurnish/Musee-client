@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:bloc/bloc.dart';
@@ -16,6 +15,10 @@ import 'package:musee/core/providers/music_provider_registry.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+import 'package:musee/core/player/media_controls_service.dart';
+import 'package:musee/core/platform/platform_io_stub.dart'
+  if (dart.library.io) 'package:musee/core/platform/platform_io_native.dart'
+  as platform_io;
 
 import 'player_state.dart';
 
@@ -31,13 +34,62 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration?>? _durationSub;
   StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<PlayerViewState>? _viewStateSub;
   Timer? _snapshotLogTimer;
   Timer? _playbackReassertTimer;
+  Timer? _switchFailSafeTimer;
   DateTime? _currentTrackStartedAt;
   String? _currentTrackIdForLogging;
+  String? _lastPublishedTrackKey;
   bool _isTrackSwitchInProgress = false;
   bool _isAdvancingNext = false;
+  bool _userPaused = false;
   int _trackSwitchToken = 0;
+
+  bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
+  bool get isUserPausedIntent => _userPaused;
+
+  void _armSwitchFailSafe(int switchToken) {
+    _switchFailSafeTimer?.cancel();
+    _switchFailSafeTimer = Timer(const Duration(seconds: 12), () {
+      if (switchToken != _trackSwitchToken) return;
+      _isTrackSwitchInProgress = false;
+      _isAdvancingNext = false;
+      emit(
+        state.copyWith(
+          buffering: false,
+          resolvingUrl: false,
+          isTransitioning: false,
+          playing: _player.playing,
+          clearErrorMessage: true,
+        ),
+      );
+    });
+  }
+
+  void _clearSwitchFailSafe() {
+    _switchFailSafeTimer?.cancel();
+    _switchFailSafeTimer = null;
+  }
+
+  int _sanitizeIndex(int index, int queueLength) {
+    if (queueLength <= 0) return -1;
+    if (index < 0) return 0;
+    if (index >= queueLength) return queueLength - 1;
+    return index;
+  }
+
+  void _emitPlaybackError(String message) {
+    emit(
+      state.copyWith(
+        buffering: false,
+        resolvingUrl: false,
+        isTransitioning: false,
+        playing: false,
+        errorMessage: message,
+      ),
+    );
+  }
 
   PlayerCubit({
     PlayerRepository? repository,
@@ -65,6 +117,76 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       await session.configure(const AudioSessionConfiguration.music());
     } catch (_) {}
 
+    await MediaControlsService.instance.initialize();
+    MediaControlsService.instance.configureCallbacks(
+      MediaControlCallbacks(
+        onPlay: () async {
+          try {
+            await ensurePlaying(ignoreUserPause: true);
+          } catch (e) {
+            _emitPlaybackError('Unable to resume playback.');
+            if (kDebugMode) {
+              debugPrint('[PlayerCubit] Media onPlay callback failed: $e');
+            }
+          }
+        },
+        onPause: () async {
+          try {
+            _userPaused = true;
+            _playbackReassertTimer?.cancel();
+            await _player.pause();
+          } catch (e) {
+            _emitPlaybackError('Unable to pause playback.');
+            if (kDebugMode) {
+              debugPrint('[PlayerCubit] Media onPause callback failed: $e');
+            }
+          }
+        },
+        onNext: () async {
+          try {
+            await next(userInitiated: true);
+          } catch (e) {
+            _emitPlaybackError('Unable to skip to next track.');
+            if (kDebugMode) {
+              debugPrint('[PlayerCubit] Media onNext callback failed: $e');
+            }
+          }
+        },
+        onPrevious: () async {
+          try {
+            await previous();
+          } catch (e) {
+            _emitPlaybackError('Unable to go to previous track.');
+            if (kDebugMode) {
+              debugPrint('[PlayerCubit] Media onPrevious callback failed: $e');
+            }
+          }
+        },
+        onSeek: (position) async {
+          try {
+            await seek(position);
+          } catch (e) {
+            _emitPlaybackError('Unable to seek track.');
+            if (kDebugMode) {
+              debugPrint('[PlayerCubit] Media onSeek callback failed: $e');
+            }
+          }
+        },
+        onStop: () async {
+          _userPaused = false;
+          await _player.stop();
+          emit(
+            state.copyWith(
+              playing: false,
+              buffering: false,
+              resolvingUrl: false,
+              isTransitioning: false,
+            ),
+          );
+        },
+      ),
+    );
+
     _positionSub = _player.positionStream.listen((pos) {
       emit(state.copyWith(position: pos));
     });
@@ -73,16 +195,31 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     });
     _playerStateSub = _player.playerStateStream.listen((ps) async {
       final playing = ps.playing;
+      if (playing) {
+        _userPaused = false;
+      }
       final buffering =
           ps.processingState == ProcessingState.loading ||
           ps.processingState == ProcessingState.buffering;
-      emit(state.copyWith(playing: playing, buffering: buffering));
+      emit(
+        state.copyWith(
+          playing: playing,
+          buffering: buffering,
+          isTransitioning: _isBusySwitching,
+        ),
+      );
 
       // Auto-advance when current track completes
       if (ps.processingState == ProcessingState.completed && !_isTrackSwitchInProgress && !_isAdvancingNext) {
         unawaited(_playNextInternal());
       }
     });
+
+    _viewStateSub = stream.listen((viewState) {
+      _publishNowPlaying(viewState);
+    });
+
+    _publishNowPlaying(state);
 
     // Load existing queue from backend if available
     final repo = _repo;
@@ -96,12 +233,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     // 1. Check local audio cache first (for offline playback)
     if (_audioCache != null && !kIsWeb) {
       final localPath = await _audioCache.getLocalAudioPath(trackId);
-      if (localPath != null && await File(localPath).exists()) {
+      if (localPath != null && await platform_io.fileExists(localPath)) {
         if (kDebugMode) {
           debugPrint('[PlayerCubit] Playing from local cache: $localPath');
         }
-        // Update last played timestamp for LRU
-        _trackCache?.updateLastPlayed(trackId);
         return localPath;
       }
     }
@@ -123,7 +258,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     // 3. Fetch from MusicProviderRegistry (Backend or External)
     if (_musicProviderRegistry != null) {
       try {
-        final url = await _musicProviderRegistry.getStreamUrl(trackId);
+        final url = await _musicProviderRegistry
+          .getStreamUrl(trackId)
+          .timeout(const Duration(seconds: 8));
 
         if (url != null && url.trim().isNotEmpty) {
           // 4. Cache metadata and streaming URL (and download image)
@@ -186,8 +323,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       }
 
       final existing = await _trackCache.getTrack(trackId);
-      int playCount = existing?.playCount ?? 0;
-      playCount += 1;
+      final playCount = existing?.playCount ?? 0;
 
       final cached = CachedTrack()
         ..trackId = trackId
@@ -228,6 +364,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> playTrack(PlayerTrack track) async {
+    _userPaused = false;
     if (track.trackId != null && state.track?.trackId != track.trackId) {
       unawaited(_logCurrentTrackPlay(wasSkipped: true));
     }
@@ -235,8 +372,18 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     final switchToken = ++_trackSwitchToken;
     _playbackReassertTimer?.cancel();
     _isTrackSwitchInProgress = true;
+    _armSwitchFailSafe(switchToken);
 
-    emit(state.copyWith(track: track, buffering: true, playing: false));
+    emit(
+      state.copyWith(
+        track: track,
+        buffering: true,
+        resolvingUrl: false,
+        isTransitioning: true,
+        playing: false,
+        clearErrorMessage: true,
+      ),
+    );
 
     // Cache metadata if we have a track ID (e.g. from Search)
     if (track.trackId != null && track.url.isNotEmpty && _trackCache != null) {
@@ -263,13 +410,54 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         ),
       );
 
+      if (_userPaused) {
+        await _player.pause();
+        if (switchToken == _trackSwitchToken) {
+          emit(
+            state.copyWith(
+              track: track,
+              buffering: false,
+              resolvingUrl: false,
+              isTransitioning: false,
+              playing: false,
+              clearErrorMessage: true,
+            ),
+          );
+        }
+        return;
+      }
+
       final started = await _ensurePlaybackStarted();
       if (!started) {
+        if (_userPaused) {
+          if (switchToken == _trackSwitchToken) {
+            emit(
+              state.copyWith(
+                track: track,
+                buffering: false,
+                resolvingUrl: false,
+                isTransitioning: false,
+                playing: false,
+                clearErrorMessage: true,
+              ),
+            );
+          }
+          return;
+        }
         throw StateError('Playback did not start for selected track');
       }
 
       if (switchToken == _trackSwitchToken) {
-        emit(state.copyWith(track: track, buffering: false, playing: true));
+        emit(
+          state.copyWith(
+            track: track,
+            buffering: false,
+            resolvingUrl: false,
+            isTransitioning: false,
+            playing: true,
+            clearErrorMessage: true,
+          ),
+        );
         _schedulePlaybackReassertion(switchToken);
       }
 
@@ -306,7 +494,16 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
         if (switchToken != _trackSwitchToken) return;
 
-        emit(state.copyWith(track: refreshedTrack, buffering: true, playing: false));
+        emit(
+          state.copyWith(
+            track: refreshedTrack,
+            buffering: true,
+            resolvingUrl: false,
+            isTransitioning: true,
+            playing: false,
+            clearErrorMessage: true,
+          ),
+        );
 
         await _player.setAudioSource(
           AudioSource.uri(
@@ -315,13 +512,54 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           ),
         );
 
+        if (_userPaused) {
+          await _player.pause();
+          if (switchToken == _trackSwitchToken) {
+            emit(
+              state.copyWith(
+                track: refreshedTrack,
+                buffering: false,
+                resolvingUrl: false,
+                isTransitioning: false,
+                playing: false,
+                clearErrorMessage: true,
+              ),
+            );
+          }
+          return;
+        }
+
         final started = await _ensurePlaybackStarted();
         if (!started) {
+          if (_userPaused) {
+            if (switchToken == _trackSwitchToken) {
+              emit(
+                state.copyWith(
+                  track: refreshedTrack,
+                  buffering: false,
+                  resolvingUrl: false,
+                  isTransitioning: false,
+                  playing: false,
+                  clearErrorMessage: true,
+                ),
+              );
+            }
+            return;
+          }
           throw StateError('Playback did not start after URL refresh');
         }
 
         if (switchToken == _trackSwitchToken) {
-          emit(state.copyWith(track: refreshedTrack, buffering: false, playing: true));
+          emit(
+            state.copyWith(
+              track: refreshedTrack,
+              buffering: false,
+              resolvingUrl: false,
+              isTransitioning: false,
+              playing: true,
+              clearErrorMessage: true,
+            ),
+          );
           _schedulePlaybackReassertion(switchToken);
         }
 
@@ -332,12 +570,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           debugPrint('[PlayerCubit] Retry playTrack start failed: $retryError');
         }
         if (switchToken == _trackSwitchToken) {
-          emit(state.copyWith(buffering: false, playing: false));
+          _emitPlaybackError('Unable to start this track. Please try again.');
         }
       }
     } finally {
       if (switchToken == _trackSwitchToken) {
         _isTrackSwitchInProgress = false;
+        _clearSwitchFailSafe();
+        emit(state.copyWith(isTransitioning: false));
       }
     }
   }
@@ -351,9 +591,20 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     String? album,
     String? imageUrl,
   }) async {
+    _userPaused = false;
     if (state.track?.trackId != null && state.track?.trackId != trackId) {
       unawaited(_logCurrentTrackPlay(wasSkipped: true));
     }
+
+    emit(
+      state.copyWith(
+        resolvingUrl: true,
+        buffering: true,
+        isTransitioning: true,
+        playing: false,
+        clearErrorMessage: true,
+      ),
+    );
 
     final repo = _repo;
     if (repo != null) {
@@ -382,7 +633,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
             items.insert(0, fallback);
             newIndex = 0;
           }
-          emit(state.copyWith(queue: items, currentIndex: newIndex));
+          emit(
+            state.copyWith(
+              queue: items,
+              currentIndex: _sanitizeIndex(newIndex, items.length),
+            ),
+          );
         } catch (e) {
           if (kDebugMode) {
             debugPrint('[PlayerCubit] playQueueFrom failed (background sync): $e');
@@ -393,7 +649,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     final url = await _fetchPlayableUrl(trackId);
     if (url == null) {
-      // Could throw or emit error state if needed
+      emit(
+        state.copyWith(
+          buffering: false,
+          resolvingUrl: false,
+          isTransitioning: false,
+          playing: false,
+        ),
+      );
       return;
     }
 
@@ -436,7 +699,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     try {
       final expanded = await repo.getQueueExpanded();
       final items = await _mapToQueueItems(expanded);
-      emit(state.copyWith(queue: items));
+      emit(
+        state.copyWith(
+          queue: items,
+          currentIndex: _sanitizeIndex(state.currentIndex, items.length),
+        ),
+      );
       await _refreshQueueIfNeeded();
     } catch (_) {}
   }
@@ -465,7 +733,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           final syncedIndex = currentTrackId == null
               ? -1
               : items.indexWhere((q) => q.trackId == currentTrackId);
-          emit(state.copyWith(queue: items, currentIndex: syncedIndex));
+          final safeSyncedIndex = syncedIndex >= 0
+              ? syncedIndex
+              : _sanitizeIndex(state.currentIndex, items.length);
+          emit(state.copyWith(queue: items, currentIndex: safeSyncedIndex));
         } catch (_) {}
       }());
     }
@@ -477,6 +748,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         await playTrack(
           PlayerTrack(trackId: trackId, url: url, title: 'Unknown', artist: 'Unknown'),
         );
+      } else {
+        _emitPlaybackError('Unable to load selected track from queue.');
       }
     }
   }
@@ -512,7 +785,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     // If newList is empty, reset to -1
     if (newList.isEmpty) newIndex = -1;
 
-    emit(state.copyWith(queue: newList, currentIndex: newIndex));
+    emit(
+      state.copyWith(
+        queue: newList,
+        currentIndex: _sanitizeIndex(newIndex, newList.length),
+      ),
+    );
 
     final repo = _repo;
     if (repo != null) {
@@ -541,7 +819,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       newIndex = state.currentIndex + 1;
     }
 
-    emit(state.copyWith(queue: list, currentIndex: newIndex));
+    emit(
+      state.copyWith(
+        queue: list,
+        currentIndex: _sanitizeIndex(newIndex, list.length),
+      ),
+    );
 
     final repo = _repo;
     if (repo != null) {
@@ -550,7 +833,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> clearQueue() async {
-    emit(state.copyWith(queue: const <QueueItem>[], currentIndex: -1));
+    emit(
+      state.copyWith(
+        queue: const <QueueItem>[],
+        currentIndex: -1,
+        isTransitioning: false,
+        resolvingUrl: false,
+      ),
+    );
     final repo = _repo;
     if (repo != null) {
       unawaited(repo.clearQueue());
@@ -559,12 +849,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   Future<void> next({bool userInitiated = true}) async {
     // userInitiated true when tapped button; false when auto-advance
-    if (_isTrackSwitchInProgress || _isAdvancingNext) return;
+    if (_isBusySwitching) return;
     await _playNextInternal(userInitiated: userInitiated);
   }
 
   Future<void> previous() async {
-    if (_isTrackSwitchInProgress) return;
+    if (_isBusySwitching) return;
     final idx = state.currentIndex;
     if (idx > 0) {
       await _playAtIndex(idx - 1);
@@ -574,8 +864,16 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> _playNextInternal({bool userInitiated = false}) async {
+    _userPaused = false;
     if (_isAdvancingNext) return;
     _isAdvancingNext = true;
+    emit(
+      state.copyWith(
+        isTransitioning: true,
+        resolvingUrl: true,
+        clearErrorMessage: true,
+      ),
+    );
     unawaited(_logCurrentTrackPlay(wasSkipped: userInitiated));
 
     try {
@@ -591,50 +889,91 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       } else {
         // End of queue - stop playback
         await _player.stop();
-        emit(state.copyWith(playing: false));
+        emit(
+          state.copyWith(
+            playing: false,
+            buffering: false,
+            resolvingUrl: false,
+            isTransitioning: false,
+          ),
+        );
         unawaited(_refreshQueueIfNeeded());
       }
     } finally {
       _isAdvancingNext = false;
+      emit(state.copyWith(isTransitioning: _isTrackSwitchInProgress));
     }
   }
 
   Future<void> _playAtIndex(int index) async {
+    _userPaused = false;
     if (index < 0 || index >= state.queue.length) return;
     if (_isTrackSwitchInProgress) return;
 
     _isTrackSwitchInProgress = true;
     final switchToken = ++_trackSwitchToken;
     _playbackReassertTimer?.cancel();
+    _armSwitchFailSafe(switchToken);
 
     final item = state.queue[index];
 
-    final provisionalTrack = PlayerTrack(
-      trackId: item.trackId,
-      url: state.track?.url ?? '',
-      title: item.title.isEmpty ? 'Unknown Title' : item.title,
-      artist: item.artist.isEmpty ? 'Unknown Artist' : item.artist,
-      album: item.album,
-      imageUrl: item.imageUrl,
-      localImagePath: item.localImagePath,
+    final existingUrl = state.track?.url;
+    final canUseProvisionalUrl = existingUrl != null && existingUrl.trim().isNotEmpty;
+    final provisionalTrack = canUseProvisionalUrl
+        ? PlayerTrack(
+            trackId: item.trackId,
+            url: existingUrl,
+            title: item.title.isEmpty ? 'Unknown Title' : item.title,
+            artist: item.artist.isEmpty ? 'Unknown Artist' : item.artist,
+            album: item.album,
+            imageUrl: item.imageUrl,
+            localImagePath: item.localImagePath,
+          )
+        : null;
+    emit(
+      state.copyWith(
+        track: provisionalTrack ?? state.track,
+        buffering: true,
+        resolvingUrl: true,
+        isTransitioning: true,
+        currentIndex: index,
+        playing: false,
+        clearErrorMessage: true,
+      ),
     );
-    emit(state.copyWith(track: provisionalTrack, buffering: true, currentIndex: index, playing: false));
 
     final url = await _fetchPlayableUrl(item.trackId);
-    if (url == null) {
+    if (url == null || url.trim().isEmpty) {
       if (switchToken == _trackSwitchToken) {
-        emit(state.copyWith(buffering: false, playing: false));
+        _clearSwitchFailSafe();
+        emit(
+          state.copyWith(
+            buffering: false,
+            resolvingUrl: false,
+            isTransitioning: false,
+            playing: false,
+          ),
+        );
         _isTrackSwitchInProgress = false;
       }
       return;
     }
 
     if (switchToken != _trackSwitchToken) {
+      _clearSwitchFailSafe();
       _isTrackSwitchInProgress = false;
       return;
     }
 
-    final track = provisionalTrack.copyWith(url: url);
+    final track = PlayerTrack(
+      trackId: item.trackId,
+      url: url,
+      title: item.title.isEmpty ? 'Unknown Title' : item.title,
+      artist: item.artist.isEmpty ? 'Unknown Artist' : item.artist,
+      album: item.album,
+      imageUrl: item.imageUrl,
+      localImagePath: item.localImagePath,
+    );
 
     try {
       final uri = url.startsWith('http') || url.startsWith('https')
@@ -642,12 +981,57 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           : Uri.file(url);
 
       await _player.setAudioSource(AudioSource.uri(uri));
+
+      if (_userPaused) {
+        await _player.pause();
+        if (switchToken == _trackSwitchToken) {
+          emit(
+            state.copyWith(
+              track: track,
+              buffering: false,
+              resolvingUrl: false,
+              isTransitioning: false,
+              playing: false,
+              currentIndex: index,
+              clearErrorMessage: true,
+            ),
+          );
+        }
+        return;
+      }
+
       final started = await _ensurePlaybackStarted();
       if (!started) {
+        if (_userPaused) {
+          if (switchToken == _trackSwitchToken) {
+            emit(
+              state.copyWith(
+                track: track,
+                buffering: false,
+                resolvingUrl: false,
+                isTransitioning: false,
+                playing: false,
+                currentIndex: index,
+                clearErrorMessage: true,
+              ),
+            );
+          }
+          return;
+        }
         throw StateError('Playback did not start after source switch');
       }
       if (switchToken == _trackSwitchToken) {
-        emit(state.copyWith(track: track, buffering: false, playing: true, currentIndex: index));
+        emit(
+          state.copyWith(
+            track: track,
+            buffering: false,
+            resolvingUrl: false,
+            isTransitioning: false,
+            playing: true,
+            currentIndex: index,
+            clearErrorMessage: true,
+          ),
+        );
         _schedulePlaybackReassertion(switchToken);
       }
       _markTrackSessionStart(item.trackId);
@@ -658,29 +1042,84 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
       try {
         final refreshedUrl = await _fetchPlayableUrl(item.trackId, forceRefresh: true);
-        if (refreshedUrl == null) {
-          emit(state.copyWith(buffering: false, playing: false));
+        if (refreshedUrl == null || refreshedUrl.trim().isEmpty) {
+          _emitPlaybackError('Unable to refresh stream URL for this track.');
           return;
         }
 
-        final refreshedTrack = provisionalTrack.copyWith(url: refreshedUrl);
+        final refreshedTrack = track.copyWith(url: refreshedUrl);
         if (switchToken != _trackSwitchToken) {
           _isTrackSwitchInProgress = false;
           return;
         }
-        emit(state.copyWith(track: refreshedTrack, buffering: true, currentIndex: index, playing: false));
+        emit(
+          state.copyWith(
+            track: refreshedTrack,
+            buffering: true,
+            resolvingUrl: false,
+            isTransitioning: true,
+            currentIndex: index,
+            playing: false,
+            clearErrorMessage: true,
+          ),
+        );
 
         final refreshedUri = refreshedUrl.startsWith('http') || refreshedUrl.startsWith('https')
             ? Uri.parse(refreshedUrl)
             : Uri.file(refreshedUrl);
 
         await _player.setAudioSource(AudioSource.uri(refreshedUri));
+
+        if (_userPaused) {
+          await _player.pause();
+          if (switchToken == _trackSwitchToken) {
+            emit(
+              state.copyWith(
+                track: refreshedTrack,
+                buffering: false,
+                resolvingUrl: false,
+                isTransitioning: false,
+                playing: false,
+                currentIndex: index,
+                clearErrorMessage: true,
+              ),
+            );
+          }
+          return;
+        }
+
         final started = await _ensurePlaybackStarted();
         if (!started) {
+          if (_userPaused) {
+            if (switchToken == _trackSwitchToken) {
+              emit(
+                state.copyWith(
+                  track: refreshedTrack,
+                  buffering: false,
+                  resolvingUrl: false,
+                  isTransitioning: false,
+                  playing: false,
+                  currentIndex: index,
+                  clearErrorMessage: true,
+                ),
+              );
+            }
+            return;
+          }
           throw StateError('Playback did not start after retry source switch');
         }
         if (switchToken == _trackSwitchToken) {
-          emit(state.copyWith(track: refreshedTrack, buffering: false, playing: true, currentIndex: index));
+          emit(
+            state.copyWith(
+              track: refreshedTrack,
+              buffering: false,
+              resolvingUrl: false,
+              isTransitioning: false,
+              playing: true,
+              currentIndex: index,
+              clearErrorMessage: true,
+            ),
+          );
           _schedulePlaybackReassertion(switchToken);
         }
         _markTrackSessionStart(item.trackId);
@@ -689,12 +1128,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           debugPrint('[PlayerCubit] Retry play failed for ${item.trackId}: $retryError');
         }
         if (switchToken == _trackSwitchToken) {
-          emit(state.copyWith(buffering: false, playing: false));
+          _emitPlaybackError('Unable to play this track. Please try again.');
         }
       }
     } finally {
       if (switchToken == _trackSwitchToken) {
         _isTrackSwitchInProgress = false;
+        _clearSwitchFailSafe();
+        emit(state.copyWith(isTransitioning: false, resolvingUrl: false));
       }
     }
   }
@@ -704,9 +1145,15 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     Duration perAttemptTimeout = const Duration(milliseconds: 900),
   }) async {
     for (var attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      if (_userPaused) return false;
       if (_player.playing) return true;
 
       await _player.play();
+
+      if (_userPaused) {
+        await _player.pause();
+        return false;
+      }
 
       if (_player.playing) return true;
 
@@ -729,6 +1176,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _playbackReassertTimer = Timer(const Duration(milliseconds: 900), () async {
       if (switchToken != _trackSwitchToken) return;
       if (_isTrackSwitchInProgress) return;
+      if (_userPaused) return;
 
       final current = _player.playerState;
       if (!current.playing && current.processingState != ProcessingState.completed) {
@@ -752,6 +1200,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _snapshotLogTimer?.cancel();
     _currentTrackIdForLogging = trackId;
     _currentTrackStartedAt = DateTime.now();
+    unawaited(_trackCache?.updateLastPlayed(trackId));
 
     _snapshotLogTimer = Timer(const Duration(seconds: 12), () async {
       if (state.track?.trackId == trackId && _player.playing) {
@@ -802,8 +1251,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         : 0.0;
 
     final deviceType = kIsWeb
-        ? 'web'
-        : (Platform.isAndroid || Platform.isIOS ? 'mobile' : 'desktop');
+      ? 'web'
+      : (platform_io.isAndroidOrIOS ? 'mobile' : 'desktop');
 
     final listeningContext = state.currentIndex >= 0 ? 'playlist' : 'library';
 
@@ -837,33 +1286,52 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> togglePlayPause() async {
-    if (state.buffering) return;
     if (_player.playing) {
+      _userPaused = true;
+      _playbackReassertTimer?.cancel();
       await _player.pause();
+      return;
     } else {
+      if (_isTrackSwitchInProgress) {
+        _userPaused = true;
+        _playbackReassertTimer?.cancel();
+        return;
+      }
+      if (state.track == null) return;
+      _userPaused = false;
       await _player.play();
     }
   }
 
-  Future<void> ensurePlaying() async {
-    if (state.buffering) return;
+  Future<void> ensurePlaying({bool ignoreUserPause = false}) async {
+    if (_isTrackSwitchInProgress) return;
+    if (!ignoreUserPause && _userPaused) return;
+    if (state.track == null) return;
     if (_player.playing) return;
+    _userPaused = false;
     await _player.play();
   }
 
   Future<void> seek(Duration position) async {
+    final maxDuration = state.duration;
+    if (maxDuration > Duration.zero && position > maxDuration) {
+      await _player.seek(maxDuration);
+      return;
+    }
+    if (position < Duration.zero) {
+      await _player.seek(Duration.zero);
+      return;
+    }
     await _player.seek(position);
   }
 
   Future<void> setVolume(double volume) async {
-    await _player.setVolume(volume);
-    emit(state.copyWith(volume: volume));
+    final safeVolume = volume.clamp(0.0, 1.0).toDouble();
+    await _player.setVolume(safeVolume);
+    emit(state.copyWith(volume: safeVolume));
   }
 
   Future<void> _refreshQueueIfNeeded() async {
-    final remaining = state.queue.length - (state.currentIndex + 1);
-    final needed = 10 - remaining;
-
     // 1. If no queue exists but a track is currently playing, seed queue from that track
     if (state.queue.isEmpty && state.track?.trackId != null && _repo != null) {
       try {
@@ -897,7 +1365,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (_listeningHistoryRepository != null) {
         try {
           final recommendation = await _listeningHistoryRepository.getRecommendations(
-            limit: needed * 3,
+            limit: refreshedNeeded * 3,
             type: 'discovery',
             includeReasons: false,
           );
@@ -977,8 +1445,73 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (state.track?.trackId != null) {
         newIndex = items.indexWhere((q) => q.trackId == state.track!.trackId);
       }
-      emit(state.copyWith(queue: items, currentIndex: newIndex));
+      final safeIndex = newIndex >= 0
+          ? newIndex
+          : _sanitizeIndex(state.currentIndex, items.length);
+      emit(state.copyWith(queue: items, currentIndex: safeIndex));
     } catch (_) {}
+  }
+
+  void _publishNowPlaying(PlayerViewState viewState) {
+    final hasTrack = viewState.track != null;
+    final hasValidIndex = viewState.currentIndex >= 0 &&
+        viewState.currentIndex < viewState.queue.length;
+    final hasPrevious = hasValidIndex && viewState.currentIndex > 0;
+    final hasNext = hasValidIndex &&
+        viewState.currentIndex + 1 < viewState.queue.length;
+
+    if (!hasTrack) {
+      if (_lastPublishedTrackKey != null) {
+        MediaControlsService.instance.clearMediaItem();
+        _lastPublishedTrackKey = null;
+      }
+      MediaControlsService.instance.updatePlaybackState(
+        playing: false,
+        buffering: false,
+        position: Duration.zero,
+        bufferedPosition: Duration.zero,
+        hasPrevious: false,
+        hasNext: false,
+        duration: Duration.zero,
+        queueIndex: null,
+      );
+      return;
+    }
+
+    final track = viewState.track!;
+    final trackKey = '${track.trackId ?? track.url}|${track.title}|${track.artist}';
+    if (trackKey != _lastPublishedTrackKey) {
+      Uri? artUri;
+      final artPath = track.localImagePath ?? track.imageUrl;
+      if (artPath != null && artPath.trim().isNotEmpty) {
+        if (artPath.startsWith('http://') || artPath.startsWith('https://')) {
+          artUri = Uri.tryParse(artPath);
+        } else {
+          artUri = Uri.file(artPath);
+        }
+      }
+
+      MediaControlsService.instance.updateMediaItem(
+        id: track.trackId ?? track.url,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        artUri: artUri,
+        duration: viewState.duration,
+      );
+      _lastPublishedTrackKey = trackKey;
+    }
+
+    MediaControlsService.instance.updatePlaybackState(
+      playing: viewState.playing,
+      buffering: viewState.buffering,
+      position: viewState.position,
+      bufferedPosition: _player.bufferedPosition,
+      hasPrevious: hasPrevious,
+      hasNext: hasNext,
+      duration: viewState.duration,
+      queueIndex: viewState.currentIndex >= 0 ? viewState.currentIndex : null,
+    );
   }
 
   @override
@@ -986,9 +1519,11 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     await _logCurrentTrackPlay(wasSkipped: true);
     _snapshotLogTimer?.cancel();
     _playbackReassertTimer?.cancel();
+    _switchFailSafeTimer?.cancel();
     await _positionSub?.cancel();
     await _durationSub?.cancel();
     await _playerStateSub?.cancel();
+    await _viewStateSub?.cancel();
     await _player.dispose();
     return super.close();
   }

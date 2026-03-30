@@ -21,8 +21,19 @@ class FloatingPlayerPanel extends StatelessWidget {
       builder: (context, state) {
         final track = state.track;
         final hasTrack = track != null;
+        final showingLoading =
+          state.buffering || state.isTransitioning || state.resolvingUrl;
+        final canControlPlayback = hasTrack || state.playing;
         final title = track?.title ?? 'Nothing playing';
         final artist = track?.artist ?? 'Tap to choose something';
+        final subtitleText = state.resolvingUrl
+            ? 'Loading stream...'
+            : state.buffering
+            ? 'Buffering audio...'
+            : artist;
+        final subtitleColor = (state.resolvingUrl || state.buffering)
+            ? theme.colorScheme.primary
+            : theme.textTheme.bodySmall?.color?.withValues(alpha: 0.8);
 
         final pos = state.position;
         final dur = state.duration;
@@ -94,12 +105,11 @@ class FloatingPlayerPanel extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            artist,
+                            subtitleText,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.textTheme.bodySmall?.color
-                                  ?.withValues(alpha: 0.8),
+                              color: subtitleColor,
                             ),
                           ),
                         ],
@@ -111,7 +121,9 @@ class FloatingPlayerPanel extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          onPressed: hasTrack ? () => cubit.previous() : null,
+                            onPressed: canControlPlayback
+                              ? () => cubit.previous()
+                              : null,
                           tooltip: 'Previous',
                           icon: const Icon(Icons.skip_previous_rounded),
                         ),
@@ -123,29 +135,36 @@ class FloatingPlayerPanel extends StatelessWidget {
                               padding: EdgeInsets.zero,
                               shape: const CircleBorder(),
                             ),
-                            onPressed: hasTrack
-                                ? (state.buffering
-                                      ? null
-                                      : () => cubit.togglePlayPause())
+                            onPressed: canControlPlayback
+                                ? () => cubit.togglePlayPause()
                                 : null,
-                            child: state.playing
-                                ? const Icon(Icons.pause_rounded, size: 24)
-                                : state.buffering
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 180),
+                              child: state.playing
+                                  ? const Icon(
+                                      Icons.pause_rounded,
+                                      key: ValueKey('pause'),
+                                      size: 24,
+                                    )
+                                  : showingLoading
+                                  ? const SizedBox(
+                                      key: ValueKey('loading'),
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.5,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.play_arrow_rounded,
+                                      key: ValueKey('play'),
+                                      size: 28,
                                     ),
-                                  )
-                                : const Icon(
-                                    Icons.play_arrow_rounded,
-                                    size: 28,
-                                  ),
+                            ),
                           ),
                         ),
                         IconButton(
-                          onPressed: hasTrack
+                            onPressed: canControlPlayback
                               ? () => cubit.next(userInitiated: true)
                               : null,
                           tooltip: 'Next',
