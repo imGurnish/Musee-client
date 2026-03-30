@@ -7,6 +7,9 @@ import 'package:musee/core/player/player_state.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 
+bool _isPlayerSheetOpen = false;
+DateTime? _lastPlayerSheetOpenAt;
+
 /// Shows the full-screen player bottom sheet, styled similar to Spotify.
 Future<void> showPlayerBottomSheet(
   BuildContext context, {
@@ -19,17 +22,28 @@ Future<void> showPlayerBottomSheet(
   Map<String, String>? headers,
   String? trackId,
 }) async {
-  final cubit = GetIt.I<PlayerCubit>();
-
-  Future<void> ensureAutoPlay() async {
-    final s = cubit.state;
-    if (cubit.isUserPausedIntent) return;
-    if (!s.playing && !s.buffering && s.track != null) {
-      await cubit.ensurePlaying();
-    }
+  if (_isPlayerSheetOpen) return;
+  final now = DateTime.now();
+  if (_lastPlayerSheetOpenAt != null &&
+      now.difference(_lastPlayerSheetOpenAt!) < const Duration(milliseconds: 500)) {
+    return;
   }
 
-  if (trackId != null && (audioUrl == null || audioUrl.isEmpty)) {
+  _isPlayerSheetOpen = true;
+  _lastPlayerSheetOpenAt = now;
+
+  final cubit = GetIt.I<PlayerCubit>();
+
+  try {
+    Future<void> ensureAutoPlay() async {
+      final s = cubit.state;
+      if (cubit.isUserPausedIntent) return;
+      if (!s.playing && !s.buffering && s.track != null) {
+        await cubit.ensurePlaying();
+      }
+    }
+
+    if (trackId != null && (audioUrl == null || audioUrl.isEmpty)) {
     // Play by ID (resolves URL and caches metadata)
     // We don't check for "different track" here because playTrackById handles resolution
     // and we want to ensure latest metadata/URL is used.
@@ -48,7 +62,7 @@ Future<void> showPlayerBottomSheet(
     } else {
       await ensureAutoPlay();
     }
-  } else if (audioUrl != null && audioUrl.isNotEmpty) {
+    } else if (audioUrl != null && audioUrl.isNotEmpty) {
     final track = PlayerTrack(
       url: audioUrl,
       title: title,
@@ -67,23 +81,26 @@ Future<void> showPlayerBottomSheet(
     } else {
       await ensureAutoPlay();
     }
+    }
+
+    if (!context.mounted) return;
+
+    await showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return BlocProvider.value(
+          value: cubit,
+          child: const _PlayerBackdrop(child: _PlayerSheetBody()),
+        );
+      },
+    );
+  } finally {
+    _isPlayerSheetOpen = false;
   }
-
-  if (!context.mounted) return;
-
-  await showModalBottomSheet(
-    context: context,
-    useRootNavigator: true,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) {
-      return BlocProvider.value(
-        value: cubit,
-        child: const _PlayerBackdrop(child: _PlayerSheetBody()),
-      );
-    },
-  );
 }
 
 /// Backdrop with a subtle vertical gradient based on theme.
@@ -149,14 +166,9 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
           final canControlPlayback = state.track != null || state.playing;
           final title = state.track?.title ?? 'Unknown Title';
           final artist = state.track?.artist ?? 'Unknown Artist';
-          final subtitleText = state.resolvingUrl
-              ? 'Loading stream...'
-              : state.buffering
-              ? 'Buffering audio...'
-              : artist;
-          final subtitleColor = (state.resolvingUrl || state.buffering)
-              ? theme.colorScheme.primary
-              : theme.textTheme.bodyLarge?.color?.withValues(alpha: 0.85);
+            final subtitleText = artist;
+            final subtitleColor =
+              theme.textTheme.bodyLarge?.color?.withValues(alpha: 0.85);
           final album = state.track?.album ?? '';
           final imageUrl = state.track?.imageUrl;
           final pos = state.position;
@@ -343,13 +355,9 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
                                 size: 42,
                               )
                             : showingLoading
-                            ? const SizedBox(
-                                key: ValueKey('loading'),
-                                width: 42,
-                                height: 42,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 3,
-                                ),
+                            ? _SheetPlayButtonLoader(
+                                key: const ValueKey('loading'),
+                                resolving: state.resolvingUrl,
                               )
                             : const Icon(
                                 Icons.play_arrow_rounded,
@@ -559,6 +567,34 @@ class _QueueSheet extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _SheetPlayButtonLoader extends StatelessWidget {
+  final bool resolving;
+  const _SheetPlayButtonLoader({super.key, required this.resolving});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      width: 42,
+      height: 42,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CircularProgressIndicator(
+            strokeWidth: 3,
+            color: theme.colorScheme.onPrimary,
+          ),
+          Icon(
+            resolving ? Icons.cloud_sync_rounded : Icons.graphic_eq_rounded,
+            size: 20,
+            color: theme.colorScheme.onPrimary,
+          ),
+        ],
+      ),
     );
   }
 }

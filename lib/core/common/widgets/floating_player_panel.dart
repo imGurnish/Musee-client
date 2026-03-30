@@ -26,14 +26,8 @@ class FloatingPlayerPanel extends StatelessWidget {
         final canControlPlayback = hasTrack || state.playing;
         final title = track?.title ?? 'Nothing playing';
         final artist = track?.artist ?? 'Tap to choose something';
-        final subtitleText = state.resolvingUrl
-            ? 'Loading stream...'
-            : state.buffering
-            ? 'Buffering audio...'
-            : artist;
-        final subtitleColor = (state.resolvingUrl || state.buffering)
-            ? theme.colorScheme.primary
-            : theme.textTheme.bodySmall?.color?.withValues(alpha: 0.8);
+        final subtitleText = artist;
+        final subtitleColor = theme.textTheme.bodySmall?.color?.withValues(alpha: 0.8);
 
         final pos = state.position;
         final dur = state.duration;
@@ -147,13 +141,10 @@ class FloatingPlayerPanel extends StatelessWidget {
                                       size: 24,
                                     )
                                   : showingLoading
-                                  ? const SizedBox(
-                                      key: ValueKey('loading'),
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2.5,
-                                      ),
+                                  ? _PlayButtonLoader(
+                                      key: const ValueKey('loading'),
+                                      compact: true,
+                                      resolving: state.resolvingUrl,
                                     )
                                   : const Icon(
                                       Icons.play_arrow_rounded,
@@ -217,6 +208,42 @@ class FloatingPlayerPanel extends StatelessWidget {
     return Container(
       color: color.primaryContainer.withValues(alpha: 0.4),
       child: const Icon(Icons.music_note, size: 28),
+    );
+  }
+}
+
+class _PlayButtonLoader extends StatelessWidget {
+  final bool compact;
+  final bool resolving;
+
+  const _PlayButtonLoader({
+    super.key,
+    required this.compact,
+    required this.resolving,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final spinnerSize = compact ? 22.0 : 42.0;
+    final iconSize = compact ? 12.0 : 20.0;
+    return SizedBox(
+      width: spinnerSize,
+      height: spinnerSize,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CircularProgressIndicator(
+            strokeWidth: compact ? 2.4 : 3.0,
+            color: theme.colorScheme.onPrimary,
+          ),
+          Icon(
+            resolving ? Icons.cloud_sync_rounded : Icons.graphic_eq_rounded,
+            size: iconSize,
+            color: theme.colorScheme.onPrimary,
+          ),
+        ],
+      ),
     );
   }
 }
