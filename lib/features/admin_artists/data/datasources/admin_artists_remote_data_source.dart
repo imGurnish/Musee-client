@@ -15,9 +15,13 @@ abstract interface class AdminArtistsRemoteDataSource {
 
   Future<ArtistModel> createArtist({
     String? artistId,
+    String? externalArtistId,
+    String? source,
+    String? externalUrl,
+    String? imageUrl,
+    Map<String, dynamic>? externalPayload,
     String? name,
     String? email,
-    String? password,
     required String bio,
     Uint8List? coverBytes,
     String? coverFilename,
@@ -48,6 +52,8 @@ abstract interface class AdminArtistsRemoteDataSource {
   });
 
   Future<void> deleteArtist(String id);
+
+  Future<void> deleteArtists(List<String> ids);
 }
 
 class AdminArtistsRemoteDataSourceImpl implements AdminArtistsRemoteDataSource {
@@ -104,9 +110,13 @@ class AdminArtistsRemoteDataSourceImpl implements AdminArtistsRemoteDataSource {
   @override
   Future<ArtistModel> createArtist({
     String? artistId,
+    String? externalArtistId,
+    String? source,
+    String? externalUrl,
+    String? imageUrl,
+    Map<String, dynamic>? externalPayload,
     String? name,
     String? email,
-    String? password,
     required String bio,
     Uint8List? coverBytes,
     String? coverFilename,
@@ -127,10 +137,26 @@ class AdminArtistsRemoteDataSourceImpl implements AdminArtistsRemoteDataSource {
     if (artistId != null && artistId.isNotEmpty) {
       form.fields.add(MapEntry('artist_id', artistId));
     }
+    if (externalArtistId != null && externalArtistId.isNotEmpty) {
+      form.fields.add(MapEntry('ext_artist_id', externalArtistId));
+    }
+    if (source != null && source.isNotEmpty) {
+      form.fields.add(MapEntry('source', source));
+    }
+    if (externalUrl != null && externalUrl.isNotEmpty) {
+      form.fields.add(MapEntry('artist_url', externalUrl));
+      form.fields.add(MapEntry('external_url', externalUrl));
+      form.fields.add(MapEntry('perma_url', externalUrl));
+    }
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      form.fields.add(MapEntry('image', imageUrl));
+    }
+    if (externalPayload != null && externalPayload.isNotEmpty) {
+      form.fields.add(MapEntry('external_payload', jsonEncode(externalPayload)));
+    }
     // Option B: create user
     if (name != null) form.fields.add(MapEntry('name', name));
     if (email != null) form.fields.add(MapEntry('email', email));
-    if (password != null) form.fields.add(MapEntry('password', password));
     // Optionals
     if (genres != null) form.fields.add(MapEntry('genres', jsonEncode(genres)));
     if (debutYear != null) {
@@ -233,6 +259,15 @@ class AdminArtistsRemoteDataSourceImpl implements AdminArtistsRemoteDataSource {
   Future<void> deleteArtist(String id) async {
     await _dio.delete(
       '$basePath/$id',
+      options: dio.Options(headers: _authHeader()),
+    );
+  }
+
+  @override
+  Future<void> deleteArtists(List<String> ids) async {
+    await _dio.post(
+      '$basePath/bulk-delete',
+      data: {'ids': ids},
       options: dio.Options(headers: _authHeader()),
     );
   }

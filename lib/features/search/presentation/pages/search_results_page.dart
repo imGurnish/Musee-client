@@ -2,9 +2,6 @@ import 'package:musee/core/common/widgets/loader.dart';
 import 'package:musee/features/search/domain/entities/catalog_search.dart';
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
 import 'package:musee/features/search/presentation/pages/search_suggestions_page.dart';
-import 'package:musee/features/search/presentation/widgets/external_badge.dart';
-import 'package:musee/features/search/presentation/pages/external_album_page.dart';
-import 'package:musee/features/search/presentation/pages/external_artist_page.dart';
 import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -144,29 +141,57 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
   Widget _buildStateBasedContent(BuildContext context, SearchState state) {
     return switch (state) {
       SearchQueryLoading() => const Loader(),
-      SearchResultsLoaded(results: final results) => _buildCatalogSearchResults(
+      SearchResultsLoaded(
+        results: final results,
+        cachedTrackIds: final cachedTrackIds,
+        cachedAlbumIds: final cachedAlbumIds,
+        cachedPlaylistIds: final cachedPlaylistIds,
+        fromOfflineCache: final fromOfflineCache,
+      ) => _buildCatalogSearchResults(
         results,
+        cachedTrackIds: cachedTrackIds,
+        cachedAlbumIds: cachedAlbumIds,
+        cachedPlaylistIds: cachedPlaylistIds,
+        fromOfflineCache: fromOfflineCache,
       ),
       VideosError() => _buildErrorState(),
       _ => _buildInitialState(),
     };
   }
 
-  Widget _buildCatalogSearchResults(CatalogSearchResults results) {
+  Widget _buildCatalogSearchResults(
+    CatalogSearchResults results, {
+    required Set<String> cachedTrackIds,
+    required Set<String> cachedAlbumIds,
+    required Set<String> cachedPlaylistIds,
+    required bool fromOfflineCache,
+  }) {
     if (results.isEmpty) return _buildEmptyState();
 
     final top = _pickTopResult(results);
 
     return CustomScrollView(
       slivers: [
-        _buildSearchHeader(),
+        if (fromOfflineCache)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: _OfflineSearchBanner(),
+            ),
+          ),
+        _buildSearchHeader(results),
         if (top != null) SliverToBoxAdapter(child: _TopResultCard(top: top)),
         if (results.tracks.isNotEmpty)
           SliverToBoxAdapter(
             child: _SectionList(
               title: 'Songs',
               children: results.tracks
-                  .map((t) => _TrackTile(track: t))
+                  .map(
+                    (t) => _TrackTile(
+                      track: t,
+                      isCached: cachedTrackIds.contains(t.trackId),
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -184,7 +209,26 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
             child: _SectionList(
               title: 'Albums',
               children: results.albums
-                  .map((a) => _AlbumTile(album: a))
+                  .map(
+                    (a) => _AlbumTile(
+                      album: a,
+                      isCached: cachedAlbumIds.contains(a.albumId),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        if (results.playlists.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _SectionList(
+              title: 'Playlists',
+              children: results.playlists
+                  .map(
+                    (p) => _PlaylistTile(
+                      playlist: p,
+                      isCached: cachedPlaylistIds.contains(p.playlistId),
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -198,19 +242,38 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
     if (r.artists.isNotEmpty) return r.artists.first;
     if (r.tracks.isNotEmpty) return r.tracks.first;
     if (r.albums.isNotEmpty) return r.albums.first;
+    if (r.playlists.isNotEmpty) return r.playlists.first;
     return null;
   }
 
   /// Builds search results header
-  Widget _buildSearchHeader() {
+  Widget _buildSearchHeader(CatalogSearchResults results) {
+    final totalCount =
+        results.tracks.length +
+        results.artists.length +
+        results.albums.length +
+        results.playlists.length;
+
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Text(
-          'Search results for "${widget.query}"',
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Search results for "${widget.query}"',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$totalCount result${totalCount == 1 ? '' : 's'}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -309,8 +372,13 @@ class _SectionList extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: theme.textTheme.titleLarge),
-          const SizedBox(height: 8),
+          Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
           ...children,
         ],
       ),
@@ -354,6 +422,9 @@ class _TopResultCard extends StatelessWidget {
     } else if (top is CatalogArtist) {
       imageUrl = (top as CatalogArtist).avatarUrl;
       fallback = Icons.person;
+    } else if (top is CatalogPlaylist) {
+      imageUrl = (top as CatalogPlaylist).coverUrl;
+      fallback = Icons.queue_music_rounded;
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
@@ -381,6 +452,12 @@ class _TopResultCard extends StatelessWidget {
       title = t.title;
       final artistNames = t.artists.map((a) => a.name ?? a.artistId).join(', ');
       subtitle = 'Song • $artistNames';
+    } else if (top is CatalogPlaylist) {
+      final p = top as CatalogPlaylist;
+      title = p.name;
+      subtitle = p.creatorName?.isNotEmpty == true
+          ? 'Playlist • ${p.creatorName}'
+          : 'Playlist';
     } else {
       final a = top as CatalogAlbum;
       title = a.title;
@@ -410,102 +487,154 @@ class _TopResultCard extends StatelessWidget {
 
 class _TrackTile extends StatelessWidget {
   final CatalogTrack track;
-  const _TrackTile({required this.track});
-
-  bool get _isExternal => track.source == SearchSource.external;
+  final bool isCached;
+  const _TrackTile({required this.track, required this.isCached});
 
   @override
   Widget build(BuildContext context) {
-    final artistNames = track.artists
-        .map((a) => a.name ?? a.artistId)
-        .join(', ');
+    final theme = Theme.of(context);
+    final artistNames = track.artists.map((a) => a.name ?? a.artistId).join(', ');
+    final durationLabel = _formatDuration(track.duration);
 
-    return ListTile(
-      leading: _buildLeading(),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              track.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+    return _ResultTileContainer(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _playTrack(context, artistNames),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+          child: Row(
+            children: [
+              _TrackArtwork(track: track, isCached: isCached),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      track.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '$artistNames${durationLabel == null ? '' : ' • $durationLabel'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'More',
+                icon: const Icon(Icons.more_horiz_rounded),
+                onPressed: () => _showTrackActionsSheet(context, artistNames),
+              ),
+            ],
           ),
-          if (_isExternal) ...[
-            const SizedBox(width: 8),
-            const ExternalInlineBadge(),
-          ],
-        ],
+        ),
       ),
-      subtitle: Text(artistNames, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            tooltip: 'Download',
-            icon: const Icon(Icons.download_rounded),
-            onPressed: () {
-              GetIt.I<DownloadManager>().addToQueue(track.trackId);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Added to downloads')),
-                );
-              }
-            },
-          ),
-          IconButton(
-            tooltip: 'Add to queue',
-            icon: const Icon(Icons.queue_music_rounded),
-            onPressed: () async {
-              final item = QueueItem(
-                trackId: track.trackId,
-                title: track.title,
-                artist: artistNames,
-                album: null,
-                imageUrl: track.imageUrl,
-                durationSeconds: track.duration,
-              );
-              await GetIt.I<PlayerCubit>().addToQueue([item]);
-              if (context.mounted) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('Added to queue')));
-              }
-            },
-          ),
-          IconButton(
-            tooltip: 'Play',
-            icon: const Icon(Icons.play_arrow_rounded),
-            onPressed: () => _playTrack(context, artistNames),
-          ),
-        ],
-      ),
-      onTap: () => _playTrack(context, artistNames),
     );
   }
 
-  Widget _buildLeading() {
-    if (track.imageUrl != null && track.imageUrl!.isNotEmpty) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: Image.network(
-          track.imageUrl!,
-          width: 48,
-          height: 48,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) =>
-              const Icon(Icons.music_note),
-        ),
-      );
+  Future<void> _showTrackActionsSheet(
+    BuildContext context,
+    String artistNames,
+  ) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.play_arrow_rounded),
+              title: const Text('Play now'),
+              onTap: () => Navigator.pop(context, 'play'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.queue_music_rounded),
+              title: const Text('Add to queue'),
+              onTap: () => Navigator.pop(context, 'queue'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_rounded),
+              title: const Text('Download'),
+              onTap: () => Navigator.pop(context, 'download'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!context.mounted || action == null) return;
+    await _handleTrackAction(context, action, artistNames);
+  }
+
+  Future<void> _handleTrackAction(
+    BuildContext context,
+    String action,
+    String artistNames,
+  ) async {
+    if (action == 'play') {
+      await _playTrack(context, artistNames);
+      return;
     }
-    return const Icon(Icons.music_note);
+
+    if (action == 'download') {
+      GetIt.I<DownloadManager>().addToQueue(track.trackId);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Added to downloads')),
+        );
+      }
+      return;
+    }
+
+    if (action == 'queue') {
+      final item = QueueItem(
+        trackId: track.trackId,
+        title: track.title,
+        artist: artistNames,
+        album: null,
+        imageUrl: track.imageUrl,
+        durationSeconds: track.duration,
+      );
+      await GetIt.I<PlayerCubit>().addToQueue([item]);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Added to queue')),
+        );
+      }
+    }
+  }
+
+  String? _formatDuration(int? seconds) {
+    if (seconds == null || seconds <= 0) return null;
+    final m = seconds ~/ 60;
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   Future<void> _playTrack(BuildContext context, String artistNames) async {
     await showPlayerBottomSheet(
       context,
       trackId: track.trackId,
-      audioUrl: null, // Let the cubit resolve it
+      audioUrl: null,
       title: track.title,
       artist: artistNames,
       imageUrl: track.imageUrl,
@@ -517,111 +646,390 @@ class _ArtistTile extends StatelessWidget {
   final CatalogArtist artist;
   const _ArtistTile({required this.artist});
 
-  bool get _isExternal => artist.source == SearchSource.external;
-
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundImage: artist.avatarUrl != null
-            ? NetworkImage(artist.avatarUrl!)
-            : null,
-        child: artist.avatarUrl == null ? const Icon(Icons.person) : null,
-      ),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              artist.name ?? 'Artist',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (_isExternal) ...[
-            const SizedBox(width: 8),
-            const ExternalInlineBadge(),
-          ],
-        ],
-      ),
-      trailing: const _TypeChip(label: 'Artist'),
-      onTap: () {
-        if (!_isExternal) {
-          context.push('/artists/${artist.artistId}');
-        } else {
-          // Navigate to External artist page
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => ExternalArtistPage(
-                artistId: artist.artistId,
-                artistName: artist.name ?? 'Artist',
-                initialImageUrl: artist.avatarUrl,
+    return _ResultTileContainer(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundImage: artist.avatarUrl != null
+              ? NetworkImage(artist.avatarUrl!)
+              : null,
+          child: artist.avatarUrl == null ? const Icon(Icons.person) : null,
+        ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                artist.name ?? 'Artist',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-          );
-        }
-      },
+          ],
+        ),
+        trailing: const _TypeChip(label: 'Artist'),
+        onTap: () {
+          context.push('/artists/${artist.artistId}');
+        },
+      ),
     );
   }
 }
 
 class _AlbumTile extends StatelessWidget {
   final CatalogAlbum album;
-  const _AlbumTile({required this.album});
-
-  bool get _isExternal => album.source == SearchSource.external;
+  final bool isCached;
+  const _AlbumTile({required this.album, required this.isCached});
 
   @override
   Widget build(BuildContext context) {
     final artistNames = album.artists
         .map((a) => a.name ?? a.artistId)
         .join(', ');
-    return ListTile(
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(6),
-        child: album.coverUrl != null && album.coverUrl!.isNotEmpty
-            ? Image.network(
-                album.coverUrl!,
-                width: 48,
-                height: 48,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) =>
-                    const Icon(Icons.album),
-              )
-            : const Icon(Icons.album),
+
+    return _ResultTileContainer(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => context.push('/albums/${album.albumId}'),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+          child: Row(
+            children: [
+              _AlbumArtwork(album: album, isCached: isCached),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      album.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      artistNames,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'More',
+                icon: const Icon(Icons.more_horiz_rounded),
+                onPressed: () => _showAlbumActionsSheet(context),
+              ),
+            ],
+          ),
+        ),
       ),
-      title: Row(
+    );
+  }
+
+  Future<void> _showAlbumActionsSheet(BuildContext context) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.album_rounded),
+              title: const Text('Open album'),
+              onTap: () => Navigator.pop(context, 'open'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.queue_music_rounded),
+              title: const Text('Add to queue'),
+              onTap: () => Navigator.pop(context, 'queue'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_rounded),
+              title: const Text('Download'),
+              onTap: () => Navigator.pop(context, 'download'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!context.mounted || action == null) return;
+    _handleAlbumAction(context, action);
+  }
+
+  void _handleAlbumAction(BuildContext context, String action) {
+    if (action == 'open') {
+      context.push('/albums/${album.albumId}');
+      return;
+    }
+
+    if (action == 'queue') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add to queue is available in album view')),
+      );
+      return;
+    }
+
+    if (action == 'download') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Download is available in album view')),
+      );
+    }
+  }
+}
+
+class _PlaylistTile extends StatelessWidget {
+  final CatalogPlaylist playlist;
+  final bool isCached;
+  const _PlaylistTile({required this.playlist, required this.isCached});
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = playlist.creatorName?.isNotEmpty == true
+        ? playlist.creatorName!
+        : 'Playlist';
+
+    return _ResultTileContainer(
+      child: ListTile(
+        leading: _PlaylistArtwork(playlist: playlist, isCached: isCached),
+        title: Text(
+          playlist.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: const _TypeChip(label: 'Playlist'),
+        onTap: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Playlist details are coming soon')),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ResultTileContainer extends StatelessWidget {
+  final Widget child;
+  const _ResultTileContainer({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.48),
+        borderRadius: BorderRadius.circular(14),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _ArtworkCacheBadge extends StatelessWidget {
+  final bool visible;
+  const _ArtworkCacheBadge({required this.visible});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!visible) return const SizedBox.shrink();
+
+    return Positioned(
+      right: -2,
+      bottom: -2,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.primaryContainer,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: Theme.of(context).colorScheme.surface,
+            width: 2,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: Icon(
+            Icons.cloud_done_rounded,
+            size: 12,
+            color: Theme.of(context).colorScheme.onPrimaryContainer,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrackArtwork extends StatelessWidget {
+  final CatalogTrack track;
+  final bool isCached;
+  const _TrackArtwork({required this.track, required this.isCached});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SizedBox(
+      width: 56,
+      height: 56,
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          Expanded(
-            child: Text(
-              album.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child: track.imageUrl != null && track.imageUrl!.isNotEmpty
+                  ? Image.network(
+                      track.imageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        child: const Icon(Icons.music_note_rounded),
+                      ),
+                    )
+                  : Container(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: const Icon(Icons.music_note_rounded),
+                    ),
             ),
           ),
-          if (_isExternal) ...[
-            const SizedBox(width: 8),
-            const ExternalInlineBadge(),
-          ],
+          _ArtworkCacheBadge(visible: isCached),
         ],
       ),
-      subtitle: Text(artistNames, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: const _TypeChip(label: 'Album'),
-      onTap: () {
-        if (!_isExternal) {
-          context.push('/albums/${album.albumId}');
-        } else {
-          // Navigate to External album page
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => ExternalAlbumPage(
-                albumId: album.albumId,
-                initialTitle: album.title,
-                initialImageUrl: album.coverUrl,
-              ),
+    );
+  }
+}
+
+class _AlbumArtwork extends StatelessWidget {
+  final CatalogAlbum album;
+  final bool isCached;
+  const _AlbumArtwork({required this.album, required this.isCached});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SizedBox(
+      width: 56,
+      height: 56,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child: album.coverUrl != null && album.coverUrl!.isNotEmpty
+                  ? Image.network(
+                      album.coverUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        child: const Icon(Icons.album_rounded),
+                      ),
+                    )
+                  : Container(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: const Icon(Icons.album_rounded),
+                    ),
             ),
-          );
-        }
-      },
+          ),
+          _ArtworkCacheBadge(visible: isCached),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlaylistArtwork extends StatelessWidget {
+  final CatalogPlaylist playlist;
+  final bool isCached;
+  const _PlaylistArtwork({required this.playlist, required this.isCached});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SizedBox(
+      width: 56,
+      height: 56,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child:
+                  playlist.coverUrl != null && playlist.coverUrl!.isNotEmpty
+                  ? Image.network(
+                      playlist.coverUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        child: const Icon(Icons.queue_music_rounded),
+                      ),
+                    )
+                  : Container(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: const Icon(Icons.queue_music_rounded),
+                    ),
+            ),
+          ),
+          _ArtworkCacheBadge(visible: isCached),
+        ],
+      ),
+    );
+  }
+}
+
+class _OfflineSearchBanner extends StatelessWidget {
+  const _OfflineSearchBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.wifi_off_rounded,
+            size: 18,
+            color: theme.colorScheme.onSecondaryContainer,
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            Icons.storage_rounded,
+            size: 16,
+            color: theme.colorScheme.onSecondaryContainer,
+          ),
+        ],
+      ),
     );
   }
 }

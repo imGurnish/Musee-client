@@ -15,6 +15,8 @@ class AdminTracksPage extends StatefulWidget {
 class _AdminTracksPageState extends State<AdminTracksPage> {
   final TextEditingController _searchCtrl = TextEditingController();
   int _limit = 20;
+  final Set<String> _selectedTrackIds = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -27,6 +29,87 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
     super.dispose();
   }
 
+  Future<void> _confirmDeleteOne(Track track) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete track?'),
+        content: Text(
+          'Are you sure you want to delete "${track.title}"? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      context.read<AdminTracksBloc>().add(DeleteTrackEvent(track.trackId));
+      setState(() => _selectedTrackIds.remove(track.trackId));
+    }
+  }
+
+  Future<void> _confirmDeleteSelected() async {
+    final count = _selectedTrackIds.length;
+    if (count == 0) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete selected tracks?'),
+        content: Text(
+          'Delete $count selected track(s)? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete All'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      context.read<AdminTracksBloc>().add(
+        DeleteTracksEvent(_selectedTrackIds.toList(growable: false)),
+      );
+      setState(() => _selectedTrackIds.clear());
+    }
+  }
+
+  void _toggleSelectTrack(Track track, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedTrackIds.add(track.trackId);
+      } else {
+        _selectedTrackIds.remove(track.trackId);
+      }
+    });
+  }
+
+  void _toggleSelectAllVisible(List<Track> tracks, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedTrackIds.addAll(tracks.map((e) => e.trackId));
+      } else {
+        _selectedTrackIds.removeAll(tracks.map((e) => e.trackId));
+      }
+    });
+  }
+
+  void _clearSelection() => setState(_selectedTrackIds.clear);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -34,6 +117,12 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
       appBar: AppBar(
         title: const Text('Admin • Tracks'),
         actions: [
+          if (_selectedTrackIds.isNotEmpty)
+            IconButton(
+              onPressed: _confirmDeleteSelected,
+              icon: const Icon(Icons.delete_sweep_outlined),
+              tooltip: 'Delete selected (${_selectedTrackIds.length})',
+            ),
           IconButton(
             onPressed: () => context.push(Routes.adminTrackCreate),
             icon: const Icon(Icons.library_music),
@@ -95,6 +184,48 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
               ],
             ),
             const SizedBox(height: 12),
+            if (_selectedTrackIds.isNotEmpty)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.checklist_rounded,
+                          color: theme.colorScheme.onSecondaryContainer,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${_selectedTrackIds.length} selected',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: theme.colorScheme.onSecondaryContainer,
+                          ),
+                        ),
+                      ],
+                    ),
+                    TextButton(
+                      onPressed: _clearSelection,
+                      child: const Text('Clear'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _confirmDeleteSelected,
+                      icon: const Icon(Icons.delete_sweep_outlined),
+                      label: const Text('Delete'),
+                    ),
+                  ],
+                ),
+              ),
             Expanded(
               child: BlocBuilder<AdminTracksBloc, AdminTracksState>(
                 builder: (context, state) {
@@ -103,16 +234,43 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                   }
                   if (state is AdminTracksFailure) {
                     return Center(
-                      child: Text(
-                        state.message,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.error,
-                        ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            state.message,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.error,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            onPressed: () => context.read<AdminTracksBloc>().add(
+                              LoadTracks(
+                                page: 0,
+                                limit: _limit,
+                                search: _searchCtrl.text.trim().isEmpty
+                                    ? null
+                                    : _searchCtrl.text.trim(),
+                              ),
+                            ),
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Retry'),
+                          ),
+                        ],
                       ),
                     );
                   }
                   if (state is AdminTracksPageLoaded) {
                     final List<Track> items = state.items;
+                    final visibleIds = items.map((t) => t.trackId).toSet();
+                    final stale = _selectedTrackIds.difference(visibleIds);
+                    if (stale.isNotEmpty) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        setState(() => _selectedTrackIds.removeAll(stale));
+                      });
+                    }
                     final totalPages = (state.total / state.limit).ceil().clamp(
                       1,
                       999999,
@@ -135,6 +293,9 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                                       const SizedBox(height: 8),
                                   itemBuilder: (context, index) {
                                     final t = items[index];
+                                    final selected = _selectedTrackIds.contains(
+                                      t.trackId,
+                                    );
                                     final artists = t.artists.isNotEmpty
                                         ? t.artists
                                               .map((a) => a.name)
@@ -142,7 +303,11 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                                         : '—';
                                     return Card(
                                       child: ListTile(
-                                        leading: const Icon(Icons.music_note),
+                                        leading: Checkbox(
+                                          value: selected,
+                                          onChanged: (v) =>
+                                              _toggleSelectTrack(t, v ?? false),
+                                        ),
                                         title: Text(t.title),
                                         subtitle: Text(artists),
                                         onTap: () => context.push(
@@ -161,51 +326,8 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                                               icon: const Icon(
                                                 Icons.delete_outline,
                                               ),
-                                              onPressed: () async {
-                                                final confirm = await showDialog<bool>(
-                                                  context: context,
-                                                  builder: (ctx) => AlertDialog(
-                                                    title: const Text(
-                                                      'Delete track?',
-                                                    ),
-                                                    content: Text(
-                                                      'Are you sure you want to delete "${t.title}"? This cannot be undone.',
-                                                    ),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                              ctx,
-                                                              false,
-                                                            ),
-                                                        child: const Text(
-                                                          'Cancel',
-                                                        ),
-                                                      ),
-                                                      FilledButton(
-                                                        onPressed: () =>
-                                                            Navigator.pop(
-                                                              ctx,
-                                                              true,
-                                                            ),
-                                                        child: const Text(
-                                                          'Delete',
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                );
-                                                if (confirm == true &&
-                                                    context.mounted) {
-                                                  context
-                                                      .read<AdminTracksBloc>()
-                                                      .add(
-                                                        DeleteTrackEvent(
-                                                          t.trackId,
-                                                        ),
-                                                      );
-                                                }
-                                              },
+                                              onPressed: () =>
+                                                  _confirmDeleteOne(t),
                                             ),
                                           ],
                                         ),
@@ -219,14 +341,29 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                               return SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 child: DataTable(
-                                  columns: const [
-                                    DataColumn(label: Text('Title')),
-                                    DataColumn(label: Text('Artists')),
-                                    DataColumn(label: Text('Published')),
-                                    DataColumn(label: Text('Created')),
-                                    DataColumn(label: Text('Actions')),
+                                  columns: [
+                                    DataColumn(
+                                      label: Checkbox(
+                                        value: items.isNotEmpty &&
+                                            _selectedTrackIds.containsAll(
+                                              items.map((e) => e.trackId),
+                                            ),
+                                        onChanged: (v) => _toggleSelectAllVisible(
+                                          items,
+                                          v ?? false,
+                                        ),
+                                      ),
+                                    ),
+                                    const DataColumn(label: Text('Title')),
+                                    const DataColumn(label: Text('Artists')),
+                                    const DataColumn(label: Text('Published')),
+                                    const DataColumn(label: Text('Created')),
+                                    const DataColumn(label: Text('Actions')),
                                   ],
                                   rows: items.map((t) {
+                                    final selected = _selectedTrackIds.contains(
+                                      t.trackId,
+                                    );
                                     final artists = t.artists.isNotEmpty
                                         ? t.artists
                                               .map((a) => a.name)
@@ -237,6 +374,16 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                                         '/admin/tracks/${t.trackId}',
                                       ),
                                       cells: [
+                                        DataCell(
+                                          Checkbox(
+                                            value: selected,
+                                            onChanged: (v) =>
+                                                _toggleSelectTrack(
+                                                  t,
+                                                  v ?? false,
+                                                ),
+                                          ),
+                                        ),
                                         DataCell(Text(t.title)),
                                         DataCell(
                                           SizedBox(
@@ -274,52 +421,8 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                                                 icon: const Icon(
                                                   Icons.delete_outline,
                                                 ),
-                                                onPressed: () async {
-                                                  final confirm =
-                                                      await showDialog<bool>(
-                                                        context: context,
-                                                        builder: (ctx) => AlertDialog(
-                                                          title: const Text(
-                                                            'Delete track?',
-                                                          ),
-                                                          content: Text(
-                                                            'Are you sure you want to delete "${t.title}"? This cannot be undone.',
-                                                          ),
-                                                          actions: [
-                                                            TextButton(
-                                                              onPressed: () =>
-                                                                  Navigator.pop(
-                                                                    ctx,
-                                                                    false,
-                                                                  ),
-                                                              child: const Text(
-                                                                'Cancel',
-                                                              ),
-                                                            ),
-                                                            FilledButton(
-                                                              onPressed: () =>
-                                                                  Navigator.pop(
-                                                                    ctx,
-                                                                    true,
-                                                                  ),
-                                                              child: const Text(
-                                                                'Delete',
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      );
-                                                  if (confirm == true &&
-                                                      context.mounted) {
-                                                    context
-                                                        .read<AdminTracksBloc>()
-                                                        .add(
-                                                          DeleteTrackEvent(
-                                                            t.trackId,
-                                                          ),
-                                                        );
-                                                  }
-                                                },
+                                                onPressed: () =>
+                                                    _confirmDeleteOne(t),
                                               ),
                                             ],
                                           ),
@@ -333,42 +436,65 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Total: ${state.total}'),
-                            Row(
-                              children: [
-                                IconButton(
-                                  onPressed: state.page > 0
-                                      ? () =>
-                                            context.read<AdminTracksBloc>().add(
-                                              LoadTracks(
-                                                page: state.page - 1,
-                                                limit: state.limit,
-                                                search: state.search,
-                                              ),
-                                            )
-                                      : null,
-                                  icon: const Icon(Icons.chevron_left),
-                                ),
-                                Text('Page ${state.page + 1} of $totalPages'),
-                                IconButton(
-                                  onPressed: state.page < totalPages - 1
-                                      ? () =>
-                                            context.read<AdminTracksBloc>().add(
-                                              LoadTracks(
-                                                page: state.page + 1,
-                                                limit: state.limit,
-                                                search: state.search,
-                                              ),
-                                            )
-                                      : null,
-                                  icon: const Icon(Icons.chevron_right),
-                                ),
-                              ],
-                            ),
-                          ],
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerLowest,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Wrap(
+                            spacing: 12,
+                            runSpacing: 8,
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                'Total: ${state.total}',
+                                style: theme.textTheme.titleSmall,
+                              ),
+                              Wrap(
+                                spacing: 8,
+                                children: [
+                                  IconButton(
+                                    onPressed: state.page > 0
+                                        ? () =>
+                                              context.read<AdminTracksBloc>().add(
+                                                LoadTracks(
+                                                  page: state.page - 1,
+                                                  limit: state.limit,
+                                                  search: state.search,
+                                                ),
+                                              )
+                                        : null,
+                                    icon: const Icon(Icons.chevron_left),
+                                  ),
+                                  Center(
+                                    child: Text(
+                                      'Page ${state.page + 1} of $totalPages',
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: state.page < totalPages - 1
+                                        ? () =>
+                                              context.read<AdminTracksBloc>().add(
+                                                LoadTracks(
+                                                  page: state.page + 1,
+                                                  limit: state.limit,
+                                                  search: state.search,
+                                                ),
+                                              )
+                                        : null,
+                                    icon: const Icon(Icons.chevron_right),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     );

@@ -10,9 +10,9 @@ abstract interface class AdminArtistsRepository {
 
   Future<Either<Failure, Artist>> createArtist({
     String? artistId,
+    String? externalArtistId,
     String? name,
     String? email,
-    String? password,
     required String bio,
     List<int>? coverBytes,
     String? coverFilename,
@@ -43,4 +43,6 @@ abstract interface class AdminArtistsRepository {
   });
 
   Future<Either<Failure, void>> deleteArtist(String id);
+
+  Future<Either<Failure, void>> deleteArtists(List<String> ids);
 }

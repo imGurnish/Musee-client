@@ -23,6 +23,7 @@ import 'package:musee/features/admin_users/domain/usecases/get_user.dart';
 import 'package:musee/features/admin_users/domain/usecases/create_user.dart';
 import 'package:musee/features/admin_users/domain/usecases/update_user.dart';
 import 'package:musee/features/admin_users/domain/usecases/delete_user.dart';
+import 'package:musee/features/admin_users/domain/usecases/delete_users.dart';
 import 'package:musee/features/admin_users/presentation/bloc/admin_users_bloc.dart';
 import 'package:musee/features/admin_artists/data/datasources/admin_artists_remote_data_source.dart';
 import 'package:musee/features/admin_artists/data/repositories/admin_artists_repository_impl.dart';
@@ -32,6 +33,7 @@ import 'package:musee/features/admin_artists/domain/usecases/get_artist.dart';
 import 'package:musee/features/admin_artists/domain/usecases/create_artist.dart';
 import 'package:musee/features/admin_artists/domain/usecases/update_artist.dart';
 import 'package:musee/features/admin_artists/domain/usecases/delete_artist.dart';
+import 'package:musee/features/admin_artists/domain/usecases/delete_artists.dart';
 import 'package:musee/features/admin_artists/presentation/bloc/admin_artists_bloc.dart';
 import 'package:musee/features/admin_albums/data/datasources/admin_albums_remote_data_source.dart';
 import 'package:musee/features/admin_albums/data/repositories/admin_albums_repository_impl.dart';
@@ -41,6 +43,7 @@ import 'package:musee/features/admin_albums/domain/usecases/get_album.dart';
 import 'package:musee/features/admin_albums/domain/usecases/create_album.dart';
 import 'package:musee/features/admin_albums/domain/usecases/update_album.dart';
 import 'package:musee/features/admin_albums/domain/usecases/delete_album.dart';
+import 'package:musee/features/admin_albums/domain/usecases/delete_albums.dart';
 import 'package:musee/features/admin_albums/domain/usecases/album_artists_ops.dart';
 import 'package:musee/features/admin_albums/presentation/bloc/admin_albums_bloc.dart';
 import 'package:musee/features/admin_plans/data/datasources/admin_plans_remote_data_source.dart';
@@ -60,10 +63,19 @@ import 'package:musee/features/admin_tracks/domain/usecases/get_track.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/create_track.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/update_track.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/delete_track.dart';
+import 'package:musee/features/admin_tracks/domain/usecases/delete_tracks.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/link_track_artist.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/update_track_artist_role.dart';
 import 'package:musee/features/admin_tracks/domain/usecases/unlink_track_artist.dart';
 import 'package:musee/features/admin_tracks/presentation/bloc/admin_tracks_bloc.dart';
+import 'package:musee/features/admin_playlists/data/datasources/admin_playlists_remote_data_source.dart';
+import 'package:musee/features/admin_playlists/data/repositories/admin_playlists_repository_impl.dart';
+import 'package:musee/features/admin_playlists/domain/repositories/admin_playlists_repository.dart';
+import 'package:musee/features/admin_playlists/domain/usecases/get_playlist_details.dart';
+import 'package:musee/features/admin_playlists/domain/usecases/search_tracks.dart';
+import 'package:musee/features/admin_playlists/domain/usecases/add_track_to_playlist.dart';
+import 'package:musee/features/admin_playlists/domain/usecases/remove_track_from_playlist.dart';
+import 'package:musee/features/admin_playlists/presentation/bloc/admin_playlist_detail_bloc.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/features/user_albums/data/datasources/user_albums_remote_data_source.dart';
 import 'package:musee/features/user_albums/data/repositories/user_albums_repository_impl.dart';
@@ -72,6 +84,7 @@ import 'package:musee/features/user_albums/domain/usecases/get_user_album.dart';
 import 'package:musee/features/user_albums/presentation/bloc/user_album_bloc.dart';
 import 'package:musee/features/user__dashboard/data/datasources/user_dashboard_remote_data_source.dart';
 import 'package:musee/features/user__dashboard/data/repositories/user_dashboard_repository_impl.dart';
+import 'package:musee/features/user__dashboard/data/services/user_dashboard_cache_service.dart';
 import 'package:musee/features/user__dashboard/domain/repository/user_dashboard_repository.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_made_for_you.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_trending.dart';
@@ -89,10 +102,20 @@ import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.d
 import 'package:musee/features/player/data/datasources/player_remote_data_source.dart';
 import 'package:musee/features/player/data/repositories/player_repository_impl.dart';
 import 'package:musee/features/player/domain/repository/player_repository.dart';
+import 'package:musee/features/listening_history/data/datasources/listening_history_remote_data_source.dart';
+import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
+import 'package:musee/core/cache/services/user_media_detail_cache_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:musee/features/admin_external_import/data/jiosaavn_api_client.dart';
+import 'package:musee/features/admin_external_import/data/admin_external_import_service.dart';
+import 'package:musee/features/user_onboarding/data/datasources/onboarding_remote_data_source.dart';
+import 'package:musee/features/user_onboarding/data/repositories/onboarding_repository_impl.dart';
+import 'package:musee/features/user_onboarding/domain/repository/onboarding_repository.dart';
+import 'package:musee/features/user_onboarding/domain/usecases/onboarding_usecases.dart';
+import 'package:musee/features/user_onboarding/presentation/bloc/onboarding_bloc.dart';
 
 // New infrastructure services
 import 'package:musee/core/providers/providers.dart';
@@ -126,9 +149,7 @@ Future<void> initDependencies() async {
   // Music provider registry for multi-source music
   serviceLocator.registerLazySingleton<MusicProviderRegistry>(
     () => MusicProviderRegistry([
-      MuseeServerProvider(serviceLocator<SupabaseClient>()),
-      ExternalMusicProvider(),
-    ]),
+      MuseeServerProvider(serviceLocator<SupabaseClient>())]),
   );
 
   // Initialize cache services
@@ -151,6 +172,22 @@ Future<void> initDependencies() async {
     () => imageCacheService,
   );
 
+  final userDashboardCacheService = UserDashboardCacheServiceImpl(
+    serviceLocator<SupabaseClient>(),
+  );
+  await userDashboardCacheService.init();
+  serviceLocator.registerLazySingleton<UserDashboardCacheService>(
+    () => userDashboardCacheService,
+  );
+
+  final userMediaDetailCacheService = UserMediaDetailCacheServiceImpl(
+    serviceLocator<SupabaseClient>(),
+  );
+  await userMediaDetailCacheService.init();
+  serviceLocator.registerLazySingleton<UserMediaDetailCacheService>(
+    () => userMediaDetailCacheService,
+  );
+
   // Download Manager
   serviceLocator.registerLazySingleton<DownloadManager>(
     () => DownloadManager(
@@ -159,6 +196,9 @@ Future<void> initDependencies() async {
       serviceLocator<MusicProviderRegistry>(),
     ),
   );
+
+  // Listening history and recommendations
+  _initListeningHistory();
 
   // Register player with repository and cache services
   serviceLocator
@@ -175,6 +215,8 @@ Future<void> initDependencies() async {
         audioCache: serviceLocator<AudioCacheService>(),
         imageCache: serviceLocator<ImageCacheService>(),
         musicProviderRegistry: serviceLocator<MusicProviderRegistry>(),
+        listeningHistoryRepository: serviceLocator<ListeningHistoryRepository>(),
+        supabaseClient: serviceLocator<SupabaseClient>(),
       ),
     );
 
@@ -190,11 +232,27 @@ Future<void> initDependencies() async {
   _initAdminPlans();
   // admin tracks
   _initAdminTracks();
+  // admin playlists
+  _initAdminPlaylists();
+
+  serviceLocator.registerLazySingleton<JioSaavnApiClient>(() => JioSaavnApiClient());
+  serviceLocator.registerLazySingleton<AdminExternalImportService>(
+    () => AdminExternalImportService(
+      jioApi: serviceLocator<JioSaavnApiClient>(),
+      artistsApi: serviceLocator<AdminArtistsRemoteDataSource>(),
+      albumsApi: serviceLocator<AdminAlbumsRemoteDataSource>(),
+      tracksApi: serviceLocator<AdminTracksRemoteDataSource>(),
+      supabase: serviceLocator<SupabaseClient>(),
+      dioClient: serviceLocator<Dio>(),
+    ),
+  );
+
   // user features
   _initUserAlbums();
   _initUserArtists();
   _initUserDashboard();
   _initSearch();
+  _initUserOnboarding();
 }
 
 void _initAuth() {
@@ -246,6 +304,7 @@ void _initAdminUsers() {
     ..registerFactory(() => CreateUser(serviceLocator()))
     ..registerFactory(() => UpdateUser(serviceLocator()))
     ..registerFactory(() => DeleteUser(serviceLocator()))
+    ..registerFactory(() => DeleteUsers(serviceLocator()))
     // bloc
     ..registerFactory(
       () => AdminUsersBloc(
@@ -253,6 +312,7 @@ void _initAdminUsers() {
         createUser: serviceLocator(),
         updateUser: serviceLocator(),
         deleteUser: serviceLocator(),
+        deleteUsers: serviceLocator(),
       ),
     );
 }
@@ -276,6 +336,7 @@ void _initAdminArtists() {
     ..registerFactory(() => CreateArtist(serviceLocator()))
     ..registerFactory(() => UpdateArtist(serviceLocator()))
     ..registerFactory(() => DeleteArtist(serviceLocator()))
+    ..registerFactory(() => DeleteArtists(serviceLocator()))
     // bloc
     ..registerFactory(
       () => AdminArtistsBloc(
@@ -283,6 +344,7 @@ void _initAdminArtists() {
         create: serviceLocator(),
         update: serviceLocator(),
         delete: serviceLocator(),
+        deleteMany: serviceLocator(),
       ),
     );
 }
@@ -306,6 +368,7 @@ void _initAdminAlbums() {
     ..registerFactory(() => CreateAlbum(serviceLocator()))
     ..registerFactory(() => UpdateAlbum(serviceLocator()))
     ..registerFactory(() => DeleteAlbum(serviceLocator()))
+    ..registerFactory(() => DeleteAlbums(serviceLocator()))
     ..registerFactory(() => AddAlbumArtist(serviceLocator()))
     ..registerFactory(() => UpdateAlbumArtistRole(serviceLocator()))
     ..registerFactory(() => RemoveAlbumArtist(serviceLocator()))
@@ -316,6 +379,7 @@ void _initAdminAlbums() {
         create: serviceLocator(),
         update: serviceLocator(),
         delete: serviceLocator(),
+        deleteMany: serviceLocator(),
       ),
     );
 }
@@ -369,6 +433,7 @@ void _initAdminTracks() {
     ..registerFactory(() => CreateTrack(serviceLocator()))
     ..registerFactory(() => UpdateTrack(serviceLocator()))
     ..registerFactory(() => DeleteTrack(serviceLocator()))
+    ..registerFactory(() => DeleteTracks(serviceLocator()))
     ..registerFactory(() => LinkTrackArtist(serviceLocator()))
     ..registerFactory(() => UpdateTrackArtistRole(serviceLocator()))
     ..registerFactory(() => UnlinkTrackArtist(serviceLocator()))
@@ -379,9 +444,42 @@ void _initAdminTracks() {
         create: serviceLocator(),
         update: serviceLocator(),
         delete: serviceLocator(),
+        deleteMany: serviceLocator(),
         linkArtist: serviceLocator(),
         updateArtistRole: serviceLocator(),
         unlinkArtist: serviceLocator(),
+      ),
+    );
+}
+
+void _initAdminPlaylists() {
+  serviceLocator
+    // datasource
+    ..registerLazySingleton<AdminPlaylistsRemoteDataSource>(
+      () => AdminPlaylistsRemoteDataSourceImpl(
+        dio: serviceLocator<Dio>(),
+        baseUrl: AppSecrets.backendUrl,
+        supabase: serviceLocator<SupabaseClient>(),
+      ),
+    )
+    // repository
+    ..registerLazySingleton<AdminPlaylistsRepository>(
+      () => AdminPlaylistsRepositoryImpl(
+        remoteDataSource: serviceLocator(),
+      ),
+    )
+    // use cases
+    ..registerFactory(() => GetPlaylistDetails(serviceLocator()))
+    ..registerFactory(() => SearchTracks(serviceLocator()))
+    ..registerFactory(() => AddTrackToPlaylist(serviceLocator()))
+    ..registerFactory(() => RemoveTrackFromPlaylist(serviceLocator()))
+    // bloc
+    ..registerFactory(
+      () => AdminPlaylistDetailBloc(
+        getPlaylistDetails: serviceLocator(),
+        searchTracks: serviceLocator(),
+        addTrackToPlaylist: serviceLocator(),
+        removeTrackFromPlaylist: serviceLocator(),
       ),
     );
 }
@@ -400,6 +498,9 @@ void _initUserAlbums() {
       () => UserAlbumsRepositoryImpl(
         serviceLocator<UserAlbumsRemoteDataSource>(),
         serviceLocator<MusicProviderRegistry>(),
+        serviceLocator<TrackCacheService>(),
+        serviceLocator<ConnectivityService>(),
+        serviceLocator<UserMediaDetailCacheService>(),
       ),
     )
     // use cases
@@ -457,7 +558,7 @@ void _initUserDashboard() {
         serviceLocator<ListMadeForYou>(),
         serviceLocator<ListTrending>(),
         trackCache: serviceLocator<TrackCacheService>(),
-        musicProviderRegistry: serviceLocator<MusicProviderRegistry>(),
+        dashboardCache: serviceLocator<UserDashboardCacheService>(),
       ),
     );
 }
@@ -475,4 +576,66 @@ void _initSearch() {
     // use cases
     ..registerFactory(() => GetSuggestions(serviceLocator()))
     ..registerFactory(() => GetSearchResults(serviceLocator()));
+}
+
+void _initListeningHistory() {
+  serviceLocator
+    ..registerLazySingleton<ListeningHistoryRemoteDataSource>(
+      () => ListeningHistoryRemoteDataSourceImpl(
+        dio: serviceLocator<Dio>(),
+        baseUrl: AppSecrets.backendUrl,
+        supabaseClient: serviceLocator<SupabaseClient>(),
+      ),
+    )
+    ..registerLazySingleton<ListeningHistoryRepository>(
+      () => ListeningHistoryRepositoryImpl(
+        remoteDataSource: serviceLocator<ListeningHistoryRemoteDataSource>(),
+      ),
+    );
+}
+
+void _initUserOnboarding() {
+  serviceLocator
+    // datasource
+    ..registerLazySingleton<OnboardingRemoteDataSource>(
+      () => OnboardingRemoteDataSourceImpl(
+        supabaseClient: serviceLocator<SupabaseClient>(),
+      ),
+    )
+    // repository
+    ..registerLazySingleton<OnboardingRepository>(
+      () => OnboardingRepositoryImpl(
+        remoteDataSource: serviceLocator<OnboardingRemoteDataSource>(),
+      ),
+    )
+    // use cases
+    ..registerFactory(
+      () => GetAvailableLanguagesUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    ..registerFactory(
+      () => GetAvailableGenresUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    ..registerFactory(
+      () => GetAvailableMoodsUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    ..registerFactory(
+      () => SearchArtistsUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    ..registerFactory(
+      () => SaveOnboardingPreferencesUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    ..registerFactory(
+      () => GetUserOnboardingPreferencesUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    // bloc
+    ..registerFactory(
+      () => OnboardingBloc(
+        getAvailableLanguagesUseCase: serviceLocator<GetAvailableLanguagesUseCase>(),
+        getAvailableGenresUseCase: serviceLocator<GetAvailableGenresUseCase>(),
+        getAvailableMoodsUseCase: serviceLocator<GetAvailableMoodsUseCase>(),
+        searchArtistsUseCase: serviceLocator<SearchArtistsUseCase>(),
+        saveOnboardingPreferencesUseCase: serviceLocator<SaveOnboardingPreferencesUseCase>(),
+        getUserOnboardingPreferencesUseCase: serviceLocator<GetUserOnboardingPreferencesUseCase>(),
+      ),
+    );
 }

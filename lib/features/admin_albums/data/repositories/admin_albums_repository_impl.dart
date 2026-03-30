@@ -42,6 +42,9 @@ class AdminAlbumsRepositoryImpl implements AdminAlbumsRepository {
     List<String>? genres,
     bool? isPublished,
     required String artistId,
+    String? externalAlbumId,
+    String? releaseDate,
+    String? language,
     List<int>? coverBytes,
     String? coverFilename,
   }) async {
@@ -52,6 +55,9 @@ class AdminAlbumsRepositoryImpl implements AdminAlbumsRepository {
         genres: genres,
         isPublished: isPublished,
         artistId: artistId,
+        externalAlbumId: externalAlbumId,
+        releaseDate: releaseDate,
+        language: language,
         coverBytes: coverBytes != null ? Uint8List.fromList(coverBytes) : null,
         coverFilename: coverFilename,
       );
@@ -95,6 +101,18 @@ class AdminAlbumsRepositoryImpl implements AdminAlbumsRepository {
   Future<Either<Failure, void>> deleteAlbum(String id) async {
     try {
       await remote.deleteAlbum(id);
+      return right(null);
+    } on DioException catch (e) {
+      return left(Failure(e.message ?? 'Network error'));
+    } catch (e) {
+      return left(Failure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> deleteAlbums(List<String> ids) async {
+    try {
+      await remote.deleteAlbums(ids);
       return right(null);
     } on DioException catch (e) {
       return left(Failure(e.message ?? 'Network error'));

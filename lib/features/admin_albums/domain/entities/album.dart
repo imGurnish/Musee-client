@@ -31,9 +31,12 @@ class AlbumTrackSummary {
 
 class Album {
   final String id; // album_id
+  final String? extAlbumId;
   final String title;
   final String? description;
   final String? coverUrl;
+  final String? language;
+  final String? releaseDate;
   final List<String> genres;
   final int? totalTracks;
   final int? likesCount;
@@ -46,9 +49,12 @@ class Album {
 
   const Album({
     required this.id,
+    this.extAlbumId,
     required this.title,
     this.description,
     this.coverUrl,
+    this.language,
+    this.releaseDate,
     this.genres = const [],
     this.totalTracks,
     this.likesCount,

@@ -2,6 +2,7 @@ import 'package:bloc/bloc.dart';
 import '../../domain/entities/track.dart';
 import '../../domain/usecases/create_track.dart';
 import '../../domain/usecases/delete_track.dart';
+import '../../domain/usecases/delete_tracks.dart';
 import '../../domain/usecases/list_tracks.dart';
 import '../../domain/usecases/update_track.dart';
 import '../../domain/usecases/link_track_artist.dart';
@@ -16,6 +17,7 @@ class AdminTracksBloc extends Bloc<AdminTracksEvent, AdminTracksState> {
   final CreateTrack create;
   final UpdateTrack update;
   final DeleteTrack delete;
+  final DeleteTracks deleteMany;
   final LinkTrackArtist linkArtist;
   final UpdateTrackArtistRole updateArtistRole;
   final UnlinkTrackArtist unlinkArtist;
@@ -25,6 +27,7 @@ class AdminTracksBloc extends Bloc<AdminTracksEvent, AdminTracksState> {
     required this.create,
     required this.update,
     required this.delete,
+    required this.deleteMany,
     required this.linkArtist,
     required this.updateArtistRole,
     required this.unlinkArtist,
@@ -33,6 +36,7 @@ class AdminTracksBloc extends Bloc<AdminTracksEvent, AdminTracksState> {
     on<CreateTrackEvent>(_onCreate);
     on<UpdateTrackEvent>(_onUpdate);
     on<DeleteTrackEvent>(_onDelete);
+    on<DeleteTracksEvent>(_onDeleteTracks);
     on<LinkArtistToTrackEvent>(_onLinkArtist);
     on<UpdateTrackArtistRoleEvent>(_onUpdateArtistRole);
     on<UnlinkArtistFromTrackEvent>(_onUnlinkArtist);
@@ -158,6 +162,39 @@ class AdminTracksBloc extends Bloc<AdminTracksEvent, AdminTracksState> {
   ) async {
     emit(const AdminTracksLoading());
     final res = await delete(DeleteTrackParams(event.id));
+    await res.fold((f) async => emit(AdminTracksFailure(f.message)), (_) async {
+      final st = state;
+      var page = 0, limit = 20;
+      String? search;
+      if (st is AdminTracksPageLoaded) {
+        page = st.page;
+        limit = st.limit;
+        search = st.search;
+      }
+      final reload = await list(
+        ListTracksParams(page: page, limit: limit, q: search),
+      );
+      reload.fold(
+        (f) => emit(AdminTracksFailure(f.message)),
+        (t) => emit(
+          AdminTracksPageLoaded(
+            items: t.$1,
+            total: t.$2,
+            page: t.$3,
+            limit: t.$4,
+            search: search,
+          ),
+        ),
+      );
+    });
+  }
+
+  Future<void> _onDeleteTracks(
+    DeleteTracksEvent event,
+    Emitter<AdminTracksState> emit,
+  ) async {
+    emit(const AdminTracksLoading());
+    final res = await deleteMany(event.ids);
     await res.fold((f) async => emit(AdminTracksFailure(f.message)), (_) async {
       final st = state;
       var page = 0, limit = 20;

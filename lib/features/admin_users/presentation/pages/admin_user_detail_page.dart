@@ -22,6 +22,7 @@ class AdminUserDetailPage extends StatefulWidget {
 class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   User? _user;
   bool _loading = true;
+  bool _saving = false;
   String? _error;
 
   final _formKey = GlobalKey<FormState>();
@@ -88,15 +89,26 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('User detail'),
+        title: const Text('Admin User Details'),
         actions: [
-          IconButton(
-            tooltip: 'Back to users',
-            icon: const Icon(Icons.list),
-            onPressed: () => context.go('/admin/users'),
-          ),
+          if (_saving)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: 'Save Changes',
+              icon: const Icon(Icons.save),
+              onPressed: _onSave,
+            ),
         ],
       ),
       body: _loading
@@ -114,113 +126,210 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                     key: _formKey,
                     child: ListView(
                       children: [
-                        _HeaderRow(userId: _user!.id, planId: _user!.planId),
-                        const SizedBox(height: 12),
-                        _AvatarRow(
-                          avatarUrl: _user!.avatarUrl,
-                          previewBytes: _avatarFile?.bytes,
-                          onPick: (f) => setState(() => _avatarFile = f),
-                          onClear: () => setState(() => _avatarFile = null),
-                          pickedName: _avatarFile?.name,
-                        ),
-                        const SizedBox(height: 12),
-                        _ResponsiveRow(
-                          children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: _nameCtrl,
-                                decoration: const InputDecoration(
-                                  labelText: 'Name *',
-                                ),
-                                validator: (v) =>
-                                    (v == null || v.trim().isEmpty)
-                                    ? 'Required'
-                                    : null,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: TextFormField(
-                                controller: _emailCtrl,
-                                decoration: const InputDecoration(
-                                  labelText: 'Email *',
-                                ),
-                                validator: (v) =>
-                                    (v == null || v.trim().isEmpty)
-                                    ? 'Required'
-                                    : null,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        _ResponsiveRow(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<SubscriptionType>(
-                                initialValue: _subscriptionType,
-                                decoration: const InputDecoration(
-                                  labelText: 'Subscription type',
-                                ),
-                                items: SubscriptionType.values
-                                    .map(
-                                      (t) => DropdownMenuItem(
-                                        value: t,
-                                        child: Text(t.value),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (v) => setState(
-                                  () => _subscriptionType =
-                                      v ?? _subscriptionType,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
                                 children: [
-                                  _PlanAutocomplete(
-                                    plans: _plans,
-                                    loading: _loadingPlans,
-                                    initial: _selectedPlan,
-                                    onSelected: (p) =>
-                                        setState(() => _selectedPlan = p),
-                                    onCreateNew: () =>
-                                        context.go('/admin/plans?create-new=1'),
+                                  CircleAvatar(
+                                    radius: 22,
+                                    backgroundImage: _user!.avatarUrl.isNotEmpty
+                                        ? NetworkImage(_user!.avatarUrl)
+                                        : null,
+                                    child: _user!.avatarUrl.isEmpty
+                                        ? const Icon(Icons.person)
+                                        : null,
                                   ),
-                                  const SizedBox(height: 8),
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: OutlinedButton.icon(
-                                      onPressed: _openPlanUuidPicker,
-                                      icon: const Icon(Icons.search),
-                                      label: const Text('Pick plan by UUID…'),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _user!.name,
+                                          style: theme.textTheme.titleMedium,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _user!.email ?? 'No email',
+                                          style: theme.textTheme.bodySmall,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  Chip(label: Text('Type: ${_user!.userType.value}')),
+                                  Chip(
+                                    label: Text(
+                                      'Subscription: ${_user!.subscriptionType.value}',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _SectionCard(
+                          title: 'Identity',
+                          icon: Icons.badge_outlined,
+                          child: _HeaderRow(
+                            userId: _user!.id,
+                            planId: _user!.planId,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _SectionCard(
+                          title: 'Avatar',
+                          icon: Icons.image_outlined,
+                          child: _AvatarRow(
+                            avatarUrl: _user!.avatarUrl,
+                            previewBytes: _avatarFile?.bytes,
+                            onPick: (f) => setState(() => _avatarFile = f),
+                            onClear: () => setState(() => _avatarFile = null),
+                            pickedName: _avatarFile?.name,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _SectionCard(
+                          title: 'Basic Info',
+                          icon: Icons.person_outline,
+                          child: _ResponsiveRow(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _nameCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Name *',
+                                    prefixIcon: Icon(Icons.badge_outlined),
+                                  ),
+                                  validator: (v) =>
+                                      (v == null || v.trim().isEmpty)
+                                      ? 'Required'
+                                      : null,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _emailCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Email *',
+                                    prefixIcon: Icon(Icons.alternate_email),
+                                  ),
+                                  keyboardType: TextInputType.emailAddress,
+                                  validator: (v) {
+                                    final value = v?.trim() ?? '';
+                                    if (value.isEmpty) return 'Required';
+                                    final emailRegex = RegExp(
+                                      r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                                    );
+                                    if (!emailRegex.hasMatch(value)) {
+                                      return 'Enter a valid email';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _SectionCard(
+                          title: 'Subscription & Plan',
+                          icon: Icons.workspace_premium_outlined,
+                          child: _ResponsiveRow(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<SubscriptionType>(
+                                  initialValue: _subscriptionType,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Subscription type',
+                                    prefixIcon: Icon(
+                                      Icons.workspace_premium_outlined,
+                                    ),
+                                  ),
+                                  items: SubscriptionType.values
+                                      .map(
+                                        (t) => DropdownMenuItem(
+                                          value: t,
+                                          child: Text(t.value),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(
+                                    () => _subscriptionType =
+                                        v ?? _subscriptionType,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    _PlanAutocomplete(
+                                      plans: _plans,
+                                      loading: _loadingPlans,
+                                      initial: _selectedPlan,
+                                      onSelected: (p) =>
+                                          setState(() => _selectedPlan = p),
+                                      onCreateNew: () => context.go(
+                                        '/admin/plans?create-new=1',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: OutlinedButton.icon(
+                                        onPressed: _openPlanUuidPicker,
+                                        icon: const Icon(Icons.search),
+                                        label: const Text('Pick plan by UUID…'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 16),
-                        _UserMetaGrid(user: _user!),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            TextButton(
-                              onPressed: () => context.go('/admin/users'),
-                              child: const Text('Cancel'),
-                            ),
-                            const SizedBox(width: 8),
-                            FilledButton(
-                              onPressed: _onSave,
-                              child: const Text('Save changes'),
-                            ),
-                          ],
+                        _SectionCard(
+                          title: 'Metadata',
+                          icon: Icons.insights_outlined,
+                          child: _UserMetaGrid(user: _user!),
                         ),
+                        // const SizedBox(height: 16),
+                        // _ResponsiveRow(
+                        //   children: [
+                        //     Expanded(
+                        //       child: OutlinedButton(
+                        //         onPressed: () => context.go('/admin/users'),
+                        //         child: const Text('Cancel'),
+                        //       ),
+                        //     ),
+                        //     const SizedBox(width: 8),
+                        //     Expanded(
+                        //       child: FilledButton.icon(
+                        //         onPressed: _onSave,
+                        //         icon: const Icon(Icons.save_outlined),
+                        //         label: const Text('Save changes'),
+                        //       ),
+                        //     ),
+                        //   ],
+                        // ),
                       ],
                     ),
                   ),
@@ -231,37 +340,43 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   }
 
   Future<void> _onSave() async {
+    if (_saving) return;
     if (_formKey.currentState?.validate() != true) return;
-    final update = serviceLocator<UpdateUser>();
-    final prevAvatar = _user!.avatarUrl;
-    final res = await update(
-      UpdateUserParams(
-        id: _user!.id,
-        name: _nameCtrl.text.trim(),
-        email: _emailCtrl.text.trim(),
-        subscriptionType: _subscriptionType,
-        planId: _selectedPlan?.id,
-        avatarBytes: _avatarFile?.bytes,
-        avatarFilename: _avatarFile?.name,
-      ),
-    );
-    res.fold((f) => _snack(f.message, error: true), (updated) async {
-      // Update local state with server response so UI reflects new values
-      setState(() {
-        _user = updated;
-        _avatarFile = null;
+    setState(() => _saving = true);
+    try {
+      final update = serviceLocator<UpdateUser>();
+      final prevAvatar = _user!.avatarUrl;
+      final res = await update(
+        UpdateUserParams(
+          id: _user!.id,
+          name: _nameCtrl.text.trim(),
+          email: _emailCtrl.text.trim(),
+          subscriptionType: _subscriptionType,
+          planId: _selectedPlan?.id,
+          avatarBytes: _avatarFile?.bytes,
+          avatarFilename: _avatarFile?.name,
+        ),
+      );
+      res.fold((f) => _snack(f.message, error: true), (updated) async {
+        setState(() {
+          _user = updated;
+          _avatarFile = null;
+        });
+        try {
+          if (prevAvatar.isNotEmpty) {
+            await NetworkImage(prevAvatar).evict();
+          }
+          if (updated.avatarUrl.isNotEmpty) {
+            await NetworkImage(updated.avatarUrl).evict();
+          }
+        } catch (_) {}
+        _snack('Saved');
       });
-      // Evict old and new avatar URLs to force refresh
-      try {
-        if (prevAvatar.isNotEmpty) {
-          await NetworkImage(prevAvatar).evict();
-        }
-        if (updated.avatarUrl.isNotEmpty) {
-          await NetworkImage(updated.avatarUrl).evict();
-        }
-      } catch (_) {}
-      _snack('Saved');
-    });
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
   }
 
   void _snack(String msg, {bool error = false}) {
@@ -313,6 +428,47 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   }
 }
 
+class _SectionCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  const _SectionCard({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: theme.dividerColor.withValues(alpha: 0.35)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 18),
+                const SizedBox(width: 8),
+                Text(title, style: theme.textTheme.titleSmall),
+              ],
+            ),
+            const SizedBox(height: 10),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _HeaderRow extends StatelessWidget {
   final String userId;
   final String? planId;
@@ -320,12 +476,13 @@ class _HeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 12,
-      runSpacing: 8,
+    return Column(
       children: [
         _KeyValueCopy(label: 'User UUID', value: userId),
-        if (planId != null) _KeyValueCopy(label: 'Plan UUID', value: planId!),
+        if (planId != null) ...[
+          const SizedBox(height: 10),
+          _KeyValueCopy(label: 'Plan UUID', value: planId!),
+        ],
       ],
     );
   }
@@ -339,29 +496,39 @@ class _KeyValueCopy extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      constraints: const BoxConstraints(maxWidth: 360),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         border: Border.all(color: Theme.of(context).dividerColor),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$label: ', style: Theme.of(context).textTheme.bodySmall),
-          SizedBox(
-            width: 200,
-            child: Text(value, overflow: TextOverflow.ellipsis),
+          Text(label, style: Theme.of(context).textTheme.labelMedium),
+          const SizedBox(height: 6),
+          SelectableText(
+            value,
+            maxLines: 1,
+            style: Theme.of(context).textTheme.bodySmall,
           ),
-          IconButton(
-            tooltip: 'Copy',
-            icon: const Icon(Icons.copy, size: 18),
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: value));
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('Copied')));
-            },
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: const Icon(Icons.copy, size: 16),
+              label: const Text('Copy'),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: value));
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('Copied')));
+              },
+            ),
           ),
         ],
       ),

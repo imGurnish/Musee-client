@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:dio/dio.dart' as dio;
 import 'package:flutter/foundation.dart';
 import 'package:musee/core/secrets/app_secrets.dart';
@@ -18,6 +19,13 @@ abstract interface class AdminAlbumsRemoteDataSource {
     List<String>? genres,
     bool? isPublished,
     required String artistId,
+    String? externalAlbumId,
+    String? source,
+    String? externalUrl,
+    String? imageUrl,
+    Map<String, dynamic>? externalPayload,
+    String? releaseDate,
+    String? language,
     Uint8List? coverBytes,
     String? coverFilename,
   });
@@ -31,6 +39,7 @@ abstract interface class AdminAlbumsRemoteDataSource {
     String? coverFilename,
   });
   Future<void> deleteAlbum(String id);
+  Future<void> deleteAlbums(List<String> ids);
 
   Future<Map<String, dynamic>> addArtist({
     required String albumId,
@@ -107,6 +116,13 @@ class AdminAlbumsRemoteDataSourceImpl implements AdminAlbumsRemoteDataSource {
     List<String>? genres,
     bool? isPublished,
     required String artistId,
+    String? externalAlbumId,
+    String? source,
+    String? externalUrl,
+    String? imageUrl,
+    Map<String, dynamic>? externalPayload,
+    String? releaseDate,
+    String? language,
     Uint8List? coverBytes,
     String? coverFilename,
   }) async {
@@ -115,14 +131,34 @@ class AdminAlbumsRemoteDataSourceImpl implements AdminAlbumsRemoteDataSource {
       final form = dio.FormData();
       form.fields.add(MapEntry('title', title));
       form.fields.add(MapEntry('artist_id', artistId));
+      if (externalAlbumId != null && externalAlbumId.isNotEmpty) {
+        form.fields.add(MapEntry('ext_album_id', externalAlbumId));
+      }
+      if (source != null && source.isNotEmpty) {
+        form.fields.add(MapEntry('source', source));
+      }
+      if (externalUrl != null && externalUrl.isNotEmpty) {
+        form.fields.add(MapEntry('album_url', externalUrl));
+        form.fields.add(MapEntry('external_url', externalUrl));
+        form.fields.add(MapEntry('perma_url', externalUrl));
+      }
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        form.fields.add(MapEntry('image', imageUrl));
+      }
+      if (externalPayload != null && externalPayload.isNotEmpty) {
+        form.fields.add(MapEntry('external_payload', jsonEncode(externalPayload)));
+      }
       if (description != null) {
         form.fields.add(MapEntry('description', description));
       }
-      if (genres != null) {
-        form.fields.add(MapEntry('genres', jsonEncode(genres)));
-      }
       if (isPublished != null) {
         form.fields.add(MapEntry('is_published', isPublished.toString()));
+      }
+      if (releaseDate != null && releaseDate.isNotEmpty) {
+        form.fields.add(MapEntry('release_date', releaseDate));
+      }
+      if (language != null && language.isNotEmpty) {
+        form.fields.add(MapEntry('language_code', language));
       }
       form.files.add(
         MapEntry(
@@ -139,9 +175,23 @@ class AdminAlbumsRemoteDataSourceImpl implements AdminAlbumsRemoteDataSource {
     } else {
       final body = {
         'title': title,
+        if (externalAlbumId != null && externalAlbumId.isNotEmpty)
+          'ext_album_id': externalAlbumId,
+        if (source != null && source.isNotEmpty) 'source': source,
+        if (externalUrl != null && externalUrl.isNotEmpty)
+          'album_url': externalUrl,
+        if (externalUrl != null && externalUrl.isNotEmpty)
+          'external_url': externalUrl,
+        if (externalUrl != null && externalUrl.isNotEmpty)
+          'perma_url': externalUrl,
+        if (imageUrl != null && imageUrl.isNotEmpty) 'image': imageUrl,
+        if (externalPayload != null && externalPayload.isNotEmpty)
+          'external_payload': externalPayload,
         if (description != null) 'description': description,
-        if (genres != null) 'genres': genres,
         if (isPublished != null) 'is_published': isPublished,
+        if (releaseDate != null && releaseDate.isNotEmpty)
+          'release_date': releaseDate,
+        if (language != null && language.isNotEmpty) 'language_code': language,
         'artist_id': artistId,
       };
       final res = await _dio.post(
@@ -170,9 +220,6 @@ class AdminAlbumsRemoteDataSourceImpl implements AdminAlbumsRemoteDataSource {
       if (description != null) {
         form.fields.add(MapEntry('description', description));
       }
-      if (genres != null) {
-        form.fields.add(MapEntry('genres', jsonEncode(genres)));
-      }
       if (isPublished != null) {
         form.fields.add(MapEntry('is_published', isPublished.toString()));
       }
@@ -192,7 +239,6 @@ class AdminAlbumsRemoteDataSourceImpl implements AdminAlbumsRemoteDataSource {
       final body = <String, dynamic>{};
       if (title != null) body['title'] = title;
       if (description != null) body['description'] = description;
-      if (genres != null) body['genres'] = genres;
       if (isPublished != null) body['is_published'] = isPublished;
       final res = await _dio.patch(
         '$basePath/$id',
@@ -207,6 +253,15 @@ class AdminAlbumsRemoteDataSourceImpl implements AdminAlbumsRemoteDataSource {
   Future<void> deleteAlbum(String id) async {
     await _dio.delete(
       '$basePath/$id',
+      options: dio.Options(headers: _authHeader()),
+    );
+  }
+
+  @override
+  Future<void> deleteAlbums(List<String> ids) async {
+    await _dio.post(
+      '$basePath/bulk-delete',
+      data: {'ids': ids},
       options: dio.Options(headers: _authHeader()),
     );
   }

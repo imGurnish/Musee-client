@@ -128,23 +128,24 @@ class MuseeServerProvider implements MusicProvider {
 
       final data = json.decode(response.body) as Map<String, dynamic>;
 
-      // Always look for MP3 for downloads
-      final audios = (data['audios'] as List?)?.cast<dynamic>() ?? const [];
-      String? bestMp3;
+      final hls = data['hls'] as Map<String, dynamic>?;
+      final variants = (hls?['variants'] as List?)?.cast<dynamic>() ?? const [];
+
+      String? bestVariantUrl;
       int bestBitrate = -1;
-      for (final item in audios) {
+
+      for (final item in variants) {
         final m = (item as Map).cast<String, dynamic>();
-        final ext = (m['ext'] as String?)?.toLowerCase();
-        final path = m['path'] as String?;
-        final br = (m['bitrate'] as num?)?.toInt() ?? 0;
-        if (ext == 'mp3' && path != null && path.isNotEmpty) {
-          if (br > bestBitrate) {
-            bestBitrate = br;
-            bestMp3 = path;
-          }
+        final url = m['url'] as String?;
+        final bitrate = (m['bitrate'] as num?)?.toInt() ?? 0;
+        if (url != null && url.isNotEmpty && bitrate > bestBitrate) {
+          bestBitrate = bitrate;
+          bestVariantUrl = url;
         }
       }
-      return bestMp3; // Only return MP3, no fallback to HLS master for download
+
+      if (bestVariantUrl != null) return bestVariantUrl;
+      return hls?['master'] as String?;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[MuseeServerProvider] getDownloadUrl error: $e');

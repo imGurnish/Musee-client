@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart' as dio;
-import 'package:flutter/foundation.dart'
-    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
+import 'dart:math';
 import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
-import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:musee/features/user_albums/presentation/bloc/user_album_bloc.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/core/providers/music_provider_registry.dart';
@@ -55,9 +51,24 @@ class _UserAlbumView extends StatelessWidget {
     return '$m:${s.toString().padLeft(2, '0')}';
   }
 
+  String _fmtDurationLong(int seconds) {
+    final hours = seconds ~/ 3600;
+    final mins = (seconds % 3600) ~/ 60;
+    if (hours == 0) return '$mins min';
+    return '${hours}h ${mins}m';
+  }
+
+  String? _releaseYear(String? releaseDate) {
+    if (releaseDate == null || releaseDate.isEmpty) return null;
+    final parts = releaseDate.split('-');
+    if (parts.isEmpty || parts.first.isEmpty) return null;
+    return parts.first;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final playerCubit = GetIt.I<PlayerCubit>();
 
     Future<String?> fetchPlayableUrl(String trackId) async {
       try {
@@ -83,13 +94,54 @@ class _UserAlbumView extends StatelessWidget {
             final primaryArtist = album.artists.isNotEmpty
                 ? (album.artists.first.name ?? 'Unknown Artist')
                 : 'Unknown Artist';
+            final trackCount = album.tracks.length;
+            final totalDuration = album.tracks.fold<int>(
+              0,
+              (sum, track) => sum + track.duration,
+            );
+            final explicitCount = album.tracks
+                .where((t) => t.isExplicit)
+                .length;
+            final releaseYear = _releaseYear(album.releaseDate);
+            final canPlayAlbum = album.tracks.isNotEmpty;
+
+            Future<void> playTrack(
+              String trackId, {
+              required String title,
+              required String artist,
+            }) async {
+              final url = await fetchPlayableUrl(trackId);
+              if (url == null) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Unable to load stream URL')),
+                  );
+                }
+                return;
+              }
+              if (!context.mounted) return;
+              await showPlayerBottomSheet(
+                context,
+                audioUrl: url,
+                title: title,
+                artist: artist,
+                album: album.title,
+                imageUrl: album.coverUrl,
+                trackId: trackId,
+              );
+            }
 
             return CustomScrollView(
               slivers: [
                 SliverAppBar(
                   pinned: true,
-                  expandedHeight: 300,
+                  expandedHeight: 410,
                   backgroundColor: theme.colorScheme.surface,
+                  title: Text(
+                    album.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   flexibleSpace: FlexibleSpaceBar(
                     collapseMode: CollapseMode.parallax,
                     background: _AlbumHeader(
@@ -97,6 +149,10 @@ class _UserAlbumView extends StatelessWidget {
                       artist: primaryArtist,
                       coverUrl: album.coverUrl,
                       releaseDate: album.releaseDate,
+                      trackCount: trackCount,
+                      totalDuration: _fmtDurationLong(totalDuration),
+                      explicitCount: explicitCount,
+                      releaseYear: releaseYear,
                     ),
                   ),
                 ),
@@ -105,60 +161,141 @@ class _UserAlbumView extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
-                      vertical: 12,
+                      vertical: 14,
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        FilledButton.icon(
-                          onPressed: album.tracks.isEmpty
-                              ? null
-                              : () async {
-                                  final first = album.tracks.first;
-                                  final url = await fetchPlayableUrl(
-                                    first.trackId,
-                                  );
-                                  if (url == null) {
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Unable to load stream URL',
-                                          ),
-                                        ),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 44,
+                              height: 44,
+                              child: IconButton.filled(
+                                onPressed: canPlayAlbum
+                                    ? () async {
+                                        final first = album.tracks.first;
+                                        final artists = first.artists.isNotEmpty
+                                            ? (first.artists.first.name ??
+                                                  primaryArtist)
+                                            : primaryArtist;
+                                        await playTrack(
+                                          first.trackId,
+                                          title: first.title,
+                                          artist: artists,
+                                        );
+                                      }
+                                    : null,
+                                icon: const Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: 22,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            OutlinedButton.icon(
+                              onPressed: canPlayAlbum
+                                  ? () async {
+                                      final randomTrack =
+                                          album.tracks[Random().nextInt(trackCount)];
+                                      final artists =
+                                          randomTrack.artists.isNotEmpty
+                                          ? randomTrack.artists
+                                                .map(
+                                                  (a) =>
+                                                      a.name ?? 'Unknown Artist',
+                                                )
+                                                .join(', ')
+                                          : primaryArtist;
+                                      await playTrack(
+                                        randomTrack.trackId,
+                                        title: randomTrack.title,
+                                        artist: artists,
                                       );
                                     }
-                                    return;
-                                  }
-                                  if (!context.mounted) return;
-                                  await showPlayerBottomSheet(
-                                    context,
-                                    audioUrl: url,
-                                    title: first.title,
-                                    artist: first.artists.isNotEmpty
-                                        ? (first.artists.first.name ??
-                                              primaryArtist)
-                                        : primaryArtist,
-                                    album: album.title,
-                                    imageUrl: album.coverUrl,
-                                    trackId: first.trackId,
-                                  );
-                                },
-                          icon: const Icon(Icons.play_arrow_rounded),
-                          label: const Text('Play'),
+                                  : null,
+                              icon: const Icon(Icons.shuffle_rounded),
+                              label: const Text('Shuffle'),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(0, 40),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            FilledButton.tonalIcon(
+                              onPressed: album.tracks.isEmpty
+                                  ? null
+                                  : () async {
+                                      final queueItems = album.tracks.map((
+                                        track,
+                                      ) {
+                                        final artists = track.artists.isNotEmpty
+                                            ? track.artists
+                                                  .map(
+                                                    (a) =>
+                                                        a.name ??
+                                                        'Unknown Artist',
+                                                  )
+                                                  .join(', ')
+                                            : primaryArtist;
+                                        return QueueItem(
+                                          trackId: track.trackId,
+                                          title: track.title,
+                                          artist: artists,
+                                          album: album.title,
+                                          imageUrl: album.coverUrl,
+                                          durationSeconds: track.duration,
+                                        );
+                                      }).toList();
+                                      await playerCubit.addToQueue(queueItems);
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Added $trackCount tracks to queue',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                              icon: const Icon(Icons.queue_music_rounded),
+                              label: const Text('Queue All'),
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(0, 40),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        IconButton.filledTonal(
-                          onPressed: () {},
-                          icon: const Icon(Icons.favorite_border_rounded),
-                          tooltip: 'Like',
+                      ],
+                    ),
+                  ),
+                ),
+
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Tracks',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '$trackCount',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         const Spacer(),
-                        IconButton(
-                          onPressed: () {},
-                          icon: const Icon(Icons.more_horiz_rounded),
-                          tooltip: 'More',
+                        Text(
+                          _fmtDurationLong(totalDuration),
+                          style: theme.textTheme.labelLarge,
                         ),
                       ],
                     ),
@@ -168,144 +305,219 @@ class _UserAlbumView extends StatelessWidget {
                 // Track list
                 SliverList(
                   delegate: SliverChildBuilderDelegate((context, index) {
-                    final last = index == album.tracks.length - 1;
                     final t = album.tracks[index];
                     final artists = t.artists.isNotEmpty
                         ? t.artists.map((a) => a.name ?? 'Unknown').join(', ')
                         : primaryArtist;
-                    return Column(
-                      children: [
-                        ListTile(
-                          leading: Text(
-                            '${index + 1}',
-                            style: theme.textTheme.labelLarge,
+                    return Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                      child: Material(
+                        color: theme.colorScheme.surfaceContainerHighest
+                            .withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(18),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: () async {
+                            await playTrack(
+                              t.trackId,
+                              title: t.title,
+                              artist: artists,
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 34,
+                                  height: 34,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: theme.colorScheme.primaryContainer,
+                                  ),
+                                  child: Text(
+                                    '${index + 1}',
+                                    style: theme.textTheme.labelMedium
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          color: theme
+                                              .colorScheme
+                                              .onPrimaryContainer,
+                                        ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              t.title,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: theme.textTheme.titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '$artists • ${_fmtDuration(t.duration)}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall,
+                                      ),
+                                      if (album.isTrackCached(t.trackId) ||
+                                          album.isTrackOffline(t.trackId) ||
+                                          t.isExplicit)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 6),
+                                          child: Wrap(
+                                            spacing: 6,
+                                            runSpacing: 4,
+                                            children: [
+                                              if (t.isExplicit)
+                                                _TrackStatusChip(
+                                                  icon: Icons.explicit_rounded,
+                                                  foregroundColor: theme
+                                                      .colorScheme
+                                                      .onTertiaryContainer,
+                                                  backgroundColor: theme
+                                                      .colorScheme
+                                                      .tertiaryContainer,
+                                                ),
+                                              if (album.isTrackCached(t.trackId))
+                                                const _TrackStatusChip(
+                                                  icon: Icons.cloud_done_rounded,
+                                                ),
+                                              if (album.isTrackOffline(t.trackId))
+                                                const _TrackStatusChip(
+                                                  icon: Icons.offline_bolt_rounded,
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.play_arrow_rounded),
+                                  tooltip: 'Play',
+                                  onPressed: () async {
+                                    await playTrack(
+                                      t.trackId,
+                                      title: t.title,
+                                      artist: artists,
+                                    );
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.more_horiz_rounded),
+                                  tooltip: 'More',
+                                  onPressed: () async {
+                                    final action =
+                                        await showModalBottomSheet<String>(
+                                          context: context,
+                                          builder: (context) {
+                                            return SafeArea(
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  ListTile(
+                                                    leading: const Icon(
+                                                      Icons.queue_music_rounded,
+                                                    ),
+                                                    title: const Text(
+                                                      'Add to queue',
+                                                    ),
+                                                    onTap: () => Navigator.pop(
+                                                      context,
+                                                      'queue',
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
+                                        );
+                                    if (action == 'queue') {
+                                      final item = QueueItem(
+                                        trackId: t.trackId,
+                                        title: t.title,
+                                        artist: artists,
+                                        album: album.title,
+                                        imageUrl: album.coverUrl,
+                                        durationSeconds: t.duration,
+                                      );
+                                      await playerCubit.addToQueue([item]);
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Added to queue'),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
-                          title: Text(
-                            t.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    );
+                  }, childCount: album.tracks.length),
+                ),
+
+                if (album.artists.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Artists',
                             style: theme.textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          subtitle: Text(
-                            artists,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _fmtDuration(t.duration),
-                                style: theme.textTheme.labelSmall,
-                              ),
-                              const SizedBox(width: 8),
-                              IconButton(
-                                icon: const Icon(Icons.play_arrow_rounded),
-                                tooltip: 'Play',
-                                onPressed: () async {
-                                  final url = await fetchPlayableUrl(t.trackId);
-                                  if (url == null) {
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Unable to load stream URL',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                    return;
-                                  }
-                                  if (!context.mounted) return;
-                                  await showPlayerBottomSheet(
-                                    context,
-                                    audioUrl: url,
-                                    title: t.title,
-                                    artist: artists,
-                                    album: album.title,
-                                    imageUrl: album.coverUrl,
-                                    trackId: t.trackId,
-                                  );
-                                },
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.more_vert_rounded),
-                                onPressed: () async {
-                                  final action = await showMenu<String>(
-                                    context: context,
-                                    position: const RelativeRect.fromLTRB(
-                                      100,
-                                      100,
-                                      0,
-                                      0,
-                                    ),
-                                    items: const [
-                                      PopupMenuItem(
-                                        value: 'queue',
-                                        child: Text('Add to queue'),
-                                      ),
-                                    ],
-                                  );
-                                  if (action == 'queue') {
-                                    final item = QueueItem(
-                                      trackId: t.trackId,
-                                      title: t.title,
-                                      artist: artists,
-                                      album: album.title,
-                                      imageUrl: album.coverUrl,
-                                      durationSeconds: t.duration,
-                                    );
-                                    await GetIt.I<PlayerCubit>().addToQueue([
-                                      item,
-                                    ]);
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Added to queue'),
-                                        ),
-                                      );
-                                    }
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                          onTap: () async {
-                            final url = await fetchPlayableUrl(t.trackId);
-                            if (url == null) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Unable to load stream URL'),
-                                  ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            height: 86,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: album.artists.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(width: 12),
+                              itemBuilder: (context, index) {
+                                final artist = album.artists[index];
+                                return _ArtistChip(
+                                  name: artist.name ?? 'Unknown Artist',
+                                  avatarUrl: artist.avatarUrl,
                                 );
-                              }
-                              return;
-                            }
-                            if (!context.mounted) return;
-                            await showPlayerBottomSheet(
-                              context,
-                              audioUrl: url,
-                              title: t.title,
-                              artist: artists,
-                              album: album.title,
-                              imageUrl: album.coverUrl,
-                              trackId: t.trackId,
-                            );
-                          },
-                        ),
-                        if (!last) const Divider(height: 1),
-                      ],
-                    );
-                  }, childCount: album.tracks.length),
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 96)),
               ],
             );
           },
@@ -316,16 +528,53 @@ class _UserAlbumView extends StatelessWidget {
   }
 }
 
+class _TrackStatusChip extends StatelessWidget {
+  final IconData icon;
+  final Color? foregroundColor;
+  final Color? backgroundColor;
+
+  const _TrackStatusChip({
+    required this.icon,
+    this.foregroundColor,
+    this.backgroundColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: backgroundColor ?? theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(
+        icon,
+        size: 13,
+        color: foregroundColor ?? theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
 class _AlbumHeader extends StatelessWidget {
   final String title;
   final String artist;
   final String? coverUrl;
   final String? releaseDate;
+  final int trackCount;
+  final String totalDuration;
+  final int explicitCount;
+  final String? releaseYear;
   const _AlbumHeader({
     required this.title,
     required this.artist,
     this.coverUrl,
     this.releaseDate,
+    required this.trackCount,
+    required this.totalDuration,
+    required this.explicitCount,
+    required this.releaseYear,
   });
 
   @override
@@ -335,10 +584,9 @@ class _AlbumHeader extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Constrain artwork size so it always fits within the flexible space height
-        final artSize = isNarrow ? 120.0 : 220.0;
+        final artSize = isNarrow ? 150.0 : 220.0;
         final art = ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           child: SizedBox(
             width: artSize,
             height: artSize,
@@ -347,59 +595,198 @@ class _AlbumHeader extends StatelessWidget {
                     color: theme.colorScheme.surfaceContainerHighest,
                     child: const Icon(Icons.album_rounded, size: 64),
                   )
-                : Ink.image(image: NetworkImage(coverUrl!), fit: BoxFit.cover),
+                : Image.network(
+                    coverUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Container(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      child: const Icon(Icons.album_rounded, size: 64),
+                    ),
+                  ),
           ),
         );
 
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              art,
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: isNarrow
-                          ? theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            )
-                          : theme.textTheme.displaySmall?.copyWith(
-                              fontWeight: FontWeight.w900,
-                            ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      artist,
-                      style: isNarrow
-                          ? theme.textTheme.titleMedium
-                          : theme.textTheme.titleLarge,
-                    ),
-                    if (releaseDate != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        releaseDate!,
-                        style:
-                            (isNarrow
-                                    ? theme.textTheme.bodySmall
-                                    : theme.textTheme.bodyMedium)
-                                ?.copyWith(color: theme.hintColor),
-                      ),
-                    ],
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            if (coverUrl != null)
+              Opacity(
+                opacity: 0.32,
+                child: Image.network(
+                  coverUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.22),
+                    theme.colorScheme.surface.withValues(alpha: 0.92),
+                    theme.colorScheme.surface,
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+                child: isNarrow
+                    ? Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          art,
+                          const SizedBox(height: 14),
+                          Text(
+                            title,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            artist,
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _MetaChip(label: '$trackCount tracks'),
+                              _MetaChip(label: totalDuration),
+                              if (releaseYear != null)
+                                _MetaChip(label: releaseYear!),
+                              if (explicitCount > 0)
+                                _MetaChip(label: '$explicitCount explicit'),
+                            ],
+                          ),
+                        ],
+                      )
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          art,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.displaySmall?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(artist, style: theme.textTheme.titleLarge),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    _MetaChip(label: '$trackCount tracks'),
+                                    _MetaChip(label: totalDuration),
+                                    if (releaseYear != null)
+                                      _MetaChip(label: releaseYear!),
+                                    if (explicitCount > 0)
+                                      _MetaChip(
+                                        label: '$explicitCount explicit',
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ],
         );
       },
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  final String label;
+
+  const _MetaChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _ArtistChip extends StatelessWidget {
+  final String name;
+  final String? avatarUrl;
+
+  const _ArtistChip({required this.name, this.avatarUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      width: 84,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.55,
+        ),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: theme.colorScheme.surfaceContainerHighest,
+            backgroundImage: avatarUrl != null
+                ? NetworkImage(avatarUrl!)
+                : null,
+            child: avatarUrl == null
+                ? const Icon(Icons.person_rounded, size: 18)
+                : null,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.labelSmall,
+          ),
+        ],
+      ),
     );
   }
 }

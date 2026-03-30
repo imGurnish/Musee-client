@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart' as dio;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
@@ -21,23 +22,19 @@ class AdminArtistCreatePage extends StatefulWidget {
 class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
   final _formKey = GlobalKey<FormState>();
   bool _linkExisting = true;
+  bool _saving = false;
 
-  final _artistIdCtrl = TextEditingController(); // existing
-  final _nameCtrl = TextEditingController(); // new user optional
-  final _emailCtrl = TextEditingController(); // new user optional
-  final _passwordCtrl = TextEditingController(); // new user optional
-
-  final _bioCtrl = TextEditingController(); // required
-
-  // Optional artist fields
-  final _genresCtrl = TextEditingController(); // comma-separated
+  final _artistIdCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _bioCtrl = TextEditingController();
+  final _genresCtrl = TextEditingController();
   final _debutYearCtrl = TextEditingController();
   bool _verified = false;
-  final _socialLinksCtrl = TextEditingController(); // JSON map
+  final _socialLinksCtrl = TextEditingController();
   final _monthlyListenersCtrl = TextEditingController();
   DateTime? _dob;
 
-  // Country/Region pickers
   String? _countryId;
   String? _countryLabel;
   String? _regionId;
@@ -53,7 +50,6 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
     _artistIdCtrl.dispose();
     _nameCtrl.dispose();
     _emailCtrl.dispose();
-    _passwordCtrl.dispose();
     _bioCtrl.dispose();
     _genresCtrl.dispose();
     _debutYearCtrl.dispose();
@@ -71,33 +67,37 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
           final client = GetIt.I<dio.Dio>();
           final token =
               Supabase.instance.client.auth.currentSession?.accessToken;
-          final res = await client.get(
-            '${AppSecrets.backendUrl}/api/admin/countries',
-            queryParameters: {
-              'page': page,
-              'limit': limit,
-              if (q != null && q.isNotEmpty) 'q': q,
-            },
-            options: dio.Options(
-              headers: {
-                'Accept': 'application/json',
-                if (token != null) 'Authorization': 'Bearer $token',
+          try {
+            final res = await client.get(
+              '${AppSecrets.backendUrl}/api/admin/countries',
+              queryParameters: {
+                'page': page,
+                'limit': limit,
+                if (q != null && q.isNotEmpty) 'q': q,
               },
-            ),
-          );
-          final data = (res.data as Map).cast<String, dynamic>();
-          final items = (data['items'] as List).cast<dynamic>();
-          return UuidPageResult(
-            items: items
-                .map(
-                  (e) => UuidItem(
-                    id: e['country_id'] as String,
-                    label: '${e['code']} • ${e['name']}',
-                  ),
-                )
-                .toList(),
-            total: data['total'] as int,
-          );
+              options: dio.Options(
+                headers: {
+                  'Accept': 'application/json',
+                  if (token != null) 'Authorization': 'Bearer $token',
+                },
+              ),
+            );
+            final data = (res.data as Map).cast<String, dynamic>();
+            final items = (data['items'] as List).cast<dynamic>();
+            return UuidPageResult(
+              items: items
+                  .map(
+                    (e) => UuidItem(
+                      id: e['country_id'] as String,
+                      label: '${e['code']} • ${e['name']}',
+                    ),
+                  )
+                  .toList(),
+              total: data['total'] as int,
+            );
+          } on dio.DioException {
+            rethrow;
+          }
         },
       ),
     );
@@ -105,14 +105,18 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
       setState(() {
         _countryId = sel.id;
         _countryLabel = sel.label;
-        // Reset region if country changes
-        _regionId = null;
-        _regionLabel = null;
       });
     }
   }
 
   Future<void> _pickRegion() async {
+    if (_countryId == null) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a country first')),
+      );
+      return;
+    }
     final sel = await showDialog<UuidPickResult>(
       context: context,
       builder: (_) => UuidPickerDialog(
@@ -121,35 +125,38 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
           final client = GetIt.I<dio.Dio>();
           final token =
               Supabase.instance.client.auth.currentSession?.accessToken;
-          final qp = {
-            'page': page,
-            'limit': limit,
-            if (q != null && q.isNotEmpty) 'q': q,
-            if (_countryId != null) 'country_id': _countryId,
-          };
-          final res = await client.get(
-            '${AppSecrets.backendUrl}/api/admin/regions',
-            queryParameters: qp,
-            options: dio.Options(
-              headers: {
-                'Accept': 'application/json',
-                if (token != null) 'Authorization': 'Bearer $token',
+          try {
+            final res = await client.get(
+              '${AppSecrets.backendUrl}/api/admin/regions',
+              queryParameters: {
+                'country_id': _countryId,
+                'page': page,
+                'limit': limit,
+                if (q != null && q.isNotEmpty) 'q': q,
               },
-            ),
-          );
-          final data = (res.data as Map).cast<String, dynamic>();
-          final items = (data['items'] as List).cast<dynamic>();
-          return UuidPageResult(
-            items: items
-                .map(
-                  (e) => UuidItem(
-                    id: e['region_id'] as String,
-                    label: '${e['code']} • ${e['name']}',
-                  ),
-                )
-                .toList(),
-            total: data['total'] as int,
-          );
+              options: dio.Options(
+                headers: {
+                  'Accept': 'application/json',
+                  if (token != null) 'Authorization': 'Bearer $token',
+                },
+              ),
+            );
+            final data = (res.data as Map).cast<String, dynamic>();
+            final items = (data['items'] as List).cast<dynamic>();
+            return UuidPageResult(
+              items: items
+                  .map(
+                    (e) => UuidItem(
+                      id: e['region_id'] as String,
+                      label: e['name'] as String,
+                    ),
+                  )
+                  .toList(),
+              total: data['total'] as int,
+            );
+          } on dio.DioException {
+            rethrow;
+          }
         },
       ),
     );
@@ -161,15 +168,23 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
     }
   }
 
-  void _submit() {
-    if (_formKey.currentState?.validate() != true) return;
+  Future<void> _submit() async {
+    if (_saving) return;
+    if (!_formKey.currentState!.validate()) return;
 
     Map<String, dynamic>? social;
     if (_socialLinksCtrl.text.trim().isNotEmpty) {
       try {
-        final parsed = jsonDecode(_socialLinksCtrl.text.trim());
-        if (parsed is Map<String, dynamic>) social = parsed;
-      } catch (_) {}
+        social = Map<String, dynamic>.from(
+          jsonDecode(_socialLinksCtrl.text) as Map,
+        );
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invalid social links JSON')),
+        );
+        return;
+      }
     }
 
     final genres = _genresCtrl.text
@@ -181,12 +196,13 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
     final debutYear = int.tryParse(_debutYearCtrl.text.trim());
     final monthly = int.tryParse(_monthlyListenersCtrl.text.trim());
 
+    setState(() => _saving = true);
+
     context.read<AdminArtistsBloc>().add(
       CreateArtistEvent(
         artistId: _linkExisting ? _artistIdCtrl.text.trim() : null,
         name: !_linkExisting ? _nameCtrl.text.trim().takeIfNotEmpty() : null,
         email: !_linkExisting ? _emailCtrl.text.trim().takeIfNotEmpty() : null,
-        password: !_linkExisting ? _passwordCtrl.text.takeIfNotEmpty() : null,
         bio: _bioCtrl.text.trim(),
         coverBytes: _coverBytes?.toList(),
         coverFilename: _coverFilename,
@@ -201,8 +217,6 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
         dateOfBirth: _dob,
       ),
     );
-
-    Navigator.of(context).pop();
   }
 
   Future<void> _pickDateOfBirth() async {
@@ -217,211 +231,464 @@ class _AdminArtistCreatePageState extends State<AdminArtistCreatePage> {
     if (picked != null) setState(() => _dob = picked);
   }
 
+  Future<void> _pickCoverFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    if (file.bytes == null) return;
+    setState(() {
+      _coverBytes = file.bytes;
+      _coverFilename = file.name;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Admin • Create Artist')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Switch(
-                      value: _linkExisting,
-                      onChanged: (v) => setState(() => _linkExisting = v),
+      appBar: AppBar(
+        title: const Text('Create Artist'),
+        actions: [
+          if (_saving)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: 'Create',
+              icon: const Icon(Icons.check),
+              onPressed: _submit,
+            ),
+        ],
+      ),
+      body: BlocListener<AdminArtistsBloc, AdminArtistsState>(
+        listener: (context, state) {
+          if (!_saving) return;
+          if (state is AdminArtistsFailure) {
+            setState(() => _saving = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(state.message)),
+            );
+            return;
+          }
+          if (state is AdminArtistsPageLoaded) {
+            setState(() => _saving = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Artist created')),
+            );
+            Navigator.of(context).pop();
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Form(
+            key: _formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                // Link vs Create section
+                Card(
+                  elevation: 0,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Artist User',
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 10),
+                        SwitchListTile(
+                          title: const Text('Link existing user'),
+                          subtitle: Text(
+                            _linkExisting
+                                ? 'Link by user ID'
+                                : 'Create new user for artist',
+                          ),
+                          value: _linkExisting,
+                          onChanged: (v) => setState(() => _linkExisting = v),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        const SizedBox(height: 10),
+                        if (_linkExisting) ...[
+                          TextFormField(
+                            controller: _artistIdCtrl,
+                            decoration: InputDecoration(
+                              labelText: 'User ID (UUID)',
+                              prefixIcon: const Icon(Icons.badge_outlined),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'User ID is required'
+                                : null,
+                          ),
+                        ] else ...[
+                          TextFormField(
+                            controller: _nameCtrl,
+                            decoration: InputDecoration(
+                              labelText: 'Full Name',
+                              prefixIcon: const Icon(Icons.person_outline),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Name is required'
+                                : null,
+                          ),
+                          const SizedBox(height: 10),
+                          TextFormField(
+                            controller: _emailCtrl,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: InputDecoration(
+                              labelText: 'Email',
+                              prefixIcon:
+                                  const Icon(Icons.alternate_email_outlined),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            validator: (v) {
+                              final value = v?.trim() ?? '';
+                              if (value.isEmpty) return 'Email is required';
+                              final emailRegex =
+                                  RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+                              if (!emailRegex.hasMatch(value)) {
+                                return 'Enter a valid email';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          LayoutBuilder(
+                            builder: (context, c) {
+                              final isMobile = c.maxWidth < 500;
+                              return isMobile
+                                  ? Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        TextFormField(
+                                          readOnly: true,
+                                          decoration: InputDecoration(
+                                            labelText: 'Country',
+                                            prefixIcon: const Icon(
+                                                Icons.public_outlined),
+                                            hintText:
+                                                _countryLabel ?? 'Select',
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          onTap: _pickCountry,
+                                        ),
+                                        const SizedBox(height: 10),
+                                        TextFormField(
+                                          readOnly: true,
+                                          decoration: InputDecoration(
+                                            labelText: 'Region',
+                                            prefixIcon: const Icon(
+                                                Icons.location_on_outlined),
+                                            hintText:
+                                                _regionLabel ?? 'Select',
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                          onTap: _pickRegion,
+                                        ),
+                                      ],
+                                    )
+                                  : Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextFormField(
+                                            readOnly: true,
+                                            decoration: InputDecoration(
+                                              labelText: 'Country',
+                                              prefixIcon: const Icon(
+                                                  Icons.public_outlined),
+                                              hintText: _countryLabel ??
+                                                  'Select',
+                                              border: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                            ),
+                                            onTap: _pickCountry,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: TextFormField(
+                                            readOnly: true,
+                                            decoration: InputDecoration(
+                                              labelText: 'Region',
+                                              prefixIcon: const Icon(
+                                                  Icons.location_on_outlined),
+                                              hintText: _regionLabel ??
+                                                  'Select',
+                                              border: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                            ),
+                                            onTap: _pickRegion,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                            },
+                          ),
+                        ],
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _linkExisting
-                          ? 'Link existing user by ID'
-                          : 'Create new user for artist',
-                    ),
-                  ],
+                  ),
                 ),
                 const SizedBox(height: 12),
-                if (_linkExisting) ...[
-                  TextFormField(
-                    controller: _artistIdCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Artist User ID (uuid)',
-                    ),
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Required (user id)'
-                        : null,
-                  ),
-                ] else ...[
-                  TextFormField(
-                    controller: _nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'User name (optional)',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _emailCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'User email (optional)',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _passwordCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'User password (optional)',
-                    ),
-                    obscureText: true,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          readOnly: true,
-                          decoration: InputDecoration(
-                            labelText: 'Country (optional)',
-                            hintText: _countryLabel ?? 'Select country',
-                          ),
-                          onTap: _pickCountry,
+                // Artist info
+                Card(
+                  elevation: 0,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Artist Details',
+                          style: theme.textTheme.titleSmall,
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        onPressed: _pickCountry,
-                        tooltip: 'Select Country',
-                        icon: const Icon(Icons.search),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          readOnly: true,
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: _bioCtrl,
                           decoration: InputDecoration(
-                            labelText: 'Region (required)',
-                            hintText: _regionLabel ?? 'Select region',
+                            labelText: 'Bio',
+                            prefixIcon:
+                                const Icon(Icons.description_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                           ),
-                          validator: (v) =>
-                              (_regionId == null || _regionId!.isEmpty)
-                              ? 'Region is required'
+                          maxLines: 3,
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Bio is required'
                               : null,
-                          onTap: _pickRegion,
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        onPressed: _pickRegion,
-                        tooltip: 'Select Region',
-                        icon: const Icon(Icons.search),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ],
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _bioCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Bio (required)',
-                  ),
-                  maxLines: 3,
-                  validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Bio is required'
-                      : null,
                 ),
                 const SizedBox(height: 12),
-                // Optional artist info
-                Text(
-                  'Optional artist details',
-                  style: theme.textTheme.titleSmall,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _genresCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Genres (comma separated)',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _debutYearCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Debut year'),
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  value: _verified,
-                  onChanged: (v) => setState(() => _verified = v),
-                  title: const Text('Verified artist'),
-                  contentPadding: EdgeInsets.zero,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _socialLinksCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Social links (JSON map)',
-                    hintText: '{"instagram": "@handle"}',
-                  ),
-                  maxLines: 2,
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _monthlyListenersCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Monthly listeners',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        readOnly: true,
-                        decoration: InputDecoration(
-                          labelText: 'Date of birth (optional)',
-                          hintText: _dob != null
-                              ? _dob!.toIso8601String().split('T').first
-                              : 'Pick date',
+                // Optional fields
+                Card(
+                  elevation: 0,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Additional Info',
+                          style: theme.textTheme.titleSmall,
                         ),
-                        onTap: _pickDateOfBirth,
-                      ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: _genresCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'Genres (comma-separated)',
+                            prefixIcon: const Icon(Icons.music_note_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        LayoutBuilder(
+                          builder: (context, c) {
+                            final isMobile = c.maxWidth < 500;
+                            return isMobile
+                                ? Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      TextFormField(
+                                        controller: _debutYearCtrl,
+                                        keyboardType: TextInputType.number,
+                                        decoration: InputDecoration(
+                                          labelText: 'Debut Year',
+                                          prefixIcon: const Icon(
+                                              Icons.calendar_today_outlined),
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      TextFormField(
+                                        controller: _monthlyListenersCtrl,
+                                        keyboardType: TextInputType.number,
+                                        decoration: InputDecoration(
+                                          labelText: 'Monthly Listeners',
+                                          prefixIcon: const Icon(
+                                              Icons.headphones_outlined),
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextFormField(
+                                          controller: _debutYearCtrl,
+                                          keyboardType:
+                                              TextInputType.number,
+                                          decoration: InputDecoration(
+                                            labelText: 'Debut Year',
+                                            prefixIcon: const Icon(
+                                                Icons.calendar_today_outlined),
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: TextFormField(
+                                          controller: _monthlyListenersCtrl,
+                                          keyboardType:
+                                              TextInputType.number,
+                                          decoration: InputDecoration(
+                                            labelText: 'Monthly Listeners',
+                                            prefixIcon: const Icon(
+                                                Icons.headphones_outlined),
+                                            border: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        SwitchListTile(
+                          title: const Text('Verified artist'),
+                          value: _verified,
+                          onChanged: (v) => setState(() => _verified = v),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: _socialLinksCtrl,
+                          decoration: InputDecoration(
+                            labelText: 'Social Links (JSON)',
+                            hintText: '{"instagram": "@handle"}',
+                            prefixIcon: const Icon(Icons.link_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          readOnly: true,
+                          decoration: InputDecoration(
+                            labelText: 'Date of Birth',
+                            prefixIcon: const Icon(Icons.cake_outlined),
+                            hintText: _dob != null
+                                ? _dob!.toIso8601String().split('T').first
+                                : 'Pick date',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onTap: _pickDateOfBirth,
+                        ),
+                        const SizedBox(height: 10),
+                        _CoverPickerTile(
+                          pickedName: _coverFilename,
+                          onPick: _pickCoverFile,
+                          onClear: () => setState(() {
+                            _coverBytes = null;
+                            _coverFilename = null;
+                          }),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      tooltip: 'Pick date',
-                      onPressed: _pickDateOfBirth,
-                      icon: const Icon(Icons.calendar_today),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _submit,
-                      child: const Text('Create'),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
           ),
         ),
       ),
+      ),
+    );
+  }
+}
+
+class _CoverPickerTile extends StatelessWidget {
+  final String? pickedName;
+  final VoidCallback onPick;
+  final VoidCallback onClear;
+
+  const _CoverPickerTile({
+    required this.pickedName,
+    required this.onPick,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.image_outlined, size: 18),
+        const SizedBox(width: 8),
+        const Expanded(child: Text('Artist Cover (optional)')),
+        if (pickedName != null)
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(
+                pickedName!,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ),
+        if (pickedName != null)
+          IconButton(
+            tooltip: 'Clear',
+            icon: const Icon(Icons.close),
+            onPressed: onClear,
+          ),
+        FilledButton.tonal(onPressed: onPick, child: const Text('Choose')),
+      ],
     );
   }
 }

@@ -43,6 +43,9 @@ class AdminTracksRepositoryImpl implements AdminTracksRepository {
     required String title,
     required String albumId,
     required int duration,
+    String? externalTrackId,
+    String? language,
+    String? releaseDate,
     String? lyricsUrl,
     bool? isExplicit,
     bool? isPublished,
@@ -57,6 +60,9 @@ class AdminTracksRepositoryImpl implements AdminTracksRepository {
         title: title,
         albumId: albumId,
         duration: duration,
+        externalTrackId: externalTrackId,
+        language: language,
+        releaseDate: releaseDate,
         lyricsUrl: lyricsUrl,
         isExplicit: isExplicit,
         isPublished: isPublished,
@@ -80,6 +86,9 @@ class AdminTracksRepositoryImpl implements AdminTracksRepository {
     String? title,
     String? albumId,
     int? duration,
+    String? externalTrackId,
+    String? language,
+    String? releaseDate,
     String? lyricsUrl,
     bool? isExplicit,
     bool? isPublished,
@@ -95,6 +104,9 @@ class AdminTracksRepositoryImpl implements AdminTracksRepository {
         title: title,
         albumId: albumId,
         duration: duration,
+        externalTrackId: externalTrackId,
+        language: language,
+        releaseDate: releaseDate,
         lyricsUrl: lyricsUrl,
         isExplicit: isExplicit,
         isPublished: isPublished,
@@ -116,6 +128,18 @@ class AdminTracksRepositoryImpl implements AdminTracksRepository {
   Future<Either<Failure, void>> deleteTrack(String id) async {
     try {
       await remote.deleteTrack(id);
+      return right(null);
+    } on DioException catch (e) {
+      return left(Failure(e.message ?? 'Network error'));
+    } catch (e) {
+      return left(Failure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> deleteTracks(List<String> ids) async {
+    try {
+      await remote.deleteTracks(ids);
       return right(null);
     } on DioException catch (e) {
       return left(Failure(e.message ?? 'Network error'));

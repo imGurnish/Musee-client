@@ -56,9 +56,12 @@ class AlbumTrackSummaryModel extends AlbumTrackSummary {
 class AlbumModel extends Album {
   const AlbumModel({
     required super.id,
+    super.extAlbumId,
     required super.title,
     super.description,
     super.coverUrl,
+    super.language,
+    super.releaseDate,
     super.genres = const [],
     super.totalTracks,
     super.likesCount,
@@ -73,9 +76,12 @@ class AlbumModel extends Album {
   factory AlbumModel.fromJson(Map<String, dynamic> json) {
     return AlbumModel(
       id: (json['album_id'] ?? json['id']).toString(),
+      extAlbumId: json['ext_album_id']?.toString(),
       title: (json['title'] ?? '') as String,
       description: json['description'] as String?,
       coverUrl: json['cover_url'] as String?,
+      language: (json['language_code'] ?? json['language'])?.toString(),
+      releaseDate: json['release_date']?.toString(),
       genres:
           (json['genres'] as List?)?.map((e) => e.toString()).toList() ??
           const [],

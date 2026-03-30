@@ -7,6 +7,9 @@ class UserAlbumDetail extends Equatable {
   final String? releaseDate; // YYYY-MM-DD
   final List<UserAlbumArtist> artists;
   final List<UserAlbumTrack> tracks;
+  final bool isFromCache;
+  final Set<String> cachedTrackIds;
+  final Set<String> offlineTrackIds;
 
   const UserAlbumDetail({
     required this.albumId,
@@ -15,7 +18,16 @@ class UserAlbumDetail extends Equatable {
     required this.releaseDate,
     required this.artists,
     required this.tracks,
+    this.isFromCache = false,
+    this.cachedTrackIds = const <String>{},
+    this.offlineTrackIds = const <String>{},
   });
+
+  bool get hasAnyOfflineTrack => offlineTrackIds.isNotEmpty;
+
+  bool isTrackCached(String trackId) => cachedTrackIds.contains(trackId);
+
+  bool isTrackOffline(String trackId) => offlineTrackIds.contains(trackId);
 
   @override
   List<Object?> get props => [
@@ -25,6 +37,9 @@ class UserAlbumDetail extends Equatable {
     releaseDate,
     artists,
     tracks,
+    isFromCache,
+    cachedTrackIds,
+    offlineTrackIds,
   ];
 }
 

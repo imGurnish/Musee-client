@@ -68,9 +68,125 @@ class AudioCacheServiceImpl implements AudioCacheService {
     return '${_dir.path}/$trackId.$ext';
   }
 
+  String _getHlsDirPath(String trackId) {
+    return '${_dir.path}/${trackId}_hls';
+  }
+
+  bool _isLikelyHlsPlaylistUrl(String remoteUrl) {
+    final normalized = remoteUrl.toLowerCase();
+    return normalized.contains('.m3u8');
+  }
+
+  String _sanitizeSegmentName(String raw, int index) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return 'seg_${index.toString().padLeft(5, '0')}.ts';
+    final safe = trimmed.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    return safe.isEmpty ? 'seg_${index.toString().padLeft(5, '0')}.ts' : safe;
+  }
+
+  Future<int> _dirSizeBytes(Directory dir) async {
+    int total = 0;
+    if (!await dir.exists()) return 0;
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is File) {
+        total += await entity.length();
+      }
+    }
+    return total;
+  }
+
+  Future<String?> _downloadAndCacheHls({
+    required String trackId,
+    required String remoteUrl,
+    required TrackCacheService trackCache,
+    void Function(int received, int total)? onProgress,
+    CancelToken? cancelToken,
+  }) async {
+    final hlsDir = Directory(_getHlsDirPath(trackId));
+    if (await hlsDir.exists()) {
+      await hlsDir.delete(recursive: true);
+    }
+    await hlsDir.create(recursive: true);
+
+    try {
+      final playlistResp = await _dio.get<String>(
+        remoteUrl,
+        cancelToken: cancelToken,
+        options: Options(responseType: ResponseType.plain, followRedirects: true),
+      );
+
+      final rawPlaylist = playlistResp.data ?? '';
+      if (rawPlaylist.trim().isEmpty) {
+        throw StateError('Empty HLS playlist');
+      }
+
+      final sourceUri = Uri.parse(remoteUrl);
+      final lines = rawPlaylist.split('\n');
+      final rewritten = <String>[];
+      final segmentEntries = <({int lineIndex, String segmentRef})>[];
+
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty || trimmed.startsWith('#')) {
+          rewritten.add(line);
+          continue;
+        }
+        final rewrittenIndex = rewritten.length;
+        segmentEntries.add((lineIndex: rewrittenIndex, segmentRef: trimmed));
+        rewritten.add(trimmed);
+      }
+
+      final totalSegments = segmentEntries.length;
+      for (var i = 0; i < segmentEntries.length; i++) {
+        final segRef = segmentEntries[i].segmentRef;
+        final segUri = sourceUri.resolve(segRef);
+        final fileName = _sanitizeSegmentName(
+          segUri.pathSegments.isNotEmpty ? segUri.pathSegments.last : '',
+          i,
+        );
+
+        final localPath = '${hlsDir.path}/$fileName';
+        await _dio.download(
+          segUri.toString(),
+          localPath,
+          cancelToken: cancelToken,
+          options: Options(responseType: ResponseType.bytes, followRedirects: true),
+        );
+
+        rewritten[segmentEntries[i].lineIndex] = fileName;
+
+        onProgress?.call(i + 1, totalSegments == 0 ? 1 : totalSegments);
+      }
+
+      final playlistLocalPath = '${hlsDir.path}/index.m3u8';
+      final playlistFile = File(playlistLocalPath);
+      await playlistFile.writeAsString('${rewritten.join('\n')}\n');
+
+      final track = await trackCache.getTrack(trackId);
+      if (track != null) {
+        track.localAudioPath = playlistLocalPath;
+        track.audioSizeBytes = await _dirSizeBytes(hlsDir);
+        await trackCache.cacheTrack(track);
+      }
+
+      return playlistLocalPath;
+    } catch (_) {
+      if (await hlsDir.exists()) {
+        await hlsDir.delete(recursive: true);
+      }
+      rethrow;
+    }
+  }
+
   @override
   Future<String?> getLocalAudioPath(String trackId) async {
     if (kIsWeb) return null;
+
+    final hlsPlaylist = File('${_getHlsDirPath(trackId)}/index.m3u8');
+    if (await hlsPlaylist.exists()) {
+      return hlsPlaylist.path;
+    }
+
     // Check for common audio extensions
     for (final ext in ['mp3', 'm4a', 'aac', 'flac']) {
       final file = File(_getFilePath(trackId, ext));
@@ -91,6 +207,16 @@ class AudioCacheServiceImpl implements AudioCacheService {
   }) async {
     if (kIsWeb) return null;
     try {
+      if (_isLikelyHlsPlaylistUrl(remoteUrl)) {
+        return await _downloadAndCacheHls(
+          trackId: trackId,
+          remoteUrl: remoteUrl,
+          trackCache: trackCache,
+          onProgress: onProgress,
+          cancelToken: cancelToken,
+        );
+      }
+
       // Determine file extension from URL
       final uri = Uri.parse(remoteUrl);
       String ext = 'mp3';
@@ -169,6 +295,10 @@ class AudioCacheServiceImpl implements AudioCacheService {
   @override
   Future<void> deleteAudio(String trackId) async {
     if (kIsWeb) return;
+    final hlsDir = Directory(_getHlsDirPath(trackId));
+    if (await hlsDir.exists()) {
+      await hlsDir.delete(recursive: true);
+    }
     for (final ext in ['mp3', 'm4a', 'aac', 'flac']) {
       final file = File(_getFilePath(trackId, ext));
       if (await file.exists()) {
@@ -183,7 +313,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
     if (kIsWeb) return 0;
     int totalSize = 0;
     if (await _dir.exists()) {
-      await for (final entity in _dir.list()) {
+      await for (final entity in _dir.list(recursive: true, followLinks: false)) {
         if (entity is File) {
           totalSize += await entity.length();
         }
@@ -223,9 +353,11 @@ class AudioCacheServiceImpl implements AudioCacheService {
   Future<void> clearAll() async {
     if (kIsWeb) return;
     if (await _dir.exists()) {
-      await for (final entity in _dir.list()) {
+      await for (final entity in _dir.list(recursive: false, followLinks: false)) {
         if (entity is File) {
           await entity.delete();
+        } else if (entity is Directory) {
+          await entity.delete(recursive: true);
         }
       }
     }

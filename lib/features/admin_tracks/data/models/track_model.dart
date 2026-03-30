@@ -3,8 +3,11 @@ import '../../domain/entities/track.dart';
 class TrackModel extends Track {
   TrackModel({
     required super.trackId,
+    super.extTrackId,
     required super.title,
     super.albumId,
+    super.language,
+    super.releaseDate,
     super.lyricsUrl,
     required super.duration,
     required super.playCount,
@@ -45,8 +48,11 @@ class TrackModel extends Track {
 
     return TrackModel(
       trackId: json['track_id']?.toString() ?? json['id']?.toString() ?? '',
+      extTrackId: json['ext_track_id']?.toString(),
       title: json['title']?.toString() ?? '',
       albumId: json['album_id']?.toString(),
+      language: (json['language_code'] ?? json['language'])?.toString(),
+      releaseDate: json['release_date']?.toString(),
       lyricsUrl: json['lyrics_url'] as String?,
       duration: (json['duration'] as num?)?.toInt() ?? 0,
       playCount: (json['play_count'] as num?)?.toInt() ?? 0,

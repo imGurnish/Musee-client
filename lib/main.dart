@@ -1,3 +1,4 @@
+import 'package:device_preview/device_preview.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -11,6 +12,7 @@ import 'package:musee/init_dependencies.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/download/download_manager.dart';
+import 'package:musee/core/player/media_controls_service.dart';
 
 // Conditional import for web-specific plugins
 import 'web_url_strategy.dart'
@@ -22,6 +24,8 @@ void main() async {
   //Configure URL strategy for web
   configureUrlStrategy();
   GoRouter.optionURLReflectsImperativeAPIs = true;
+
+  await MediaControlsService.instance.initialize();
 
   await initDependencies();
 

@@ -33,6 +33,8 @@ abstract interface class AdminRemoteDataSource {
   });
 
   Future<void> deleteUser(String id);
+
+  Future<void> deleteUsers(List<String> ids);
 }
 
 class AdminRemoteDataSourceImpl implements AdminRemoteDataSource {
@@ -161,6 +163,16 @@ class AdminRemoteDataSourceImpl implements AdminRemoteDataSource {
   Future<void> deleteUser(String id) async {
     await _dio.delete(
       '$basePath/$id',
+      options: dio.Options(headers: _authHeader()),
+    );
+  }
+
+  @override
+  Future<void> deleteUsers(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await _dio.post(
+      '$basePath/bulk-delete',
+      data: {'ids': ids},
       options: dio.Options(headers: _authHeader()),
     );
   }

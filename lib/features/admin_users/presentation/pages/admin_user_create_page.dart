@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:musee/features/admin_artists/presentation/widgets/uuid_picker_dialog.dart';
+import 'package:go_router/go_router.dart';
 import 'package:musee/core/common/entities/user.dart';
 import 'package:musee/core/usecase/usecase.dart';
+import 'package:musee/features/admin_artists/presentation/widgets/uuid_picker_dialog.dart';
 import 'package:musee/features/admin_plans/domain/entities/plan.dart';
 import 'package:musee/features/admin_plans/domain/usecases/list_plans.dart';
 import 'package:musee/features/admin_users/domain/usecases/create_user.dart';
@@ -21,10 +21,12 @@ class _AdminUserCreatePageState extends State<AdminUserCreatePage> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
+
   SubscriptionType _subscriptionType = SubscriptionType.free;
   Plan? _selectedPlan;
   List<Plan> _plans = [];
   bool _loadingPlans = true;
+  bool _saving = false;
   PlatformFile? _avatarFile;
 
   @override
@@ -36,6 +38,7 @@ class _AdminUserCreatePageState extends State<AdminUserCreatePage> {
   Future<void> _loadPlans() async {
     final listPlans = serviceLocator<ListPlans>();
     final res = await listPlans(NoParams());
+    if (!mounted) return;
     res.fold(
       (_) => setState(() => _loadingPlans = false),
       (plans) => setState(() {
@@ -54,120 +57,192 @@ class _AdminUserCreatePageState extends State<AdminUserCreatePage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Create User')),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Form(
-              key: _formKey,
-              child: ListView(
-                children: [
-                  _ResponsiveRow(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _nameCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Name *',
-                          ),
-                          validator: (v) => (v == null || v.trim().isEmpty)
-                              ? 'Required'
-                              : null,
-                        ),
+      appBar: AppBar(title: const Text('Create Admin User')),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _emailCtrl,
-                          decoration: const InputDecoration(labelText: 'Email'),
-                          keyboardType: TextInputType.emailAddress,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _ResponsiveRow(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<SubscriptionType>(
-                          initialValue: _subscriptionType,
-                          decoration: const InputDecoration(
-                            labelText: 'Subscription type',
-                          ),
-                          items: SubscriptionType.values
-                              .map(
-                                (t) => DropdownMenuItem(
-                                  value: t,
-                                  child: Text(t.value),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) => setState(
-                            () => _subscriptionType = v ?? _subscriptionType,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _PlanAutocomplete(
-                              plans: _plans,
-                              loading: _loadingPlans,
-                              onSelected: (p) =>
-                                  setState(() => _selectedPlan = p),
-                              onCreateNew: () =>
-                                  context.go('/admin/plans?create-new=1'),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundColor: theme.colorScheme.primaryContainer,
+                            child: Icon(
+                              Icons.admin_panel_settings_outlined,
+                              color: theme.colorScheme.onPrimaryContainer,
                             ),
-                            const SizedBox(height: 8),
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: OutlinedButton.icon(
-                                onPressed: _openPlanUuidPicker,
-                                icon: const Icon(Icons.search),
-                                label: const Text('Pick plan by UUID…'),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Create an admin-managed profile without requiring auth signup.',
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _SectionCard(
+                      title: 'Basic Info',
+                      icon: Icons.person_outline,
+                      child: _ResponsiveRow(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _nameCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Name *',
+                                    prefixIcon: Icon(Icons.badge_outlined),
+                              ),
+                              validator: (v) =>
+                                  (v == null || v.trim().isEmpty)
+                                  ? 'Required'
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _emailCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Email *',
+                                    prefixIcon: Icon(Icons.alternate_email),
+                              ),
+                              keyboardType: TextInputType.emailAddress,
+                              validator: (v) {
+                                final value = v?.trim() ?? '';
+                                if (value.isEmpty) return 'Required';
+                                final emailRegex = RegExp(
+                                  r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                                );
+                                if (!emailRegex.hasMatch(value)) {
+                                  return 'Enter a valid email';
+                                }
+                                return null;
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _SectionCard(
+                      title: 'Subscription & Plan',
+                      icon: Icons.workspace_premium_outlined,
+                      child: _ResponsiveRow(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<SubscriptionType>(
+                              initialValue: _subscriptionType,
+                              decoration: const InputDecoration(
+                                labelText: 'Subscription type',
+                                prefixIcon: Icon(Icons.workspace_premium_outlined),
+                              ),
+                              items: SubscriptionType.values
+                                  .map(
+                                    (t) => DropdownMenuItem(
+                                      value: t,
+                                      child: Text(t.value),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) => setState(
+                                () => _subscriptionType = v ?? _subscriptionType,
                               ),
                             ),
-                          ],
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _PlanAutocomplete(
+                                  plans: _plans,
+                                  loading: _loadingPlans,
+                                  onSelected: (p) =>
+                                      setState(() => _selectedPlan = p),
+                                  onCreateNew: () =>
+                                      context.go('/admin/plans?create-new=1'),
+                                ),
+                                const SizedBox(height: 8),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: OutlinedButton.icon(
+                                    onPressed: _openPlanUuidPicker,
+                                    icon: const Icon(Icons.search),
+                                    label: const Text('Pick plan by UUID…'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _SectionCard(
+                      title: 'Avatar',
+                      icon: Icons.image_outlined,
+                      child: _FilePickerTile(
+                        label: 'Avatar (optional)',
+                        pickedName: _avatarFile?.name,
+                        onPick: () async {
+                          final res = await FilePicker.platform.pickFiles(
+                            withData: true,
+                            type: FileType.image,
+                          );
+                          if (res != null && res.files.isNotEmpty) {
+                            setState(() => _avatarFile = res.files.first);
+                          }
+                        },
+                        onClear: () => setState(() => _avatarFile = null),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _saving ? null : () => context.pop(),
+                            child: const Text('Cancel'),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _FilePickerTile(
-                    label: 'Avatar (optional)',
-                    pickedName: _avatarFile?.name,
-                    onPick: () async {
-                      final res = await FilePicker.platform.pickFiles(
-                        withData: true,
-                        type: FileType.image,
-                      );
-                      if (res != null && res.files.isNotEmpty) {
-                        setState(() => _avatarFile = res.files.first);
-                      }
-                    },
-                    onClear: () => setState(() => _avatarFile = null),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => context.pop(),
-                        child: const Text('Cancel'),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        onPressed: _onSubmit,
-                        child: const Text('Create'),
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _saving ? null : _onSubmit,
+                            icon: _saving
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.person_add_alt_1),
+                            label: Text(_saving ? 'Saving...' : 'Create User'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -177,7 +252,10 @@ class _AdminUserCreatePageState extends State<AdminUserCreatePage> {
   }
 
   Future<void> _onSubmit() async {
+    if (_saving) return;
     if (_formKey.currentState?.validate() != true) return;
+    setState(() => _saving = true);
+
     final create = serviceLocator<CreateUser>();
     final res = await create(
       CreateUserParams(
@@ -189,10 +267,19 @@ class _AdminUserCreatePageState extends State<AdminUserCreatePage> {
         avatarFilename: _avatarFile?.name,
       ),
     );
-    res.fold((f) => _showSnack(f.message, isError: true), (_) {
-      _showSnack('User created');
-      context.go('/admin/users');
-    });
+
+    if (!mounted) return;
+    res.fold(
+      (f) {
+        setState(() => _saving = false);
+        _showSnack(f.message, isError: true);
+      },
+      (_) {
+        setState(() => _saving = false);
+        _showSnack('User created');
+        context.go('/admin/users');
+      },
+    );
   }
 
   void _showSnack(String msg, {bool isError = false}) {
@@ -234,12 +321,54 @@ class _AdminUserCreatePageState extends State<AdminUserCreatePage> {
         },
       ),
     );
+
     if (picked != null) {
       final match = _plans.where((p) => p.id == picked.id);
       setState(() {
         _selectedPlan = match.isNotEmpty ? match.first : _selectedPlan;
       });
     }
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  const _SectionCard({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: theme.dividerColor.withValues(alpha: 0.35)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 18),
+                const SizedBox(width: 8),
+                Text(title, style: Theme.of(context).textTheme.titleSmall),
+              ],
+            ),
+            const SizedBox(height: 12),
+            child,
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -281,6 +410,7 @@ class _PlanAutocomplete extends StatefulWidget {
   final bool loading;
   final ValueChanged<Plan?> onSelected;
   final VoidCallback onCreateNew;
+
   const _PlanAutocomplete({
     required this.plans,
     required this.loading,
@@ -315,7 +445,10 @@ class _PlanAutocompleteState extends State<_PlanAutocomplete> {
           fieldViewBuilder: (ctx, ctrl, focus, onSubmitted) => TextField(
             controller: ctrl,
             focusNode: focus,
-            decoration: const InputDecoration(labelText: 'Plan (optional)'),
+            decoration: const InputDecoration(
+              labelText: 'Plan (optional)',
+              prefixIcon: Icon(Icons.layers_outlined),
+            ),
           ),
           optionsViewBuilder: (ctx, onSelect, options) {
             final opts = options.toList();
@@ -324,10 +457,7 @@ class _PlanAutocompleteState extends State<_PlanAutocomplete> {
               child: Material(
                 elevation: 4,
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxHeight: 240,
-                    minWidth: 280,
-                  ),
+                  constraints: const BoxConstraints(maxHeight: 240, minWidth: 280),
                   child: ListView(
                     padding: EdgeInsets.zero,
                     shrinkWrap: true,
@@ -352,22 +482,31 @@ class _PlanAutocompleteState extends State<_PlanAutocomplete> {
         ),
         if (_value != null)
           Padding(
-            padding: const EdgeInsets.only(top: 8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _value!.id,
-                    style: Theme.of(context).textTheme.bodySmall,
-                    overflow: TextOverflow.ellipsis,
+            padding: const EdgeInsets.only(top: 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.verified_outlined, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _value!.id,
+                      style: Theme.of(context).textTheme.bodySmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Copy plan UUID',
-                  icon: const Icon(Icons.copy, size: 18),
-                  onPressed: () => _copy(_value!.id),
-                ),
-              ],
+                  IconButton(
+                    tooltip: 'Copy plan UUID',
+                    icon: const Icon(Icons.copy, size: 18),
+                    onPressed: () => _copy(_value!.id),
+                  ),
+                ],
+              ),
             ),
           ),
       ],
@@ -399,14 +538,16 @@ class _FilePickerTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
+          const Icon(Icons.account_circle_outlined, size: 18),
+          const SizedBox(width: 8),
           Expanded(child: Text(label)),
           if (pickedName != null)
             Flexible(
               child: Padding(
-                padding: const EdgeInsets.only(right: 8.0),
+                padding: const EdgeInsets.only(right: 8),
                 child: Text(
                   pickedName!,
                   overflow: TextOverflow.ellipsis,

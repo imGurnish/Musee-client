@@ -44,9 +44,9 @@ class AdminArtistsRepositoryImpl implements AdminArtistsRepository {
   @override
   Future<Either<Failure, Artist>> createArtist({
     String? artistId,
+    String? externalArtistId,
     String? name,
     String? email,
-    String? password,
     required String bio,
     List<int>? coverBytes,
     String? coverFilename,
@@ -63,9 +63,9 @@ class AdminArtistsRepositoryImpl implements AdminArtistsRepository {
     try {
       final a = await remote.createArtist(
         artistId: artistId,
+        externalArtistId: externalArtistId,
         name: name,
         email: email,
-        password: password,
         bio: bio,
         coverBytes: coverBytes != null ? Uint8List.fromList(coverBytes) : null,
         coverFilename: coverFilename,
@@ -131,6 +131,18 @@ class AdminArtistsRepositoryImpl implements AdminArtistsRepository {
   Future<Either<Failure, void>> deleteArtist(String id) async {
     try {
       await remote.deleteArtist(id);
+      return right(null);
+    } on DioException catch (e) {
+      return left(Failure(e.message ?? 'Network error'));
+    } catch (e) {
+      return left(Failure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> deleteArtists(List<String> ids) async {
+    try {
+      await remote.deleteArtists(ids);
       return right(null);
     } on DioException catch (e) {
       return left(Failure(e.message ?? 'Network error'));

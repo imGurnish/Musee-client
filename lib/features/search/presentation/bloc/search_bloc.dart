@@ -1,4 +1,8 @@
 import 'package:bloc/bloc.dart';
+import 'package:get_it/get_it.dart';
+import 'package:musee/core/cache/services/track_cache_service.dart';
+import 'package:musee/core/cache/services/user_media_detail_cache_service.dart';
+import 'package:musee/core/common/services/connectivity_service.dart';
 import 'package:musee/features/search/domain/entities/suggestion.dart';
 import 'package:musee/features/search/domain/entities/catalog_search.dart';
 import 'package:musee/features/search/domain/usecases/get_suggestions.dart';
@@ -12,9 +16,32 @@ part 'search_state.dart';
 class SearchBloc extends Bloc<SearchEvent, SearchState> {
   final GetSuggestions getSuggestions;
   final GetSearchResults getSearchResults;
+  final TrackCacheService? _trackCache;
+  final UserMediaDetailCacheService? _detailCache;
+  final ConnectivityService? _connectivity;
 
-  SearchBloc(this.getSuggestions, this.getSearchResults)
-    : super(SearchInitial()) {
+  SearchBloc(
+    this.getSuggestions,
+    this.getSearchResults, {
+    TrackCacheService? trackCache,
+    UserMediaDetailCacheService? detailCache,
+    ConnectivityService? connectivity,
+  }) : _trackCache =
+           trackCache ??
+           (GetIt.I.isRegistered<TrackCacheService>()
+               ? GetIt.I<TrackCacheService>()
+               : null),
+       _detailCache =
+           detailCache ??
+           (GetIt.I.isRegistered<UserMediaDetailCacheService>()
+               ? GetIt.I<UserMediaDetailCacheService>()
+               : null),
+       _connectivity =
+           connectivity ??
+           (GetIt.I.isRegistered<ConnectivityService>()
+               ? GetIt.I<ConnectivityService>()
+             : null),
+         super(SearchInitial()) {
     on<FetchSuggestions>((event, emit) async {
       emit(SuggestionLoading());
       try {
@@ -35,17 +62,67 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     on<SearchQuery>((event, emit) async {
       emit(SearchQueryLoading());
       try {
+        final isOnline = await (_connectivity?.checkConnectivity() ??
+            Future<bool>.value(true));
+
+        if (kDebugMode && !isOnline) {
+          print(
+            '[SearchBloc] Connectivity reported offline; attempting backend search before cache fallback.',
+          );
+        }
+
         final results = await getSearchResults(event.query);
-        results.fold(
-          (failure) => emit(VideosError(failure.message)),
-          (data) => emit(SearchResultsLoaded(data)),
+        await results.fold(
+          (failure) async {
+            final offline = await _searchCached(event.query);
+            if (!offline.isEmpty) {
+              final enrichedOffline = await _enrichCacheStatus(offline);
+              emit(
+                SearchResultsLoaded(
+                  offline,
+                  cachedTrackIds: enrichedOffline.cachedTrackIds,
+                  cachedAlbumIds: enrichedOffline.cachedAlbumIds,
+                  cachedPlaylistIds: enrichedOffline.cachedPlaylistIds,
+                  fromOfflineCache: true,
+                ),
+              );
+              return;
+            }
+            emit(VideosError(failure.message));
+          },
+          (data) async {
+            final enriched = await _enrichCacheStatus(data);
+            emit(
+              SearchResultsLoaded(
+                data,
+                cachedTrackIds: enriched.cachedTrackIds,
+                cachedAlbumIds: enriched.cachedAlbumIds,
+                cachedPlaylistIds: enriched.cachedPlaylistIds,
+                fromOfflineCache: false,
+              ),
+            );
+          },
         );
       } catch (e) {
-        emit(
-          VideosError(
-            'Failed to fetch videos. Please check your internet connection.',
-          ),
-        );
+        final offline = await _searchCached(event.query);
+        if (!offline.isEmpty) {
+          final enrichedOffline = await _enrichCacheStatus(offline);
+          emit(
+            SearchResultsLoaded(
+              offline,
+              cachedTrackIds: enrichedOffline.cachedTrackIds,
+              cachedAlbumIds: enrichedOffline.cachedAlbumIds,
+              cachedPlaylistIds: enrichedOffline.cachedPlaylistIds,
+              fromOfflineCache: true,
+            ),
+          );
+        } else {
+          emit(
+            VideosError(
+              'Failed to fetch videos. Please check your internet connection.',
+            ),
+          );
+        }
       }
     });
 
@@ -63,6 +140,170 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         );
       }
     });
+  }
+
+  Future<CatalogSearchResults> _searchCached(String query) async {
+    final lower = query.trim().toLowerCase();
+    if (lower.isEmpty) return const CatalogSearchResults();
+
+    final trackCache = _trackCache;
+    final detailCache = _detailCache;
+
+    if (trackCache == null && detailCache == null) {
+      return const CatalogSearchResults();
+    }
+
+    final tracks = <CatalogTrack>[];
+    final albums = <CatalogAlbum>[];
+    final playlists = <CatalogPlaylist>[];
+    final artists = <CatalogArtist>[];
+
+    if (trackCache != null) {
+      final cachedTracks = await trackCache.getAllTracks();
+      for (final t in cachedTracks) {
+        final haystack =
+            '${t.title} ${t.artistName} ${t.albumTitle ?? ''}'.toLowerCase();
+        if (!haystack.contains(lower)) continue;
+        tracks.add(
+          CatalogTrack(
+            trackId: t.trackId,
+            title: t.title,
+            duration: t.durationSeconds,
+            artists: [
+              CatalogArtist(
+                artistId: 'cached:${t.trackId}',
+                name: t.artistName,
+              ),
+            ],
+            imageUrl: t.localImagePath ?? t.albumCoverUrl,
+          ),
+        );
+      }
+
+      final cachedAlbums = await trackCache.getAllAlbums();
+      for (final a in cachedAlbums) {
+        final haystack = '${a.title} ${a.artistName}'.toLowerCase();
+        if (!haystack.contains(lower)) continue;
+        albums.add(
+          CatalogAlbum(
+            albumId: a.albumId,
+            title: a.title,
+            coverUrl: a.localCoverPath ?? a.coverUrl,
+            artists: [
+              CatalogArtist(
+                artistId: 'cached:${a.albumId}',
+                name: a.artistName,
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    if (detailCache != null) {
+      final cachedAlbumDetails = await detailCache.getAllAlbums();
+      for (final payload in cachedAlbumDetails) {
+        final albumId = payload['album_id']?.toString() ?? '';
+        final title = payload['title']?.toString() ?? 'Album';
+        final coverUrl = payload['cover_url']?.toString();
+        final artistName = _firstArtistName(payload['artists']);
+        final haystack = '$title $artistName'.toLowerCase();
+        if (!haystack.contains(lower)) continue;
+        if (albums.any((a) => a.albumId == albumId)) continue;
+
+        albums.add(
+          CatalogAlbum(
+            albumId: albumId,
+            title: title,
+            coverUrl: coverUrl,
+            artists: [
+              CatalogArtist(artistId: 'cached:$albumId', name: artistName),
+            ],
+          ),
+        );
+      }
+
+      final cachedPlaylists = await detailCache.getAllPlaylists();
+      for (final payload in cachedPlaylists) {
+        final playlistId = payload['playlist_id']?.toString() ??
+            payload['id']?.toString() ??
+            '';
+        final name = payload['name']?.toString() ??
+            payload['title']?.toString() ??
+            'Playlist';
+        final creator = payload['creator_name']?.toString();
+        final coverUrl = payload['cover_url']?.toString();
+        final haystack = '$name ${creator ?? ''}'.toLowerCase();
+        if (!haystack.contains(lower)) continue;
+
+        playlists.add(
+          CatalogPlaylist(
+            playlistId: playlistId,
+            name: name,
+            coverUrl: coverUrl,
+            creatorName: creator,
+          ),
+        );
+      }
+    }
+
+    return CatalogSearchResults(
+      tracks: tracks.take(40).toList(),
+      albums: albums.take(40).toList(),
+      artists: artists,
+      playlists: playlists.take(40).toList(),
+    );
+  }
+
+  String _firstArtistName(dynamic rawArtists) {
+    if (rawArtists is! List || rawArtists.isEmpty) return 'Unknown Artist';
+    final first = rawArtists.first;
+    if (first is Map) {
+      return first['name']?.toString() ?? 'Unknown Artist';
+    }
+    return 'Unknown Artist';
+  }
+
+  Future<({
+    Set<String> cachedTrackIds,
+    Set<String> cachedAlbumIds,
+    Set<String> cachedPlaylistIds
+  })> _enrichCacheStatus(CatalogSearchResults results) async {
+    final cachedTrackIds = <String>{};
+    final cachedAlbumIds = <String>{};
+    final cachedPlaylistIds = <String>{};
+
+    if (_trackCache != null) {
+      final trackCache = _trackCache;
+      for (final track in results.tracks) {
+        final cached = await trackCache.getTrack(track.trackId);
+        if (cached != null) cachedTrackIds.add(track.trackId);
+      }
+
+      for (final album in results.albums) {
+        final cachedAlbum = await trackCache.getAlbum(album.albumId);
+        if (cachedAlbum != null) cachedAlbumIds.add(album.albumId);
+      }
+    }
+
+    if (_detailCache != null) {
+      final detailCache = _detailCache;
+      for (final album in results.albums) {
+        final cached = await detailCache.getAlbum(album.albumId);
+        if (cached != null) cachedAlbumIds.add(album.albumId);
+      }
+
+      for (final playlist in results.playlists) {
+        final cached = await detailCache.getPlaylist(playlist.playlistId);
+        if (cached != null) cachedPlaylistIds.add(playlist.playlistId);
+      }
+    }
+
+    return (
+      cachedTrackIds: cachedTrackIds,
+      cachedAlbumIds: cachedAlbumIds,
+      cachedPlaylistIds: cachedPlaylistIds,
+    );
   }
 }
 

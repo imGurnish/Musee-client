@@ -18,6 +18,23 @@ abstract interface class AdminTracksRemoteDataSource {
     required String title,
     required String albumId,
     required int duration,
+    String? externalTrackId,
+    String? source,
+    String? externalUrl,
+    String? imageUrl,
+    String? externalAlbumId,
+    String? language,
+    String? releaseDate,
+    bool? hasLyrics,
+    bool? isDrm,
+    bool? isDolbyContent,
+    bool? has320kbps,
+    String? encryptedMediaUrl,
+    String? encryptedDrmMediaUrl,
+    String? encryptedMediaPath,
+    String? mediaPreviewUrl,
+    dynamic rights,
+    Map<String, dynamic>? externalPayload,
     String? lyricsUrl,
     bool? isExplicit,
     bool? isPublished,
@@ -33,6 +50,23 @@ abstract interface class AdminTracksRemoteDataSource {
     String? title,
     String? albumId,
     int? duration,
+    String? externalTrackId,
+    String? source,
+    String? externalUrl,
+    String? imageUrl,
+    String? externalAlbumId,
+    String? language,
+    String? releaseDate,
+    bool? hasLyrics,
+    bool? isDrm,
+    bool? isDolbyContent,
+    bool? has320kbps,
+    String? encryptedMediaUrl,
+    String? encryptedDrmMediaUrl,
+    String? encryptedMediaPath,
+    String? mediaPreviewUrl,
+    dynamic rights,
+    Map<String, dynamic>? externalPayload,
     String? lyricsUrl,
     bool? isExplicit,
     bool? isPublished,
@@ -44,6 +78,7 @@ abstract interface class AdminTracksRemoteDataSource {
   });
 
   Future<void> deleteTrack(String id);
+  Future<void> deleteTracks(List<String> ids);
 
   // Artist management
   Future<void> linkArtistToTrack({
@@ -121,6 +156,23 @@ class AdminTracksRemoteDataSourceImpl implements AdminTracksRemoteDataSource {
     required String title,
     required String albumId,
     required int duration,
+    String? externalTrackId,
+    String? source,
+    String? externalUrl,
+    String? imageUrl,
+    String? externalAlbumId,
+    String? language,
+    String? releaseDate,
+    bool? hasLyrics,
+    bool? isDrm,
+    bool? isDolbyContent,
+    bool? has320kbps,
+    String? encryptedMediaUrl,
+    String? encryptedDrmMediaUrl,
+    String? encryptedMediaPath,
+    String? mediaPreviewUrl,
+    dynamic rights,
+    Map<String, dynamic>? externalPayload,
     String? lyricsUrl,
     bool? isExplicit,
     bool? isPublished,
@@ -135,6 +187,60 @@ class AdminTracksRemoteDataSourceImpl implements AdminTracksRemoteDataSource {
     form.fields.add(MapEntry('title', title));
     form.fields.add(MapEntry('album_id', albumId));
     form.fields.add(MapEntry('duration', duration.toString()));
+    if (externalTrackId != null && externalTrackId.isNotEmpty) {
+      form.fields.add(MapEntry('ext_track_id', externalTrackId));
+    }
+    if (source != null && source.isNotEmpty) {
+      form.fields.add(MapEntry('source', source));
+    }
+    if (externalUrl != null && externalUrl.isNotEmpty) {
+      form.fields.add(MapEntry('perma_url', externalUrl));
+      form.fields.add(MapEntry('external_url', externalUrl));
+    }
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      form.fields.add(MapEntry('image', imageUrl));
+    }
+    if (externalAlbumId != null && externalAlbumId.isNotEmpty) {
+      form.fields.add(MapEntry('ext_album_id', externalAlbumId));
+      form.fields.add(MapEntry('external_album_id', externalAlbumId));
+    }
+    if (language != null && language.isNotEmpty) {
+      form.fields.add(MapEntry('language_code', language));
+      form.fields.add(MapEntry('language', language));
+    }
+    if (releaseDate != null && releaseDate.isNotEmpty) {
+      form.fields.add(MapEntry('release_date', releaseDate));
+    }
+    if (hasLyrics != null) {
+      form.fields.add(MapEntry('has_lyrics', hasLyrics.toString()));
+    }
+    if (isDrm != null) {
+      form.fields.add(MapEntry('is_drm', isDrm.toString()));
+    }
+    if (isDolbyContent != null) {
+      form.fields.add(MapEntry('is_dolby_content', isDolbyContent.toString()));
+    }
+    if (has320kbps != null) {
+      form.fields.add(MapEntry('has_320kbps', has320kbps.toString()));
+    }
+    if (encryptedMediaUrl != null && encryptedMediaUrl.isNotEmpty) {
+      form.fields.add(MapEntry('encrypted_media_url', encryptedMediaUrl));
+    }
+    if (encryptedDrmMediaUrl != null && encryptedDrmMediaUrl.isNotEmpty) {
+      form.fields.add(MapEntry('encrypted_drm_media_url', encryptedDrmMediaUrl));
+    }
+    if (encryptedMediaPath != null && encryptedMediaPath.isNotEmpty) {
+      form.fields.add(MapEntry('encrypted_media_path', encryptedMediaPath));
+    }
+    if (mediaPreviewUrl != null && mediaPreviewUrl.isNotEmpty) {
+      form.fields.add(MapEntry('media_preview_url', mediaPreviewUrl));
+    }
+    if (rights != null) {
+      form.fields.add(MapEntry('rights', jsonEncode(rights)));
+    }
+    if (externalPayload != null && externalPayload.isNotEmpty) {
+      form.fields.add(MapEntry('external_payload', jsonEncode(externalPayload)));
+    }
     if (lyricsUrl != null) form.fields.add(MapEntry('lyrics_url', lyricsUrl));
     if (isExplicit != null) {
       form.fields.add(MapEntry('is_explicit', isExplicit.toString()));
@@ -175,6 +281,23 @@ class AdminTracksRemoteDataSourceImpl implements AdminTracksRemoteDataSource {
     String? title,
     String? albumId,
     int? duration,
+    String? externalTrackId,
+    String? source,
+    String? externalUrl,
+    String? imageUrl,
+    String? externalAlbumId,
+    String? language,
+    String? releaseDate,
+    bool? hasLyrics,
+    bool? isDrm,
+    bool? isDolbyContent,
+    bool? has320kbps,
+    String? encryptedMediaUrl,
+    String? encryptedDrmMediaUrl,
+    String? encryptedMediaPath,
+    String? mediaPreviewUrl,
+    dynamic rights,
+    Map<String, dynamic>? externalPayload,
     String? lyricsUrl,
     bool? isExplicit,
     bool? isPublished,
@@ -191,6 +314,60 @@ class AdminTracksRemoteDataSourceImpl implements AdminTracksRemoteDataSource {
       if (albumId != null) form.fields.add(MapEntry('album_id', albumId));
       if (duration != null) {
         form.fields.add(MapEntry('duration', duration.toString()));
+      }
+      if (externalTrackId != null && externalTrackId.isNotEmpty) {
+        form.fields.add(MapEntry('ext_track_id', externalTrackId));
+      }
+      if (source != null && source.isNotEmpty) {
+        form.fields.add(MapEntry('source', source));
+      }
+      if (externalUrl != null && externalUrl.isNotEmpty) {
+        form.fields.add(MapEntry('perma_url', externalUrl));
+        form.fields.add(MapEntry('external_url', externalUrl));
+      }
+      if (imageUrl != null && imageUrl.isNotEmpty) {
+        form.fields.add(MapEntry('image', imageUrl));
+      }
+      if (externalAlbumId != null && externalAlbumId.isNotEmpty) {
+        form.fields.add(MapEntry('ext_album_id', externalAlbumId));
+        form.fields.add(MapEntry('external_album_id', externalAlbumId));
+      }
+      if (language != null && language.isNotEmpty) {
+        form.fields.add(MapEntry('language_code', language));
+        form.fields.add(MapEntry('language', language));
+      }
+      if (releaseDate != null && releaseDate.isNotEmpty) {
+        form.fields.add(MapEntry('release_date', releaseDate));
+      }
+      if (hasLyrics != null) {
+        form.fields.add(MapEntry('has_lyrics', hasLyrics.toString()));
+      }
+      if (isDrm != null) {
+        form.fields.add(MapEntry('is_drm', isDrm.toString()));
+      }
+      if (isDolbyContent != null) {
+        form.fields.add(MapEntry('is_dolby_content', isDolbyContent.toString()));
+      }
+      if (has320kbps != null) {
+        form.fields.add(MapEntry('has_320kbps', has320kbps.toString()));
+      }
+      if (encryptedMediaUrl != null && encryptedMediaUrl.isNotEmpty) {
+        form.fields.add(MapEntry('encrypted_media_url', encryptedMediaUrl));
+      }
+      if (encryptedDrmMediaUrl != null && encryptedDrmMediaUrl.isNotEmpty) {
+        form.fields.add(MapEntry('encrypted_drm_media_url', encryptedDrmMediaUrl));
+      }
+      if (encryptedMediaPath != null && encryptedMediaPath.isNotEmpty) {
+        form.fields.add(MapEntry('encrypted_media_path', encryptedMediaPath));
+      }
+      if (mediaPreviewUrl != null && mediaPreviewUrl.isNotEmpty) {
+        form.fields.add(MapEntry('media_preview_url', mediaPreviewUrl));
+      }
+      if (rights != null) {
+        form.fields.add(MapEntry('rights', jsonEncode(rights)));
+      }
+      if (externalPayload != null && externalPayload.isNotEmpty) {
+        form.fields.add(MapEntry('external_payload', jsonEncode(externalPayload)));
       }
       if (lyricsUrl != null) form.fields.add(MapEntry('lyrics_url', lyricsUrl));
       if (isExplicit != null) {
@@ -231,6 +408,46 @@ class AdminTracksRemoteDataSourceImpl implements AdminTracksRemoteDataSource {
       if (title != null) body['title'] = title;
       if (albumId != null) body['album_id'] = albumId;
       if (duration != null) body['duration'] = duration;
+      if (externalTrackId != null && externalTrackId.isNotEmpty) {
+        body['ext_track_id'] = externalTrackId;
+      }
+      if (source != null && source.isNotEmpty) body['source'] = source;
+      if (externalUrl != null && externalUrl.isNotEmpty) {
+        body['perma_url'] = externalUrl;
+        body['external_url'] = externalUrl;
+      }
+      if (imageUrl != null && imageUrl.isNotEmpty) body['image'] = imageUrl;
+      if (externalAlbumId != null && externalAlbumId.isNotEmpty) {
+        body['ext_album_id'] = externalAlbumId;
+        body['external_album_id'] = externalAlbumId;
+      }
+      if (language != null && language.isNotEmpty) {
+        body['language_code'] = language;
+        body['language'] = language;
+      }
+      if (releaseDate != null && releaseDate.isNotEmpty) {
+        body['release_date'] = releaseDate;
+      }
+      if (hasLyrics != null) body['has_lyrics'] = hasLyrics;
+      if (isDrm != null) body['is_drm'] = isDrm;
+      if (isDolbyContent != null) body['is_dolby_content'] = isDolbyContent;
+      if (has320kbps != null) body['has_320kbps'] = has320kbps;
+      if (encryptedMediaUrl != null && encryptedMediaUrl.isNotEmpty) {
+        body['encrypted_media_url'] = encryptedMediaUrl;
+      }
+      if (encryptedDrmMediaUrl != null && encryptedDrmMediaUrl.isNotEmpty) {
+        body['encrypted_drm_media_url'] = encryptedDrmMediaUrl;
+      }
+      if (encryptedMediaPath != null && encryptedMediaPath.isNotEmpty) {
+        body['encrypted_media_path'] = encryptedMediaPath;
+      }
+      if (mediaPreviewUrl != null && mediaPreviewUrl.isNotEmpty) {
+        body['media_preview_url'] = mediaPreviewUrl;
+      }
+      if (rights != null) body['rights'] = rights;
+      if (externalPayload != null && externalPayload.isNotEmpty) {
+        body['external_payload'] = externalPayload;
+      }
       if (lyricsUrl != null) body['lyrics_url'] = lyricsUrl;
       if (isExplicit != null) body['is_explicit'] = isExplicit;
       if (isPublished != null) body['is_published'] = isPublished;
@@ -249,6 +466,15 @@ class AdminTracksRemoteDataSourceImpl implements AdminTracksRemoteDataSource {
   Future<void> deleteTrack(String id) async {
     await _dio.delete(
       '$basePath/$id',
+      options: dio.Options(headers: _authHeader()),
+    );
+  }
+
+  @override
+  Future<void> deleteTracks(List<String> ids) async {
+    await _dio.post(
+      '$basePath/bulk-delete',
+      data: {'ids': ids},
       options: dio.Options(headers: _authHeader()),
     );
   }

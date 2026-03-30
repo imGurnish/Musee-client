@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
 
-enum DashboardItemType { album, track }
+enum DashboardItemType { album, track, playlist }
 
 class DashboardItem extends Equatable {
   final String id; // albumId or trackId
@@ -13,6 +13,8 @@ class DashboardItem extends Equatable {
   // Track specific fields
   final String? trackId; // Explicit track ID helper
   final String? albumId; // Explicit album ID helper
+  final bool isCached;
+  final String? localImagePath;
 
   const DashboardItem({
     required this.id,
@@ -23,7 +25,35 @@ class DashboardItem extends Equatable {
     required this.type,
     this.trackId,
     this.albumId,
+    this.isCached = false,
+    this.localImagePath,
   });
+
+  DashboardItem copyWith({
+    String? id,
+    String? title,
+    String? coverUrl,
+    int? duration,
+    List<DashboardArtist>? artists,
+    DashboardItemType? type,
+    String? trackId,
+    String? albumId,
+    bool? isCached,
+    String? localImagePath,
+  }) {
+    return DashboardItem(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      coverUrl: coverUrl ?? this.coverUrl,
+      duration: duration ?? this.duration,
+      artists: artists ?? this.artists,
+      type: type ?? this.type,
+      trackId: trackId ?? this.trackId,
+      albumId: albumId ?? this.albumId,
+      isCached: isCached ?? this.isCached,
+      localImagePath: localImagePath ?? this.localImagePath,
+    );
+  }
 
   @override
   List<Object?> get props => [
@@ -35,6 +65,8 @@ class DashboardItem extends Equatable {
     type,
     trackId,
     albumId,
+    isCached,
+    localImagePath,
   ];
 }
 

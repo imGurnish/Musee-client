@@ -51,3 +51,8 @@ class DeleteAlbumEvent extends AdminAlbumsEvent {
   final String id;
   DeleteAlbumEvent(this.id);
 }
+
+class DeleteAlbumsEvent extends AdminAlbumsEvent {
+  final List<String> ids;
+  DeleteAlbumsEvent(this.ids);
+}

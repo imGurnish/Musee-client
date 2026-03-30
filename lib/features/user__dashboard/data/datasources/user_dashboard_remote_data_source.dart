@@ -17,16 +17,18 @@ class DashboardItemDTO extends DashboardItem {
 
   factory DashboardItemDTO.fromJson(Map<String, dynamic> json) {
     final typeStr = json['type'] as String? ?? 'album';
-    final type = typeStr == 'track'
-        ? DashboardItemType.track
-        : DashboardItemType.album;
+    final type = switch (typeStr) {
+      'track' => DashboardItemType.track,
+      'playlist' => DashboardItemType.playlist,
+      _ => DashboardItemType.album,
+    };
 
     // ID determination
     final trackId = json['track_id']?.toString();
     final albumId = json['album_id']?.toString();
     final id = type == DashboardItemType.track
-        ? (trackId ?? '')
-        : (albumId ?? '');
+      ? (trackId ?? '')
+      : (albumId ?? json['id']?.toString() ?? '');
 
     return DashboardItemDTO(
       id: id,

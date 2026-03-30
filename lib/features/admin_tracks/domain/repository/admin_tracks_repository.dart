@@ -12,6 +12,9 @@ abstract class AdminTracksRepository {
     required String title,
     required String albumId,
     required int duration,
+    String? externalTrackId,
+    String? language,
+    String? releaseDate,
     String? lyricsUrl,
     bool? isExplicit,
     bool? isPublished,
@@ -27,6 +30,9 @@ abstract class AdminTracksRepository {
     String? title,
     String? albumId,
     int? duration,
+    String? externalTrackId,
+    String? language,
+    String? releaseDate,
     String? lyricsUrl,
     bool? isExplicit,
     bool? isPublished,
@@ -38,6 +44,7 @@ abstract class AdminTracksRepository {
   });
 
   Future<Either<Failure, void>> deleteTrack(String id);
+  Future<Either<Failure, void>> deleteTracks(List<String> ids);
 
   // Artist management
   Future<Either<Failure, void>> linkArtistToTrack({

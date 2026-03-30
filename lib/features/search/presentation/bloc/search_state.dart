@@ -13,16 +13,38 @@ final class SearchQueryLoading extends SearchState {}
 
 final class SearchResultsLoaded extends SearchState {
   final CatalogSearchResults results;
-  const SearchResultsLoaded(this.results);
+  final Set<String> cachedTrackIds;
+  final Set<String> cachedAlbumIds;
+  final Set<String> cachedPlaylistIds;
+  final bool fromOfflineCache;
+
+  const SearchResultsLoaded(
+    this.results, {
+    this.cachedTrackIds = const <String>{},
+    this.cachedAlbumIds = const <String>{},
+    this.cachedPlaylistIds = const <String>{},
+    this.fromOfflineCache = false,
+  });
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is SearchResultsLoaded && other.results == results;
+    return other is SearchResultsLoaded &&
+        other.results == results &&
+      setEquals(other.cachedTrackIds, cachedTrackIds) &&
+      setEquals(other.cachedAlbumIds, cachedAlbumIds) &&
+      setEquals(other.cachedPlaylistIds, cachedPlaylistIds) &&
+        other.fromOfflineCache == fromOfflineCache;
   }
 
   @override
-  int get hashCode => results.hashCode;
+  int get hashCode => Object.hash(
+    results,
+    cachedTrackIds.length,
+    cachedAlbumIds.length,
+    cachedPlaylistIds.length,
+    fromOfflineCache,
+  );
 }
 
 class VideosError extends SearchState {

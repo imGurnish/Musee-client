@@ -91,17 +91,38 @@ class CatalogTrackModel extends CatalogTrack {
   }
 }
 
+class CatalogPlaylistModel extends CatalogPlaylist {
+  CatalogPlaylistModel({
+    required super.playlistId,
+    required super.name,
+    super.coverUrl,
+    super.creatorName,
+    super.source,
+  });
+
+  factory CatalogPlaylistModel.fromJson(Map<String, dynamic> json) {
+    return CatalogPlaylistModel(
+      playlistId: json['playlist_id']?.toString() ?? json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Playlist',
+      coverUrl: json['cover_url']?.toString(),
+      creatorName: json['creator_name']?.toString(),
+    );
+  }
+}
+
 class CatalogSearchResultsModel extends CatalogSearchResults {
   const CatalogSearchResultsModel({
     super.tracks = const [],
     super.albums = const [],
     super.artists = const [],
+    super.playlists = const [],
   });
 
   factory CatalogSearchResultsModel.fromThreeLists({
     required List<dynamic> tracks,
     required List<dynamic> albums,
     required List<dynamic> artists,
+    required List<dynamic> playlists,
   }) {
     return CatalogSearchResultsModel(
       tracks: tracks
@@ -120,6 +141,13 @@ class CatalogSearchResultsModel extends CatalogSearchResults {
           .map(
             (e) =>
                 CatalogArtistModel.fromJson((e as Map).cast<String, dynamic>()),
+          )
+          .toList(),
+      playlists: playlists
+          .map(
+            (e) => CatalogPlaylistModel.fromJson(
+              (e as Map).cast<String, dynamic>(),
+            ),
           )
           .toList(),
     );

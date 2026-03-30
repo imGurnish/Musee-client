@@ -1,0 +1,8 @@
+{
+  "files.exclude": {
+    "**/bricks": true
+  },
+  "search.exclude": {
+    "**/bricks": true
+  }
+}

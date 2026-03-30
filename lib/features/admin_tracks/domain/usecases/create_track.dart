@@ -8,6 +8,9 @@ class CreateTrackParams {
   final String title;
   final String albumId;
   final int duration;
+  final String? externalTrackId;
+  final String? language;
+  final String? releaseDate;
   final String? lyricsUrl;
   final bool? isExplicit;
   final bool? isPublished;
@@ -21,6 +24,9 @@ class CreateTrackParams {
     required this.title,
     required this.albumId,
     required this.duration,
+    this.externalTrackId,
+    this.language,
+    this.releaseDate,
     this.lyricsUrl,
     this.isExplicit,
     this.isPublished,
@@ -42,6 +48,9 @@ class CreateTrack implements UseCase<Track, CreateTrackParams> {
       title: params.title,
       albumId: params.albumId,
       duration: params.duration,
+      externalTrackId: params.externalTrackId,
+      language: params.language,
+      releaseDate: params.releaseDate,
       lyricsUrl: params.lyricsUrl,
       isExplicit: params.isExplicit,
       isPublished: params.isPublished,

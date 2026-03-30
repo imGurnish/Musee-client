@@ -8,23 +8,19 @@ import 'package:equatable/equatable.dart';
 /// Enum to identify the source of music content
 enum MusicSource {
   musee, // Musee backend server
-  external, // External music API (disabled on web due to CORS)
 }
 
-/// Extension to parse source from prefixed track IDs like "external:12345"
+/// Extension to parse source from prefixed track IDs
 extension MusicSourceParsing on String {
   MusicSource get musicSource {
-    if (startsWith('external:')) return MusicSource.external;
     return MusicSource.musee;
   }
 
   String get rawId {
-    if (startsWith('external:')) return substring(9);
     return this;
   }
 
   String prefixedId(MusicSource source) {
-    if (source == MusicSource.external) return 'external:$this';
     return this;
   }
 }

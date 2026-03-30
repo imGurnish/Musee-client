@@ -2,6 +2,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:musee/features/admin_artists/domain/entities/artist.dart';
 import 'package:musee/features/admin_artists/domain/usecases/create_artist.dart';
 import 'package:musee/features/admin_artists/domain/usecases/delete_artist.dart';
+import 'package:musee/features/admin_artists/domain/usecases/delete_artists.dart';
 import 'package:musee/features/admin_artists/domain/usecases/list_artists.dart';
 import 'package:musee/features/admin_artists/domain/usecases/update_artist.dart';
 
@@ -13,21 +14,25 @@ class AdminArtistsBloc extends Bloc<AdminArtistsEvent, AdminArtistsState> {
   final CreateArtist _create;
   final UpdateArtist _update;
   final DeleteArtist _delete;
+  final DeleteArtists _deleteMany;
 
   AdminArtistsBloc({
     required ListArtists list,
     required CreateArtist create,
     required UpdateArtist update,
     required DeleteArtist delete,
+    required DeleteArtists deleteMany,
   }) : _list = list,
        _create = create,
        _update = update,
        _delete = delete,
+       _deleteMany = deleteMany,
        super(const AdminArtistsInitial()) {
     on<LoadArtists>(_onLoad);
     on<CreateArtistEvent>(_onCreate);
     on<UpdateArtistEvent>(_onUpdate);
     on<DeleteArtistEvent>(_onDelete);
+    on<DeleteArtistsEvent>(_onDeleteArtists);
   }
 
   Future<void> _onLoad(
@@ -61,7 +66,6 @@ class AdminArtistsBloc extends Bloc<AdminArtistsEvent, AdminArtistsState> {
         artistId: event.artistId,
         name: event.name,
         email: event.email,
-        password: event.password,
         bio: event.bio,
         coverBytes: event.coverBytes,
         coverFilename: event.coverFilename,
@@ -161,6 +165,41 @@ class AdminArtistsBloc extends Bloc<AdminArtistsEvent, AdminArtistsState> {
   ) async {
     emit(const AdminArtistsLoading());
     final res = await _delete(event.id);
+    await res.fold((f) async => emit(AdminArtistsFailure(f.message)), (
+      _,
+    ) async {
+      final stateBefore = state;
+      int page = 0, limit = 20;
+      String? search;
+      if (stateBefore is AdminArtistsPageLoaded) {
+        page = stateBefore.page;
+        limit = stateBefore.limit;
+        search = stateBefore.search;
+      }
+      final reload = await _list(
+        ListArtistsParams(page: page, limit: limit, q: search),
+      );
+      reload.fold(
+        (f) => emit(AdminArtistsFailure(f.message)),
+        (t) => emit(
+          AdminArtistsPageLoaded(
+            items: t.$1,
+            total: t.$2,
+            page: t.$3,
+            limit: t.$4,
+            search: search,
+          ),
+        ),
+      );
+    });
+  }
+
+  Future<void> _onDeleteArtists(
+    DeleteArtistsEvent event,
+    Emitter<AdminArtistsState> emit,
+  ) async {
+    emit(const AdminArtistsLoading());
+    final res = await _deleteMany(event.ids);
     await res.fold((f) async => emit(AdminArtistsFailure(f.message)), (
       _,
     ) async {

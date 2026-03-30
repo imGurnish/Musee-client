@@ -21,6 +21,14 @@ Future<void> showPlayerBottomSheet(
 }) async {
   final cubit = GetIt.I<PlayerCubit>();
 
+  Future<void> ensureAutoPlay() async {
+    final s = cubit.state;
+    if (cubit.isUserPausedIntent) return;
+    if (!s.playing && !s.buffering && s.track != null) {
+      await cubit.ensurePlaying();
+    }
+  }
+
   if (trackId != null && (audioUrl == null || audioUrl.isEmpty)) {
     // Play by ID (resolves URL and caches metadata)
     // We don't check for "different track" here because playTrackById handles resolution
@@ -37,6 +45,8 @@ Future<void> showPlayerBottomSheet(
         album: album,
         imageUrl: imageUrl,
       );
+    } else {
+      await ensureAutoPlay();
     }
   } else if (audioUrl != null && audioUrl.isNotEmpty) {
     final track = PlayerTrack(
@@ -54,6 +64,8 @@ Future<void> showPlayerBottomSheet(
     final isDifferentTrack = currentUrl == null || currentUrl != audioUrl;
     if (isDifferentTrack) {
       await cubit.playTrack(track);
+    } else {
+      await ensureAutoPlay();
     }
   }
 
@@ -132,8 +144,19 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
       child: BlocBuilder<PlayerCubit, PlayerViewState>(
         builder: (context, state) {
           final theme = Theme.of(context);
+          final showingLoading =
+              state.buffering || state.resolvingUrl || state.isTransitioning;
+          final canControlPlayback = state.track != null || state.playing;
           final title = state.track?.title ?? 'Unknown Title';
           final artist = state.track?.artist ?? 'Unknown Artist';
+          final subtitleText = state.resolvingUrl
+              ? 'Loading stream...'
+              : state.buffering
+              ? 'Buffering audio...'
+              : artist;
+          final subtitleColor = (state.resolvingUrl || state.buffering)
+              ? theme.colorScheme.primary
+              : theme.textTheme.bodyLarge?.color?.withValues(alpha: 0.85);
           final album = state.track?.album ?? '';
           final imageUrl = state.track?.imageUrl;
           final pos = state.position;
@@ -192,13 +215,19 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
                 child: Center(
                   child: AspectRatio(
                     aspectRatio: 1,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: _buildArtwork(
-                        imageUrl: imageUrl,
-                        localPath: state.track?.localImagePath,
-                        theme: theme,
-                      ),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        child: ClipRRect(
+                          key: ValueKey(
+                            '${state.track?.trackId ?? state.track?.url ?? 'none'}:${state.track?.localImagePath ?? state.track?.imageUrl ?? ''}',
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          child: _buildArtwork(
+                            imageUrl: imageUrl,
+                            localPath: state.track?.localImagePath,
+                            theme: theme,
+                          ),
+                        ),
                     ),
                   ),
                 ),
@@ -224,11 +253,9 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          artist,
+                          subtitleText,
                           style: theme.textTheme.bodyLarge?.copyWith(
-                            color: theme.textTheme.bodyLarge?.color?.withValues(
-                              alpha: 0.85,
-                            ),
+                            color: subtitleColor,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -290,7 +317,9 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
                   const Spacer(),
                   IconButton(
                     tooltip: 'Previous',
-                    onPressed: () => context.read<PlayerCubit>().previous(),
+                    onPressed: canControlPlayback
+                        ? () => context.read<PlayerCubit>().previous()
+                        : null,
                     icon: const Icon(Icons.skip_previous_rounded),
                   ),
                   const SizedBox(width: 8),
@@ -302,25 +331,41 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
                         shape: const CircleBorder(),
                         padding: EdgeInsets.zero,
                       ),
-                      onPressed: state.buffering
-                          ? null
-                          : () => context.read<PlayerCubit>().togglePlayPause(),
-                      child: state.playing
-                          ? const Icon(Icons.pause_rounded, size: 42)
-                          : state.buffering
-                          ? const SizedBox(
-                              width: 42,
-                              height: 42,
-                              child: CircularProgressIndicator(strokeWidth: 3),
-                            )
-                          : const Icon(Icons.play_arrow_rounded, size: 42),
+                          onPressed: canControlPlayback
+                            ? () => context.read<PlayerCubit>().togglePlayPause()
+                            : null,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: state.playing
+                            ? const Icon(
+                                Icons.pause_rounded,
+                                key: ValueKey('pause'),
+                                size: 42,
+                              )
+                            : showingLoading
+                            ? const SizedBox(
+                                key: ValueKey('loading'),
+                                width: 42,
+                                height: 42,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 3,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.play_arrow_rounded,
+                                key: ValueKey('play'),
+                                size: 42,
+                              ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   IconButton(
                     tooltip: 'Next',
-                    onPressed: () =>
-                        context.read<PlayerCubit>().next(userInitiated: true),
+                    onPressed: canControlPlayback
+                      ? () =>
+                        context.read<PlayerCubit>().next(userInitiated: true)
+                      : null,
                     icon: const Icon(Icons.skip_next_rounded),
                   ),
                   const Spacer(),
@@ -418,6 +463,7 @@ class _QueueSheet extends StatelessWidget {
                   child: BlocBuilder<PlayerCubit, PlayerViewState>(
                     builder: (context, state) {
                       final items = state.queue;
+                      final controlsLocked = state.isTransitioning;
                       if (items.isEmpty) {
                         return const Center(child: Text('Your queue is empty'));
                       }
@@ -425,6 +471,7 @@ class _QueueSheet extends StatelessWidget {
                         scrollController: scroll,
                         itemCount: items.length,
                         onReorder: (from, to) {
+                          if (controlsLocked) return;
                           // Flutter uses a different insertion index when moving down
                           final newIndex = to > from ? to - 1 : to;
                           context.read<PlayerCubit>().reorderQueue(
@@ -487,16 +534,20 @@ class _QueueSheet extends StatelessWidget {
                                 IconButton(
                                   tooltip: 'Remove',
                                   icon: const Icon(Icons.close_rounded),
-                                  onPressed: () => context
-                                      .read<PlayerCubit>()
-                                      .removeFromQueue(q.uid),
+                                  onPressed: controlsLocked
+                                      ? null
+                                      : () => context
+                                            .read<PlayerCubit>()
+                                            .removeFromQueue(q.uid),
                                 ),
                                 const Icon(Icons.drag_handle_rounded),
                               ],
                             ),
-                            onTap: () => context
-                                .read<PlayerCubit>()
-                                .playFromQueueTrackId(q.trackId),
+                            onTap: controlsLocked
+                                ? null
+                                : () => context
+                                      .read<PlayerCubit>()
+                                      .playFromQueueTrackId(q.trackId),
                           );
                         },
                       );

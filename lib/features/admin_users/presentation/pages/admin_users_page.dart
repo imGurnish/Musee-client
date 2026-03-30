@@ -21,6 +21,7 @@ class AdminUsersPage extends StatefulWidget {
 class _AdminUsersPageState extends State<AdminUsersPage> {
   final TextEditingController _searchCtrl = TextEditingController();
   int _limit = 20;
+  final Set<String> _selectedUserIds = <String>{};
 
   @override
   void initState() {
@@ -34,17 +35,99 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     super.dispose();
   }
 
-  void _goCreatePage() => context.go('/admin/users/create-new');
+  void _goCreatePage() => context.push('/admin/users/create-new');
 
-  void _goDetail(User user) => context.go('/admin/users/${user.id}');
+  void _goDetail(User user) => context.push('/admin/users/${user.id}');
+
+  Future<void> _confirmDeleteOne(User user) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete user?'),
+        content: Text(
+          'Are you sure you want to delete ${user.name}? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      context.read<AdminUsersBloc>().add(DeleteUserEvent(user.id));
+      setState(() => _selectedUserIds.remove(user.id));
+    }
+  }
+
+  Future<void> _confirmDeleteSelected() async {
+    final count = _selectedUserIds.length;
+    if (count == 0) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete selected users?'),
+        content: Text('Delete $count selected user(s)? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete All'),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      context.read<AdminUsersBloc>().add(
+        DeleteUsersEvent(_selectedUserIds.toList(growable: false)),
+      );
+      setState(() => _selectedUserIds.clear());
+    }
+  }
+
+  void _toggleSelectUser(User user, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedUserIds.add(user.id);
+      } else {
+        _selectedUserIds.remove(user.id);
+      }
+    });
+  }
+
+  void _toggleSelectAllVisible(List<User> users, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedUserIds.addAll(users.map((e) => e.id));
+      } else {
+        _selectedUserIds.removeAll(users.map((e) => e.id));
+      }
+    });
+  }
+
+  void _clearSelection() => setState(_selectedUserIds.clear);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Admin • Users'),
+        title: const Text('Users'),
         actions: [
+          if (_selectedUserIds.isNotEmpty)
+            IconButton(
+              onPressed: _confirmDeleteSelected,
+              icon: const Icon(Icons.delete_sweep_outlined),
+              tooltip: 'Delete selected (${_selectedUserIds.length})',
+            ),
           IconButton(
             onPressed: _goCreatePage,
             icon: const Icon(Icons.person_add_alt_1),
@@ -56,82 +139,142 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            LayoutBuilder(
-              builder: (context, c) {
-                final isMobile = c.maxWidth < 700;
-                return isMobile
-                    ? Column(
-                        children: [
-                          AdminUserSearchBar(
-                            controller: _searchCtrl,
-                            onSubmitted: (value) {
-                              context.read<AdminUsersBloc>().add(
-                                LoadUsers(
-                                  page: 0,
-                                  limit: _limit,
-                                  search: value.isEmpty ? null : value,
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: PageSizeDropdown(
-                              value: _limit,
-                              onChanged: (v) {
-                                setState(() => _limit = v);
-                                context.read<AdminUsersBloc>().add(
-                                  LoadUsers(
-                                    page: 0,
-                                    limit: v,
-                                    search: _searchCtrl.text.trim().isEmpty
-                                        ? null
-                                        : _searchCtrl.text.trim(),
+            Card(
+              elevation: 0,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: LayoutBuilder(
+                  builder: (context, c) {
+                    final isMobile = c.maxWidth < 760;
+                    return isMobile
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                'Search & Filters',
+                                style: theme.textTheme.titleSmall,
+                              ),
+                              const SizedBox(height: 10),
+                              AdminUserSearchBar(
+                                controller: _searchCtrl,
+                                onSubmitted: (value) {
+                                  context.read<AdminUsersBloc>().add(
+                                    LoadUsers(
+                                      page: 0,
+                                      limit: _limit,
+                                      search: value.isEmpty ? null : value,
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: PageSizeDropdown(
+                                      value: _limit,
+                                      onChanged: (v) {
+                                        setState(() => _limit = v);
+                                        context.read<AdminUsersBloc>().add(
+                                          LoadUsers(
+                                            page: 0,
+                                            limit: v,
+                                            search: _searchCtrl.text.trim().isEmpty
+                                                ? null
+                                                : _searchCtrl.text.trim(),
+                                          ),
+                                        );
+                                      },
+                                    ),
                                   ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      )
-                    : Row(
-                        children: [
-                          Expanded(
-                            child: AdminUserSearchBar(
-                              controller: _searchCtrl,
-                              onSubmitted: (value) {
-                                context.read<AdminUsersBloc>().add(
-                                  LoadUsers(
-                                    page: 0,
-                                    limit: _limit,
-                                    search: value.isEmpty ? null : value,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          PageSizeDropdown(
-                            value: _limit,
-                            onChanged: (v) {
-                              setState(() => _limit = v);
-                              context.read<AdminUsersBloc>().add(
-                                LoadUsers(
-                                  page: 0,
-                                  limit: v,
-                                  search: _searchCtrl.text.trim().isEmpty
-                                      ? null
-                                      : _searchCtrl.text.trim(),
+                                ],
+                              ),
+                            ],
+                          )
+                        : Row(
+                            children: [
+                              Expanded(
+                                child: AdminUserSearchBar(
+                                  controller: _searchCtrl,
+                                  onSubmitted: (value) {
+                                    context.read<AdminUsersBloc>().add(
+                                      LoadUsers(
+                                        page: 0,
+                                        limit: _limit,
+                                        search: value.isEmpty ? null : value,
+                                      ),
+                                    );
+                                  },
                                 ),
-                              );
-                            },
-                          ),
-                        ],
-                      );
-              },
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 210,
+                                child: PageSizeDropdown(
+                                  value: _limit,
+                                  onChanged: (v) {
+                                    setState(() => _limit = v);
+                                    context.read<AdminUsersBloc>().add(
+                                      LoadUsers(
+                                        page: 0,
+                                        limit: v,
+                                        search: _searchCtrl.text.trim().isEmpty
+                                            ? null
+                                            : _searchCtrl.text.trim(),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          );
+                  },
+                ),
+              ),
             ),
             const SizedBox(height: 12),
+            if (_selectedUserIds.isNotEmpty)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.checklist_rounded,
+                          color: theme.colorScheme.onSecondaryContainer,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${_selectedUserIds.length} selected',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            color: theme.colorScheme.onSecondaryContainer,
+                          ),
+                        ),
+                      ],
+                    ),
+                    TextButton(
+                      onPressed: _clearSelection,
+                      child: const Text('Clear'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _confirmDeleteSelected,
+                      icon: const Icon(Icons.delete_sweep_outlined),
+                      label: const Text('Delete'),
+                    ),
+                  ],
+                ),
+              ),
             Expanded(
               child: BlocBuilder<AdminUsersBloc, AdminUsersState>(
                 builder: (context, state) {
@@ -169,6 +312,14 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                   }
                   if (state is AdminUsersPageLoaded) {
                     final users = state.items;
+                    final visibleIds = users.map((u) => u.id).toSet();
+                    final stale = _selectedUserIds.difference(visibleIds);
+                    if (stale.isNotEmpty) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        setState(() => _selectedUserIds.removeAll(stale));
+                      });
+                    }
                     final totalPages = (state.total / state.limit).ceil().clamp(
                       1,
                       999999,
@@ -179,103 +330,80 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                         return Column(
                           children: [
                             Expanded(
-                              child: isMobile
-                                  ? UsersList(
-                                      users: users,
-                                      onEdit: _goDetail,
-                                      onDelete: (u) async {
-                                        final confirm = await showDialog<bool>(
-                                          context: context,
-                                          builder: (ctx) => AlertDialog(
-                                            title: const Text('Delete user?'),
-                                            content: Text(
-                                              'Are you sure you want to delete ${u.name}? This cannot be undone.',
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx, false),
-                                                child: const Text('Cancel'),
+                              child: Card(
+                                elevation: 0,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: isMobile
+                                      ? UsersList(
+                                          users: users,
+                                          onEdit: _goDetail,
+                                          onDelete: _confirmDeleteOne,
+                                          selectedIds: _selectedUserIds,
+                                          onSelect: _toggleSelectUser,
+                                        )
+                                      : UsersTable(
+                                          users: users,
+                                          onEdit: _goDetail,
+                                          onDelete: _confirmDeleteOne,
+                                          selectedIds: _selectedUserIds,
+                                          onToggleSelectAll: (selected) =>
+                                              _toggleSelectAllVisible(
+                                                users,
+                                                selected,
                                               ),
-                                              FilledButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx, true),
-                                                child: const Text('Delete'),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                        if (confirm == true &&
-                                            context.mounted) {
-                                          context.read<AdminUsersBloc>().add(
-                                            DeleteUserEvent(u.id),
-                                          );
-                                        }
-                                      },
-                                    )
-                                  : UsersTable(
-                                      users: users,
-                                      onEdit: _goDetail,
-                                      onDelete: (u) async {
-                                        final confirm = await showDialog<bool>(
-                                          context: context,
-                                          builder: (ctx) => AlertDialog(
-                                            title: const Text('Delete user?'),
-                                            content: Text(
-                                              'Are you sure you want to delete ${u.name}? This cannot be undone.',
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx, false),
-                                                child: const Text('Cancel'),
-                                              ),
-                                              FilledButton(
-                                                onPressed: () =>
-                                                    Navigator.pop(ctx, true),
-                                                child: const Text('Delete'),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                        if (confirm == true &&
-                                            context.mounted) {
-                                          context.read<AdminUsersBloc>().add(
-                                            DeleteUserEvent(u.id),
-                                          );
-                                        }
-                                      },
-                                    ),
+                                          onSelect: _toggleSelectUser,
+                                        ),
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Expanded(child: Text('Total: ${state.total}')),
-                                PaginationControls(
-                                  page: state.page, // zero-based
-                                  totalPages: totalPages,
-                                  onPrev: state.page > 0
-                                      ? () =>
-                                            context.read<AdminUsersBloc>().add(
-                                              LoadUsers(
-                                                page: state.page - 1,
-                                                limit: state.limit,
-                                                search: state.search,
-                                              ),
-                                            )
-                                      : null,
-                                  onNext: state.page < (totalPages - 1)
-                                      ? () =>
-                                            context.read<AdminUsersBloc>().add(
-                                              LoadUsers(
-                                                page: state.page + 1,
-                                                limit: state.limit,
-                                                search: state.search,
-                                              ),
-                                            )
-                                      : null,
-                                ),
-                              ],
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerLowest,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Wrap(
+                                spacing: 12,
+                                runSpacing: 8,
+                                alignment: WrapAlignment.spaceBetween,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Text(
+                                    'Total: ${state.total}',
+                                    style: theme.textTheme.titleSmall,
+                                  ),
+                                  PaginationControls(
+                                    page: state.page, // zero-based
+                                    totalPages: totalPages,
+                                    onPrev: state.page > 0
+                                        ? () =>
+                                              context.read<AdminUsersBloc>().add(
+                                                LoadUsers(
+                                                  page: state.page - 1,
+                                                  limit: state.limit,
+                                                  search: state.search,
+                                                ),
+                                              )
+                                        : null,
+                                    onNext: state.page < (totalPages - 1)
+                                        ? () =>
+                                              context.read<AdminUsersBloc>().add(
+                                                LoadUsers(
+                                                  page: state.page + 1,
+                                                  limit: state.limit,
+                                                  search: state.search,
+                                                ),
+                                              )
+                                        : null,
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         );

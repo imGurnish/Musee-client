@@ -5,22 +5,35 @@ class UsersTable extends StatelessWidget {
   final List<User> users;
   final void Function(User user) onEdit;
   final void Function(User user) onDelete;
+  final Set<String> selectedIds;
+  final ValueChanged<bool> onToggleSelectAll;
+  final void Function(User user, bool selected) onSelect;
   const UsersTable({
     super.key,
     required this.users,
     required this.onEdit,
     required this.onDelete,
+    required this.selectedIds,
+    required this.onToggleSelectAll,
+    required this.onSelect,
   });
 
   @override
   Widget build(BuildContext context) {
+    final allSelected = users.isNotEmpty && users.every((u) => selectedIds.contains(u.id));
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minWidth: 800),
         child: SingleChildScrollView(
           child: DataTable(
-            columns: const [
+            columns: [
+              DataColumn(
+                label: Checkbox(
+                  value: allSelected,
+                  onChanged: (v) => onToggleSelectAll(v ?? false),
+                ),
+              ),
               DataColumn(label: Text('Avatar')),
               DataColumn(label: Text('Name')),
               DataColumn(label: Text('Email')),
@@ -29,10 +42,19 @@ class UsersTable extends StatelessWidget {
               DataColumn(label: Text('Last login')),
               DataColumn(label: Text('Actions')),
             ],
+            headingRowColor: WidgetStatePropertyAll(Theme.of(context).colorScheme.surfaceContainerHighest),
             rows: users.map((u) {
+              final selected = selectedIds.contains(u.id);
               return DataRow(
+                selected: selected,
                 onSelectChanged: (_) => onEdit(u),
                 cells: [
+                  DataCell(
+                    Checkbox(
+                      value: selected,
+                      onChanged: (v) => onSelect(u, v ?? false),
+                    ),
+                  ),
                   DataCell(
                     CircleAvatar(
                       radius: 16,
@@ -75,6 +97,7 @@ class UsersTable extends StatelessWidget {
                 ],
               );
             }).toList(),
+            showCheckboxColumn: false,
           ),
         ),
       ),
