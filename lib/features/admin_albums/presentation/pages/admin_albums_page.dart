@@ -1042,19 +1042,4 @@ class _AdminAlbumsPageState extends State<AdminAlbumsPage> {
     );
   }
 
-  void _submitPageNumber(String value, int totalPages) {
-    final page = int.tryParse(value);
-    if (page != null && page > 0 && page <= totalPages) {
-      _loadPage(page - 1);
-      _pageCtrl.clear();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Enter a page number between 1 and $totalPages'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-      _pageCtrl.clear();
-    }
-  }
 }

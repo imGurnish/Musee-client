@@ -6,6 +6,7 @@ class UsersList extends StatelessWidget {
   final void Function(User user) onEdit;
   final void Function(User user) onDelete;
   final Set<String> selectedIds;
+  final bool hasSelection;
   final void Function(User user, bool selected) onSelect;
   const UsersList({
     super.key,
@@ -13,6 +14,7 @@ class UsersList extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.selectedIds,
+    required this.hasSelection,
     required this.onSelect,
   });
 
@@ -30,7 +32,14 @@ class UsersList extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
-            onTap: () => onEdit(u),
+            onTap: () {
+              if (hasSelection) {
+                onSelect(u, !selected);
+              } else {
+                onEdit(u);
+              }
+            },
+            onLongPress: () => onSelect(u, !selected),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
               child: Column(
@@ -39,18 +48,40 @@ class UsersList extends StatelessWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      CircleAvatar(
-                        radius: 22,
-                        backgroundImage: u.avatarUrl.isNotEmpty
-                            ? NetworkImage(u.avatarUrl)
-                            : null,
-                        child: u.avatarUrl.isEmpty
-                            ? Text(
-                                u.name.isNotEmpty
-                                    ? u.name[0].toUpperCase()
-                                    : '?',
-                              )
-                            : null,
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          CircleAvatar(
+                            radius: 22,
+                            backgroundImage: u.avatarUrl.isNotEmpty
+                                ? NetworkImage(u.avatarUrl)
+                                : null,
+                            child: u.avatarUrl.isEmpty
+                                ? Text(
+                                    u.name.isNotEmpty
+                                        ? u.name[0].toUpperCase()
+                                        : '?',
+                                  )
+                                : null,
+                          ),
+                          if (selected)
+                            Positioned(
+                              top: -2,
+                              right: -2,
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.check,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -85,6 +116,11 @@ class UsersList extends StatelessWidget {
                           ],
                         ),
                       ),
+                      IconButton(
+                        icon: const Icon(Icons.more_vert),
+                        tooltip: 'Actions',
+                        onPressed: () => _showMobileMenu(context, u, selected),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -92,34 +128,59 @@ class UsersList extends StatelessWidget {
                     'Last login: ${u.lastLoginAt?.toLocal().toString().split('.').first ?? '—'}',
                     style: theme.textTheme.bodySmall,
                   ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: selected,
-                        onChanged: (v) => onSelect(u, v ?? false),
-                      ),
-                      Text(selected ? 'Selected' : 'Select'),
-                      const Spacer(),
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.edit, size: 16),
-                        label: const Text('Edit'),
-                        onPressed: () => onEdit(u),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton.tonalIcon(
-                        icon: const Icon(Icons.delete_outline, size: 16),
-                        label: const Text('Delete'),
-                        onPressed: () => onDelete(u),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  void _showMobileMenu(BuildContext context, User user, bool selected) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              user.name,
+              style: Theme.of(context).textTheme.titleLarge,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: Icon(
+              selected ? Icons.check_box : Icons.check_box_outline_blank,
+            ),
+            title: Text(selected ? 'Deselect' : 'Select'),
+            onTap: () {
+              Navigator.pop(ctx);
+              onSelect(user, !selected);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('Edit'),
+            onTap: () {
+              Navigator.pop(ctx);
+              onEdit(user);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline, color: Colors.red),
+            title: const Text('Delete', style: TextStyle(color: Colors.red)),
+            onTap: () {
+              Navigator.pop(ctx);
+              onDelete(user);
+            },
+          ),
+        ],
+      ),
     );
   }
 }

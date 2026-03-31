@@ -18,21 +18,39 @@ class PaginationControls extends StatelessWidget {
     final displayedPage = totalPages == 0
         ? 0
         : page + 1; // convert from 0-based for display
+    final theme = Theme.of(context);
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisSize: MainAxisSize.min,
+      spacing: 8,
       children: [
-        Text('Page $displayedPage of $totalPages'),
-        Row(
-          children: [
-            IconButton(
-              onPressed: page > 0 ? onPrev : null,
-              icon: const Icon(Icons.chevron_left),
-            ),
-            IconButton(
-              onPressed: page < (totalPages - 1) ? onNext : null,
-              icon: const Icon(Icons.chevron_right),
-            ),
-          ],
+        SizedBox(
+          height: 36,
+          width: 36,
+          child: FilledButton.tonal(
+            onPressed: page > 0 ? onPrev : null,
+            style: FilledButton.styleFrom(padding: EdgeInsets.zero),
+            child: const Icon(Icons.chevron_left, size: 18),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceVariant,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            '$displayedPage / $totalPages',
+            style: theme.textTheme.labelSmall,
+          ),
+        ),
+        SizedBox(
+          height: 36,
+          width: 36,
+          child: FilledButton.tonal(
+            onPressed: page < (totalPages - 1) ? onNext : null,
+            style: FilledButton.styleFrom(padding: EdgeInsets.zero),
+            child: const Icon(Icons.chevron_right, size: 18),
+          ),
         ),
       ],
     );

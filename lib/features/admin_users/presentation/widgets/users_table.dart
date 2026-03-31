@@ -21,12 +21,17 @@ class UsersTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final allSelected = users.isNotEmpty && users.every((u) => selectedIds.contains(u.id));
+    final width = MediaQuery.of(context).size.width;
+    final useCompactActions = width < 1200;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minWidth: 800),
         child: SingleChildScrollView(
           child: DataTable(
+            dataRowMinHeight: 62,
+            dataRowMaxHeight: 62,
+            columnSpacing: useCompactActions ? 18 : 24,
             columns: [
               DataColumn(
                 label: Checkbox(
@@ -79,20 +84,48 @@ class UsersTable extends StatelessWidget {
                     ),
                   ),
                   DataCell(
-                    Row(
-                      children: [
-                        IconButton(
-                          tooltip: 'Edit',
-                          icon: const Icon(Icons.edit),
-                          onPressed: () => onEdit(u),
-                        ),
-                        IconButton(
-                          tooltip: 'Delete',
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => onDelete(u),
-                        ),
-                      ],
-                    ),
+                    useCompactActions
+                        ? PopupMenuButton<String>(
+                            tooltip: 'Actions',
+                            onSelected: (value) {
+                              if (value == 'edit') {
+                                onEdit(u);
+                              } else if (value == 'delete') {
+                                onDelete(u);
+                              }
+                            },
+                            itemBuilder: (context) => const [
+                              PopupMenuItem<String>(
+                                value: 'edit',
+                                child: Text('Edit'),
+                              ),
+                              PopupMenuItem<String>(
+                                value: 'delete',
+                                child: Text('Delete'),
+                              ),
+                            ],
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(Icons.more_vert),
+                            ),
+                          )
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Edit',
+                                icon: const Icon(Icons.edit),
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () => onEdit(u),
+                              ),
+                              IconButton(
+                                tooltip: 'Delete',
+                                icon: const Icon(Icons.delete_outline),
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () => onDelete(u),
+                              ),
+                            ],
+                          ),
                   ),
                 ],
               );

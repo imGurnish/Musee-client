@@ -20,13 +20,32 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
   @override
   void initState() {
     super.initState();
+    _searchCtrl.addListener(_onSearchTextChanged);
     context.read<AdminTracksBloc>().add(LoadTracks(page: 0, limit: _limit));
   }
 
   @override
   void dispose() {
+    _searchCtrl.removeListener(_onSearchTextChanged);
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  void _onSearchTextChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _searchTracks({int page = 0, int? limit, String? search}) {
+    final currentLimit = limit ?? _limit;
+    final query = search ?? _searchCtrl.text.trim();
+    context.read<AdminTracksBloc>().add(
+      LoadTracks(
+        page: page,
+        limit: currentLimit,
+        search: query.isEmpty ? null : query,
+      ),
+    );
   }
 
   Future<void> _confirmDeleteOne(Track track) async {
@@ -110,9 +129,197 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
 
   void _clearSelection() => setState(_selectedTrackIds.clear);
 
+  void _showMobileTrackMenu(Track track, bool selected) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              track.title,
+              style: Theme.of(context).textTheme.titleLarge,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: Icon(selected ? Icons.check_box : Icons.check_box_outline_blank),
+            title: Text(selected ? 'Deselect' : 'Select'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _toggleSelectTrack(track, !selected);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('View Details'),
+            onTap: () {
+              Navigator.pop(ctx);
+              context.push('/admin/tracks/${track.trackId}');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline, color: Colors.red),
+            title: const Text('Delete', style: TextStyle(color: Colors.red)),
+            onTap: () {
+              Navigator.pop(ctx);
+              _confirmDeleteOne(track);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileSearchFilters(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Search Tracks',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.search_rounded,
+                size: 20,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'Search by track title',
+                    border: InputBorder.none,
+                    isDense: true,
+                    hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _searchTracks(),
+                ),
+              ),
+              if (_searchCtrl.text.trim().isNotEmpty)
+                IconButton(
+                  tooltip: 'Clear',
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    _searchCtrl.clear();
+                    setState(() {});
+                    _searchTracks();
+                  },
+                ),
+              const SizedBox(width: 6),
+              FilledButton.tonal(
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                  _searchTracks();
+                },
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(42, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Icon(Icons.arrow_forward_rounded, size: 18),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopSearchFilters(ThemeData theme) {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.search_rounded,
+                  size: 20,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _searchCtrl,
+                    decoration: InputDecoration(
+                      hintText: 'Search by track title',
+                      border: InputBorder.none,
+                      isDense: true,
+                      hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _searchTracks(),
+                  ),
+                ),
+                if (_searchCtrl.text.trim().isNotEmpty)
+                  IconButton(
+                    tooltip: 'Clear',
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      setState(() {});
+                      _searchTracks();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        FilledButton.tonalIcon(
+          onPressed: () {
+            FocusScope.of(context).unfocus();
+            _searchTracks();
+          },
+          icon: const Icon(Icons.search_rounded),
+          label: const Text('Search'),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(110, 42),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 768;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin • Tracks'),
@@ -135,53 +342,15 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchCtrl,
-                    decoration: InputDecoration(
-                      hintText: 'Search by title',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    onSubmitted: (v) => context.read<AdminTracksBloc>().add(
-                      LoadTracks(
-                        page: 0,
-                        limit: _limit,
-                        search: v.trim().isEmpty ? null : v.trim(),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                DropdownButton<int>(
-                  value: _limit,
-                  onChanged: (v) {
-                    if (v == null) return;
-                    setState(() => _limit = v);
-                    context.read<AdminTracksBloc>().add(
-                      LoadTracks(
-                        page: 0,
-                        limit: v,
-                        search: _searchCtrl.text.trim().isEmpty
-                            ? null
-                            : _searchCtrl.text.trim(),
-                      ),
-                    );
-                  },
-                  items: const [10, 20, 50, 100]
-                      .map(
-                        (e) => DropdownMenuItem(
-                          value: e,
-                          child: Text('Page size: $e'),
-                        ),
-                      )
-                      .toList(),
-                ),
-              ],
+            Card(
+              elevation: 0,
+              color: theme.colorScheme.surfaceContainerLowest,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: isMobile
+                    ? _buildMobileSearchFilters(theme)
+                    : _buildDesktopSearchFilters(theme),
+              ),
             ),
             const SizedBox(height: 12),
             if (_selectedTrackIds.isNotEmpty)
@@ -245,15 +414,7 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                           ),
                           const SizedBox(height: 8),
                           ElevatedButton.icon(
-                            onPressed: () => context.read<AdminTracksBloc>().add(
-                              LoadTracks(
-                                page: 0,
-                                limit: _limit,
-                                search: _searchCtrl.text.trim().isEmpty
-                                    ? null
-                                    : _searchCtrl.text.trim(),
-                              ),
-                            ),
+                            onPressed: () => _searchTracks(),
                             icon: const Icon(Icons.refresh),
                             label: const Text('Retry'),
                           ),
@@ -302,34 +463,63 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                                               .join(', ')
                                         : '—';
                                     return Card(
-                                      child: ListTile(
-                                        leading: Checkbox(
-                                          value: selected,
-                                          onChanged: (v) =>
-                                              _toggleSelectTrack(t, v ?? false),
-                                        ),
-                                        title: Text(t.title),
-                                        subtitle: Text(artists),
-                                        onTap: () => context.push(
-                                          '/admin/tracks/${t.trackId}',
-                                        ),
-                                        trailing: Wrap(
-                                          spacing: 4,
-                                          children: [
-                                            if (t.isPublished)
-                                              const Icon(
-                                                Icons.public,
-                                                size: 18,
-                                                color: Colors.green,
+                                      elevation: 0,
+                                      child: InkWell(
+                                        onTap: () => context.push('/admin/tracks/${t.trackId}'),
+                                        onLongPress: () => _toggleSelectTrack(t, !selected),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(12),
+                                          child: Row(
+                                            children: [
+                                              Checkbox(
+                                                value: selected,
+                                                onChanged: (v) => _toggleSelectTrack(t, v ?? false),
                                               ),
-                                            IconButton(
-                                              icon: const Icon(
-                                                Icons.delete_outline,
+                                              const SizedBox(width: 6),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      t.title,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: theme.textTheme.titleSmall,
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      artists,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: theme.textTheme.bodySmall,
+                                                    ),
+                                                    const SizedBox(height: 6),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                      decoration: BoxDecoration(
+                                                        color: t.isPublished
+                                                            ? Colors.green.withOpacity(0.15)
+                                                            : Colors.orange.withOpacity(0.15),
+                                                        borderRadius: BorderRadius.circular(6),
+                                                      ),
+                                                      child: Text(
+                                                        t.isPublished ? 'Published' : 'Draft',
+                                                        style: TextStyle(
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.w500,
+                                                          color: t.isPublished ? Colors.green[700] : Colors.orange[700],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
-                                              onPressed: () =>
-                                                  _confirmDeleteOne(t),
-                                            ),
-                                          ],
+                                              IconButton(
+                                                icon: const Icon(Icons.more_vert),
+                                                onPressed: () => _showMobileTrackMenu(t, selected),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
                                     );
@@ -338,9 +528,13 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                               }
 
                               // Wide: DataTable
+                              final useCompactActions = c.maxWidth < 1100;
                               return SingleChildScrollView(
                                 scrollDirection: Axis.horizontal,
                                 child: DataTable(
+                                  dataRowMinHeight: 60,
+                                  dataRowMaxHeight: 60,
+                                  columnSpacing: useCompactActions ? 20 : 28,
                                   columns: [
                                     DataColumn(
                                       label: Checkbox(
@@ -415,17 +609,48 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                                           ),
                                         ),
                                         DataCell(
-                                          Row(
-                                            children: [
-                                              IconButton(
-                                                icon: const Icon(
-                                                  Icons.delete_outline,
+                                          useCompactActions
+                                              ? PopupMenuButton<String>(
+                                                  tooltip: 'Actions',
+                                                  onSelected: (value) {
+                                                    if (value == 'details') {
+                                                      context.push('/admin/tracks/${t.trackId}');
+                                                    } else if (value == 'delete') {
+                                                      _confirmDeleteOne(t);
+                                                    }
+                                                  },
+                                                  itemBuilder: (context) => const [
+                                                    PopupMenuItem<String>(
+                                                      value: 'details',
+                                                      child: Text('View Details'),
+                                                    ),
+                                                    PopupMenuItem<String>(
+                                                      value: 'delete',
+                                                      child: Text('Delete'),
+                                                    ),
+                                                  ],
+                                                  child: const Padding(
+                                                    padding: EdgeInsets.all(4),
+                                                    child: Icon(Icons.more_vert),
+                                                  ),
+                                                )
+                                              : Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    IconButton(
+                                                      tooltip: 'View Details',
+                                                      icon: const Icon(Icons.info_outline),
+                                                      visualDensity: VisualDensity.compact,
+                                                      onPressed: () => context.push('/admin/tracks/${t.trackId}'),
+                                                    ),
+                                                    IconButton(
+                                                      tooltip: 'Delete',
+                                                      icon: const Icon(Icons.delete_outline),
+                                                      visualDensity: VisualDensity.compact,
+                                                      onPressed: () => _confirmDeleteOne(t),
+                                                    ),
+                                                  ],
                                                 ),
-                                                onPressed: () =>
-                                                    _confirmDeleteOne(t),
-                                              ),
-                                            ],
-                                          ),
                                         ),
                                       ],
                                     );
@@ -452,44 +677,102 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                             alignment: WrapAlignment.spaceBetween,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              Text(
-                                'Total: ${state.total}',
-                                style: theme.textTheme.titleSmall,
-                              ),
-                              Wrap(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
                                 spacing: 8,
                                 children: [
-                                  IconButton(
-                                    onPressed: state.page > 0
-                                        ? () =>
-                                              context.read<AdminTracksBloc>().add(
-                                                LoadTracks(
-                                                  page: state.page - 1,
-                                                  limit: state.limit,
-                                                  search: state.search,
-                                                ),
-                                              )
-                                        : null,
-                                    icon: const Icon(Icons.chevron_left),
-                                  ),
-                                  Center(
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.primaryContainer,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
                                     child: Text(
-                                      'Page ${state.page + 1} of $totalPages',
-                                      style: theme.textTheme.bodySmall,
+                                      'Total: ${state.total}',
+                                      style: theme.textTheme.labelSmall?.copyWith(
+                                        color: theme.colorScheme.onPrimaryContainer,
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
                                   ),
-                                  IconButton(
-                                    onPressed: state.page < totalPages - 1
-                                        ? () =>
-                                              context.read<AdminTracksBloc>().add(
-                                                LoadTracks(
-                                                  page: state.page + 1,
-                                                  limit: state.limit,
-                                                  search: state.search,
-                                                ),
+                                  SizedBox(
+                                    height: 36,
+                                    width: 36,
+                                    child: FilledButton.tonal(
+                                      onPressed: state.page > 0
+                                          ? () => _searchTracks(
+                                                page: state.page - 1,
+                                                limit: state.limit,
+                                                search: state.search,
                                               )
-                                        : null,
-                                    icon: const Icon(Icons.chevron_right),
+                                          : null,
+                                      style: FilledButton.styleFrom(padding: EdgeInsets.zero),
+                                      child: const Icon(Icons.chevron_left, size: 18),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surfaceVariant,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '${state.page + 1} / $totalPages',
+                                  style: theme.textTheme.labelSmall,
+                                ),
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                spacing: 8,
+                                children: [
+                                  SizedBox(
+                                    height: 36,
+                                    width: 36,
+                                    child: FilledButton.tonal(
+                                      onPressed: state.page < totalPages - 1
+                                          ? () => _searchTracks(
+                                                page: state.page + 1,
+                                                limit: state.limit,
+                                                search: state.search,
+                                              )
+                                          : null,
+                                      style: FilledButton.styleFrom(padding: EdgeInsets.zero),
+                                      child: const Icon(Icons.chevron_right, size: 18),
+                                    ),
+                                  ),
+                                  PopupMenuButton<int>(
+                                    initialValue: _limit,
+                                    onSelected: (v) {
+                                      setState(() => _limit = v);
+                                      _searchTracks(limit: v);
+                                    },
+                                    itemBuilder: (context) => [10, 20, 50, 100]
+                                        .map((e) => PopupMenuItem(
+                                              value: e,
+                                              child: Text(e.toString()),
+                                            ))
+                                        .toList(),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(color: theme.colorScheme.outline),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        spacing: 4,
+                                        children: [
+                                          Text(_limit.toString(), style: theme.textTheme.labelSmall),
+                                          Icon(
+                                            Icons.arrow_drop_down,
+                                            size: 16,
+                                            color: theme.colorScheme.onSurfaceVariant,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
