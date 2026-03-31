@@ -23,6 +23,7 @@ class UsersTable extends StatelessWidget {
     final allSelected = users.isNotEmpty && users.every((u) => selectedIds.contains(u.id));
     final width = MediaQuery.of(context).size.width;
     final useCompactActions = width < 1200;
+    final isIntermediateWidth = width < 1360;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: ConstrainedBox(
@@ -31,7 +32,7 @@ class UsersTable extends StatelessWidget {
           child: DataTable(
             dataRowMinHeight: 62,
             dataRowMaxHeight: 62,
-            columnSpacing: useCompactActions ? 18 : 24,
+            columnSpacing: useCompactActions ? (isIntermediateWidth ? 12 : 18) : 24,
             columns: [
               DataColumn(
                 label: Checkbox(
@@ -51,8 +52,6 @@ class UsersTable extends StatelessWidget {
             rows: users.map((u) {
               final selected = selectedIds.contains(u.id);
               return DataRow(
-                selected: selected,
-                onSelectChanged: (_) => onEdit(u),
                 cells: [
                   DataCell(
                     Checkbox(
@@ -62,7 +61,7 @@ class UsersTable extends StatelessWidget {
                   ),
                   DataCell(
                     CircleAvatar(
-                      radius: 16,
+                      radius: isIntermediateWidth ? 14 : 16,
                       backgroundImage: u.avatarUrl.isNotEmpty
                           ? NetworkImage(u.avatarUrl)
                           : null,
@@ -73,14 +72,37 @@ class UsersTable extends StatelessWidget {
                           : null,
                     ),
                   ),
-                  DataCell(Text(u.name)),
-                  DataCell(Text(u.email ?? '—')),
+                  DataCell(
+                    SizedBox(
+                      width: isIntermediateWidth ? 140 : 180,
+                      child: Text(
+                        u.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  DataCell(
+                    SizedBox(
+                      width: isIntermediateWidth ? 250 : 340,
+                      child: Text(
+                        u.email ?? '—',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
                   DataCell(Text(u.userType.value)),
                   DataCell(Text(u.subscriptionType.value)),
                   DataCell(
-                    Text(
-                      u.lastLoginAt?.toLocal().toString().split('.').first ??
-                          '—',
+                    SizedBox(
+                      width: isIntermediateWidth ? 140 : 170,
+                      child: Text(
+                        u.lastLoginAt?.toLocal().toString().split('.').first ??
+                            '—',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                   DataCell(

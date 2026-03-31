@@ -27,11 +27,22 @@ class UsersList extends StatelessWidget {
       itemBuilder: (context, i) {
         final u = users[i];
         final selected = selectedIds.contains(u.id);
-        return Material(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(12),
+        final subIsPremium = u.subscriptionType.value == 'premium';
+        final subIsTrial = u.subscriptionType.value == 'trial';
+        final accentColor = selected
+            ? theme.colorScheme.primary
+            : theme.colorScheme.outlineVariant;
+
+        return Card(
+          elevation: selected ? 1 : 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: accentColor.withOpacity(selected ? 0.45 : 0.30)),
+          ),
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
             onTap: () {
               if (hasSelection) {
                 onSelect(u, !selected);
@@ -40,19 +51,35 @@ class UsersList extends StatelessWidget {
               }
             },
             onLongPress: () => onSelect(u, !selected),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          CircleAvatar(
-                            radius: 22,
+            child: Ink(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    theme.colorScheme.surface,
+                    theme.colorScheme.surfaceContainerLowest,
+                  ],
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: accentColor.withOpacity(0.7),
+                            ),
+                          ),
+                          child: CircleAvatar(
+                            radius: 24,
                             backgroundImage: u.avatarUrl.isNotEmpty
                                 ? NetworkImage(u.avatarUrl)
                                 : null,
@@ -64,71 +91,132 @@ class UsersList extends StatelessWidget {
                                   )
                                 : null,
                           ),
-                          if (selected)
-                            Positioned(
-                              top: -2,
-                              right: -2,
-                              child: Container(
-                                padding: const EdgeInsets.all(2),
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.primary,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.check,
-                                  size: 14,
-                                  color: Colors.white,
-                                ),
+                        ),
+                        if (selected)
+                          Positioned(
+                            top: -3,
+                            right: -3,
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.primary,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.check,
+                                size: 14,
+                                color: Colors.white,
                               ),
                             ),
-                        ],
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              u.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleSmall,
-                            ),
-                            if (u.email != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 2),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
                                 child: Text(
-                                  u.email!,
+                                  u.name,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodyMedium,
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: [
-                                _Tag(label: u.userType.value),
-                                _Tag(label: u.subscriptionType.value),
-                              ],
+                              const SizedBox(width: 8),
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color:
+                                      theme.colorScheme.surfaceContainerHighest,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: IconButton(
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  visualDensity: VisualDensity.compact,
+                                  iconSize: 18,
+                                  icon: const Icon(Icons.more_vert),
+                                  tooltip: 'Actions',
+                                  onPressed: () =>
+                                      _showMobileMenu(context, u, selected),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            (u.email != null && u.email!.trim().isNotEmpty)
+                                ? u.email!
+                                : 'No email',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              _Tag(
+                                icon: Icons.person_outline,
+                                label: u.userType.value,
+                              ),
+                              _Tag(
+                                icon: subIsPremium
+                                    ? Icons.workspace_premium_outlined
+                                    : subIsTrial
+                                    ? Icons.auto_awesome_outlined
+                                    : Icons.sell_outlined,
+                                label: u.subscriptionType.value,
+                                backgroundColor: subIsPremium
+                                    ? Colors.green.withOpacity(0.15)
+                                    : subIsTrial
+                                    ? Colors.blue.withOpacity(0.15)
+                                    : Colors.orange.withOpacity(0.15),
+                                foregroundColor: subIsPremium
+                                    ? Colors.green[700]
+                                    : subIsTrial
+                                    ? Colors.blue[700]
+                                    : Colors.orange[700],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.access_time_rounded,
+                                size: 14,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  'Last login: ${u.lastLoginAt?.toLocal().toString().split('.').first ?? '—'}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.more_vert),
-                        tooltip: 'Actions',
-                        onPressed: () => _showMobileMenu(context, u, selected),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Last login: ${u.lastLoginAt?.toLocal().toString().split('.').first ?? '—'}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -186,8 +274,16 @@ class UsersList extends StatelessWidget {
 }
 
 class _Tag extends StatelessWidget {
+  final IconData? icon;
   final String label;
-  const _Tag({required this.label});
+  final Color? backgroundColor;
+  final Color? foregroundColor;
+  const _Tag({
+    this.icon,
+    required this.label,
+    this.backgroundColor,
+    this.foregroundColor,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -195,10 +291,29 @@ class _Tag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
+        color: backgroundColor ?? theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(label, style: theme.textTheme.labelSmall),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(
+              icon,
+              size: 12,
+              color: foregroundColor ?? theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: foregroundColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

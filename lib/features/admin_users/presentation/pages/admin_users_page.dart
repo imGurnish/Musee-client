@@ -276,7 +276,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isMobile = MediaQuery.of(context).size.width < 768;
+    final isMobile = MediaQuery.of(context).size.width < 1024;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Users'),
@@ -394,7 +394,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                     );
                     return LayoutBuilder(
                       builder: (context, c) {
-                        final isMobile = c.maxWidth < 700;
+                        final isMobile = c.maxWidth < 1024;
                         return Column(
                           children: [
                             Expanded(

@@ -576,13 +576,33 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                                                             : Colors.orange.withOpacity(0.15),
                                                         borderRadius: BorderRadius.circular(6),
                                                       ),
-                                                      child: Text(
-                                                        t.isPublished ? 'Published' : 'Draft',
-                                                        style: TextStyle(
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.w500,
-                                                          color: t.isPublished ? Colors.green[700] : Colors.orange[700],
-                                                        ),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(
+                                                            t.isPublished
+                                                                ? Icons.check_circle
+                                                                : Icons.schedule,
+                                                            size: 14,
+                                                            color: t.isPublished
+                                                                ? Colors.green[700]
+                                                                : Colors.orange[700],
+                                                          ),
+                                                          const SizedBox(width: 4),
+                                                          Text(
+                                                            t.isPublished
+                                                                ? 'Published'
+                                                                : 'Draft',
+                                                            style: TextStyle(
+                                                              fontSize: 11,
+                                                              fontWeight:
+                                                                  FontWeight.w500,
+                                                              color: t.isPublished
+                                                                  ? Colors.green[700]
+                                                                  : Colors.orange[700],
+                                                            ),
+                                                          ),
+                                                        ],
                                                       ),
                                                     ),
                                                   ],
