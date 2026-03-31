@@ -387,9 +387,6 @@ class _HeaderBar extends StatelessWidget {
         const SizedBox(width: 8),
         BlocBuilder<AppUserCubit, AppUserState>(
           builder: (context, state) {
-            final isAdmin =
-                state is AppUserLoggedIn &&
-                state.user.userType == UserType.admin;
             return PopupMenuButton<String>(
               icon: const CircleAvatar(child: Icon(Icons.person)),
               onSelected: (value) {
