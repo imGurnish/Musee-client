@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:musee/core/common/cubit/app_user_cubit.dart';
-import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 import 'package:musee/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:musee/features/user__dashboard/presentation/widgets/horizontal_media_section.dart';
 import 'package:musee/features/user__dashboard/presentation/widgets/section_header.dart';
@@ -76,9 +75,7 @@ class _UserDashboardState extends State<UserDashboard> {
             fullscreenDialog: true,
             builder: (_) => BlocProvider(
               create: (_) => serviceLocator<OnboardingBloc>(),
-              child: OnboardingPage(
-                userId: userId,
-              ),
+              child: OnboardingPage(userId: userId),
             ),
           ),
         );
@@ -158,7 +155,6 @@ class _UserDashboardState extends State<UserDashboard> {
           return previous.track?.trackId != current.track?.trackId;
         },
         child: Scaffold(
-          bottomNavigationBar: BottomNavBar(selectedIndex: 0),
           body: SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -198,8 +194,9 @@ class _UserDashboardState extends State<UserDashboard> {
                         .toList();
 
                     return RefreshIndicator(
-                      onRefresh: () =>
-                          context.read<UserDashboardCubit>().load(forceRefresh: true),
+                      onRefresh: () => context.read<UserDashboardCubit>().load(
+                        forceRefresh: true,
+                      ),
                       child: CustomScrollView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         slivers: [

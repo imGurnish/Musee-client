@@ -1,14 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 
 class ComingSoonPage extends StatelessWidget {
   final String featureName;
-  final int selectedIndex;
-  const ComingSoonPage({
-    super.key,
-    required this.featureName,
-    required this.selectedIndex,
-  });
+  const ComingSoonPage({super.key, required this.featureName});
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +11,6 @@ class ComingSoonPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(title: Text(featureName), centerTitle: true),
-      bottomNavigationBar: BottomNavBar(selectedIndex: selectedIndex),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),

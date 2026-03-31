@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'dart:math';
-import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:musee/features/user_albums/presentation/bloc/user_album_bloc.dart';
 import 'package:musee/core/player/player_cubit.dart';
@@ -197,14 +196,15 @@ class _UserAlbumView extends StatelessWidget {
                             OutlinedButton.icon(
                               onPressed: canPlayAlbum
                                   ? () async {
-                                      final randomTrack =
-                                          album.tracks[Random().nextInt(trackCount)];
+                                      final randomTrack = album
+                                          .tracks[Random().nextInt(trackCount)];
                                       final artists =
                                           randomTrack.artists.isNotEmpty
                                           ? randomTrack.artists
                                                 .map(
                                                   (a) =>
-                                                      a.name ?? 'Unknown Artist',
+                                                      a.name ??
+                                                      'Unknown Artist',
                                                 )
                                                 .join(', ')
                                           : primaryArtist;
@@ -382,7 +382,9 @@ class _UserAlbumView extends StatelessWidget {
                                           album.isTrackOffline(t.trackId) ||
                                           t.isExplicit)
                                         Padding(
-                                          padding: const EdgeInsets.only(top: 6),
+                                          padding: const EdgeInsets.only(
+                                            top: 6,
+                                          ),
                                           child: Wrap(
                                             spacing: 6,
                                             runSpacing: 4,
@@ -397,13 +399,19 @@ class _UserAlbumView extends StatelessWidget {
                                                       .colorScheme
                                                       .tertiaryContainer,
                                                 ),
-                                              if (album.isTrackCached(t.trackId))
+                                              if (album.isTrackCached(
+                                                t.trackId,
+                                              ))
                                                 const _TrackStatusChip(
-                                                  icon: Icons.cloud_done_rounded,
+                                                  icon:
+                                                      Icons.cloud_done_rounded,
                                                 ),
-                                              if (album.isTrackOffline(t.trackId))
+                                              if (album.isTrackOffline(
+                                                t.trackId,
+                                              ))
                                                 const _TrackStatusChip(
-                                                  icon: Icons.offline_bolt_rounded,
+                                                  icon: Icons
+                                                      .offline_bolt_rounded,
                                                 ),
                                             ],
                                           ),
@@ -523,7 +531,6 @@ class _UserAlbumView extends StatelessWidget {
           },
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(selectedIndex: 0),
     );
   }
 }

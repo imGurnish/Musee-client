@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 
 class UserLibraryPage extends StatelessWidget {
   const UserLibraryPage({super.key});
@@ -46,7 +45,6 @@ class UserLibraryPage extends StatelessWidget {
           ),
         ],
       ),
-      bottomNavigationBar: const BottomNavBar(selectedIndex: 2),
     );
   }
 }

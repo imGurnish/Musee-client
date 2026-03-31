@@ -6,7 +6,6 @@ import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:get_it/get_it.dart';
 
@@ -50,11 +49,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: _buildAppBar(),
-      body: _buildBody(),
-      bottomNavigationBar: const BottomNavBar(selectedIndex: 1),
-    );
+    return Scaffold(appBar: _buildAppBar(), body: _buildBody());
   }
 
   /// Builds app bar with search field
@@ -147,13 +142,14 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
         cachedAlbumIds: final cachedAlbumIds,
         cachedPlaylistIds: final cachedPlaylistIds,
         fromOfflineCache: final fromOfflineCache,
-      ) => _buildCatalogSearchResults(
-        results,
-        cachedTrackIds: cachedTrackIds,
-        cachedAlbumIds: cachedAlbumIds,
-        cachedPlaylistIds: cachedPlaylistIds,
-        fromOfflineCache: fromOfflineCache,
-      ),
+      ) =>
+        _buildCatalogSearchResults(
+          results,
+          cachedTrackIds: cachedTrackIds,
+          cachedAlbumIds: cachedAlbumIds,
+          cachedPlaylistIds: cachedPlaylistIds,
+          fromOfflineCache: fromOfflineCache,
+        ),
       VideosError() => _buildErrorState(),
       _ => _buildInitialState(),
     };
@@ -493,7 +489,9 @@ class _TrackTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final artistNames = track.artists.map((a) => a.name ?? a.artistId).join(', ');
+    final artistNames = track.artists
+        .map((a) => a.name ?? a.artistId)
+        .join(', ');
     final durationLabel = _formatDuration(track.duration);
 
     return _ResultTileContainer(
@@ -598,9 +596,9 @@ class _TrackTile extends StatelessWidget {
     if (action == 'download') {
       GetIt.I<DownloadManager>().addToQueue(track.trackId);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Added to downloads')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Added to downloads')));
       }
       return;
     }
@@ -616,9 +614,9 @@ class _TrackTile extends StatelessWidget {
       );
       await GetIt.I<PlayerCubit>().addToQueue([item]);
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Added to queue')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Added to queue')));
       }
     }
   }
@@ -775,7 +773,9 @@ class _AlbumTile extends StatelessWidget {
 
     if (action == 'queue') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add to queue is available in album view')),
+        const SnackBar(
+          content: Text('Add to queue is available in album view'),
+        ),
       );
       return;
     }
@@ -807,11 +807,7 @@ class _PlaylistTile extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        subtitle: Text(
-          subtitle,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
         trailing: const _TypeChip(label: 'Playlist'),
         onTap: () {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -833,7 +829,9 @@ class _ResultTileContainer extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.48),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.48,
+        ),
         borderRadius: BorderRadius.circular(14),
         child: child,
       ),
@@ -978,8 +976,7 @@ class _PlaylistArtwork extends StatelessWidget {
             child: SizedBox(
               width: 56,
               height: 56,
-              child:
-                  playlist.coverUrl != null && playlist.coverUrl!.isNotEmpty
+              child: playlist.coverUrl != null && playlist.coverUrl!.isNotEmpty
                   ? Image.network(
                       playlist.coverUrl!,
                       fit: BoxFit.cover,

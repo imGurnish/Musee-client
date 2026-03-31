@@ -7,7 +7,6 @@ import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/core/player/player_cubit.dart';
-import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 
 class DownloadsPage extends StatefulWidget {
   const DownloadsPage({super.key});
@@ -480,7 +479,6 @@ class _DownloadsPageState extends State<DownloadsPage> {
           },
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(selectedIndex: 2),
     );
   }
 

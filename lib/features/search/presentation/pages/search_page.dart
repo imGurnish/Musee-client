@@ -3,7 +3,6 @@ import 'package:musee/features/search/presentation/pages/search_suggestions_page
 import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 
 /// Main search page that displays a search input field
 /// Navigates to SearchSuggestionsPage when user taps the search field
@@ -26,11 +25,7 @@ class _SearchPageState extends State<SearchPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: _buildAppBar(),
-      body: _buildBody(),
-      bottomNavigationBar: const BottomNavBar(selectedIndex: 1),
-    );
+    return Scaffold(appBar: _buildAppBar(), body: _buildBody());
   }
 
   /// Builds the app bar with search input field

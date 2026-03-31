@@ -8,7 +8,13 @@ import 'package:musee/core/player/player_state.dart';
 
 class BottomNavBar extends StatefulWidget {
   final int selectedIndex;
-  const BottomNavBar({super.key, required this.selectedIndex});
+  final ValueChanged<int>? onItemSelected;
+
+  const BottomNavBar({
+    super.key,
+    required this.selectedIndex,
+    this.onItemSelected,
+  });
 
   @override
   State<BottomNavBar> createState() => _BottomNavBarState();
@@ -110,7 +116,11 @@ class _BottomNavBarState extends State<BottomNavBar> {
       child: InkWell(
         onTap: () {
           if (!isSelected) {
-            context.push(route);
+            if (widget.onItemSelected != null) {
+              widget.onItemSelected!(index);
+            } else {
+              context.push(route);
+            }
           }
         },
         borderRadius: BorderRadius.circular(12),
