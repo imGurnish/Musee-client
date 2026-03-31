@@ -110,7 +110,7 @@ import 'package:musee/core/cache/services/image_cache_service.dart';
 import 'package:musee/core/cache/services/user_media_detail_cache_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:musee/features/admin_external_import/data/jiosaavn_api_client.dart';
-import 'package:musee/features/admin_external_import/data/admin_external_import_service.dart';
+import 'package:musee/features/admin_external_import/data/admin_import_queue_client.dart';
 import 'package:musee/features/user_onboarding/data/datasources/onboarding_remote_data_source.dart';
 import 'package:musee/features/user_onboarding/data/repositories/onboarding_repository_impl.dart';
 import 'package:musee/features/user_onboarding/domain/repository/onboarding_repository.dart';
@@ -236,14 +236,10 @@ Future<void> initDependencies() async {
   _initAdminPlaylists();
 
   serviceLocator.registerLazySingleton<JioSaavnApiClient>(() => JioSaavnApiClient());
-  serviceLocator.registerLazySingleton<AdminExternalImportService>(
-    () => AdminExternalImportService(
-      jioApi: serviceLocator<JioSaavnApiClient>(),
-      artistsApi: serviceLocator<AdminArtistsRemoteDataSource>(),
-      albumsApi: serviceLocator<AdminAlbumsRemoteDataSource>(),
-      tracksApi: serviceLocator<AdminTracksRemoteDataSource>(),
-      supabase: serviceLocator<SupabaseClient>(),
+  serviceLocator.registerLazySingleton<AdminImportQueueClient>(
+    () => AdminImportQueueClient(
       dioClient: serviceLocator<Dio>(),
+      supabase: serviceLocator<SupabaseClient>(),
     ),
   );
 

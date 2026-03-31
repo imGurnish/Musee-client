@@ -203,7 +203,7 @@ class _AdminTrackCreatePageState extends State<AdminTrackCreatePage> {
         title: const Text('Create Track'),
         actions: [
           TextButton.icon(
-            onPressed: () => context.push(Routes.adminTrackImport),
+            onPressed: () => context.push(Routes.adminImport),
             icon: const Icon(Icons.cloud_download),
             label: const Text('Import from JioSaavn'),
           ),
