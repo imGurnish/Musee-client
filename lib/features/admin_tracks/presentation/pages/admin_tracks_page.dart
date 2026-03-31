@@ -161,6 +161,22 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
               context.push('/admin/tracks/${track.trackId}');
             },
           ),
+          const Divider(height: 1),
+          ListTile(
+            leading: Icon(
+              track.isPublished ? Icons.visibility_off : Icons.visibility,
+            ),
+            title: Text(track.isPublished ? 'Unpublish' : 'Publish'),
+            onTap: () {
+              Navigator.pop(ctx);
+              context.read<AdminTracksBloc>().add(
+                UpdateTrackEvent(
+                  id: track.trackId,
+                  isPublished: !track.isPublished,
+                ),
+              );
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.delete_outline, color: Colors.red),
             title: const Text('Delete', style: TextStyle(color: Colors.red)),
@@ -457,25 +473,83 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                                     final selected = _selectedTrackIds.contains(
                                       t.trackId,
                                     );
+                                    final hasSelection =
+                                        _selectedTrackIds.isNotEmpty;
                                     final artists = t.artists.isNotEmpty
                                         ? t.artists
                                               .map((a) => a.name)
                                               .join(', ')
                                         : '—';
+                                    final coverUrl = t.artists.isNotEmpty
+                                        ? t.artists.first.avatarUrl
+                                        : null;
                                     return Card(
                                       elevation: 0,
                                       child: InkWell(
-                                        onTap: () => context.push('/admin/tracks/${t.trackId}'),
+                                        onTap: () {
+                                          if (hasSelection) {
+                                            _toggleSelectTrack(t, !selected);
+                                          } else {
+                                            context.push('/admin/tracks/${t.trackId}');
+                                          }
+                                        },
                                         onLongPress: () => _toggleSelectTrack(t, !selected),
                                         child: Padding(
                                           padding: const EdgeInsets.all(12),
                                           child: Row(
                                             children: [
-                                              Checkbox(
-                                                value: selected,
-                                                onChanged: (v) => _toggleSelectTrack(t, v ?? false),
+                                              Stack(
+                                                clipBehavior: Clip.none,
+                                                children: [
+                                                  ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(8),
+                                                    child: coverUrl != null
+                                                        ? Image.network(
+                                                            coverUrl,
+                                                            width: 54,
+                                                            height: 54,
+                                                            fit: BoxFit.cover,
+                                                          )
+                                                        : Container(
+                                                            width: 54,
+                                                            height: 54,
+                                                            color: theme
+                                                                .colorScheme
+                                                                .surfaceContainerHighest,
+                                                            child: Icon(
+                                                              Icons.music_note,
+                                                              color: theme
+                                                                  .colorScheme
+                                                                  .onSurfaceVariant,
+                                                            ),
+                                                          ),
+                                                  ),
+                                                  if (selected)
+                                                    Positioned(
+                                                      top: -3,
+                                                      right: -3,
+                                                      child: Container(
+                                                        padding:
+                                                            const EdgeInsets.all(
+                                                              2,
+                                                            ),
+                                                        decoration: BoxDecoration(
+                                                          color: theme
+                                                              .colorScheme
+                                                              .primary,
+                                                          shape: BoxShape.circle,
+                                                        ),
+                                                        child: const Icon(
+                                                          Icons.check,
+                                                          size: 14,
+                                                          color: Colors.white,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                ],
                                               ),
-                                              const SizedBox(width: 6),
+                                              const SizedBox(width: 12),
                                               Expanded(
                                                 child: Column(
                                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -529,132 +603,207 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
 
                               // Wide: DataTable
                               final useCompactActions = c.maxWidth < 1100;
+                              final isIntermediateWidth = c.maxWidth < 1280;
                               return SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: DataTable(
-                                  dataRowMinHeight: 60,
-                                  dataRowMaxHeight: 60,
-                                  columnSpacing: useCompactActions ? 20 : 28,
-                                  columns: [
-                                    DataColumn(
-                                      label: Checkbox(
-                                        value: items.isNotEmpty &&
-                                            _selectedTrackIds.containsAll(
-                                              items.map((e) => e.trackId),
-                                            ),
-                                        onChanged: (v) => _toggleSelectAllVisible(
-                                          items,
-                                          v ?? false,
+                                scrollDirection: Axis.vertical,
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: DataTable(
+                                    dataRowMinHeight: 60,
+                                    dataRowMaxHeight: 60,
+                                    columnSpacing: useCompactActions
+                                        ? (isIntermediateWidth ? 8 : 20)
+                                        : 28,
+                                    columns: [
+                                      DataColumn(
+                                        label: Checkbox(
+                                          value: items.isNotEmpty &&
+                                              _selectedTrackIds.containsAll(
+                                                items.map((e) => e.trackId),
+                                              ),
+                                          onChanged: (v) => _toggleSelectAllVisible(
+                                            items,
+                                            v ?? false,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    const DataColumn(label: Text('Title')),
-                                    const DataColumn(label: Text('Artists')),
-                                    const DataColumn(label: Text('Published')),
-                                    const DataColumn(label: Text('Created')),
-                                    const DataColumn(label: Text('Actions')),
-                                  ],
-                                  rows: items.map((t) {
-                                    final selected = _selectedTrackIds.contains(
-                                      t.trackId,
-                                    );
-                                    final artists = t.artists.isNotEmpty
-                                        ? t.artists
-                                              .map((a) => a.name)
-                                              .join(', ')
-                                        : '—';
-                                    return DataRow(
-                                      onSelectChanged: (_) => context.push(
-                                        '/admin/tracks/${t.trackId}',
-                                      ),
-                                      cells: [
-                                        DataCell(
-                                          Checkbox(
-                                            value: selected,
-                                            onChanged: (v) =>
-                                                _toggleSelectTrack(
-                                                  t,
-                                                  v ?? false,
-                                                ),
-                                          ),
-                                        ),
-                                        DataCell(Text(t.title)),
-                                        DataCell(
-                                          SizedBox(
-                                            width: 280,
-                                            child: Text(
-                                              artists,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ),
-                                        DataCell(
-                                          Icon(
-                                            t.isPublished
-                                                ? Icons.check
-                                                : Icons.close,
-                                            size: 18,
-                                            color: t.isPublished
-                                                ? Colors.green
-                                                : Colors.redAccent,
-                                          ),
-                                        ),
-                                        DataCell(
-                                          Text(
-                                            t.createdAt
-                                                .toLocal()
-                                                .toString()
-                                                .split('.')
-                                                .first,
-                                          ),
-                                        ),
-                                        DataCell(
-                                          useCompactActions
-                                              ? PopupMenuButton<String>(
-                                                  tooltip: 'Actions',
-                                                  onSelected: (value) {
-                                                    if (value == 'details') {
-                                                      context.push('/admin/tracks/${t.trackId}');
-                                                    } else if (value == 'delete') {
-                                                      _confirmDeleteOne(t);
-                                                    }
-                                                  },
-                                                  itemBuilder: (context) => const [
-                                                    PopupMenuItem<String>(
-                                                      value: 'details',
-                                                      child: Text('View Details'),
-                                                    ),
-                                                    PopupMenuItem<String>(
-                                                      value: 'delete',
-                                                      child: Text('Delete'),
-                                                    ),
-                                                  ],
-                                                  child: const Padding(
-                                                    padding: EdgeInsets.all(4),
-                                                    child: Icon(Icons.more_vert),
+                                      const DataColumn(label: Text('Cover')),
+                                      const DataColumn(label: Text('Title')),
+                                      const DataColumn(label: Text('Artists')),
+                                      const DataColumn(label: Text('Status')),
+                                      const DataColumn(label: Text('Created')),
+                                      const DataColumn(label: Text('Actions')),
+                                    ],
+                                    rows: items.map((t) {
+                                      final selected = _selectedTrackIds.contains(
+                                        t.trackId,
+                                      );
+                                      final coverUrl = t.artists.isNotEmpty
+                                          ? t.artists.first.avatarUrl
+                                          : null;
+                                      final artists = t.artists.isNotEmpty
+                                          ? t.artists
+                                                .map((a) => a.name)
+                                                .join(', ')
+                                          : '—';
+                                      return DataRow(
+                                        cells: [
+                                          DataCell(
+                                            Checkbox(
+                                              value: selected,
+                                              onChanged: (v) =>
+                                                  _toggleSelectTrack(
+                                                    t,
+                                                    v ?? false,
                                                   ),
-                                                )
-                                              : Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    IconButton(
-                                                      tooltip: 'View Details',
-                                                      icon: const Icon(Icons.info_outline),
-                                                      visualDensity: VisualDensity.compact,
-                                                      onPressed: () => context.push('/admin/tracks/${t.trackId}'),
+                                            ),
+                                          ),
+                                          DataCell(
+                                            CircleAvatar(
+                                              radius: isIntermediateWidth ? 18 : 22,
+                                              backgroundColor: theme
+                                                  .colorScheme
+                                                  .surfaceContainerHighest,
+                                              backgroundImage: coverUrl != null
+                                                  ? NetworkImage(coverUrl)
+                                                  : null,
+                                              child: coverUrl == null
+                                                  ? Icon(
+                                                      Icons.music_note,
+                                                      size: 20,
+                                                      color: theme.colorScheme
+                                                          .onSurfaceVariant,
+                                                    )
+                                                  : null,
+                                            ),
+                                          ),
+                                          DataCell(
+                                            SizedBox(
+                                              width: isIntermediateWidth ? 140 : 220,
+                                              child: Text(
+                                                t.title,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ),
+                                          DataCell(
+                                            SizedBox(
+                                              width: isIntermediateWidth ? 180 : 280,
+                                              child: Text(
+                                                artists,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ),
+                                          DataCell(
+                                            Icon(
+                                              t.isPublished
+                                                  ? Icons.check_circle
+                                                  : Icons.schedule,
+                                              size: 20,
+                                              color: t.isPublished
+                                                  ? Colors.green
+                                                  : Colors.orange,
+                                            ),
+                                          ),
+                                          DataCell(
+                                            SizedBox(
+                                              width: isIntermediateWidth ? 138 : 170,
+                                              child: Text(
+                                                t.createdAt
+                                                    .toLocal()
+                                                    .toString()
+                                                    .split('.')
+                                                    .first,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ),
+                                          DataCell(
+                                            useCompactActions
+                                                ? PopupMenuButton<String>(
+                                                    tooltip: 'Actions',
+                                                    onSelected: (value) {
+                                                      if (value == 'toggle') {
+                                                        context.read<AdminTracksBloc>().add(
+                                                          UpdateTrackEvent(
+                                                            id: t.trackId,
+                                                            isPublished: !t.isPublished,
+                                                          ),
+                                                        );
+                                                      } else if (value == 'details') {
+                                                        context.push('/admin/tracks/${t.trackId}');
+                                                      } else if (value == 'delete') {
+                                                        _confirmDeleteOne(t);
+                                                      }
+                                                    },
+                                                    itemBuilder: (context) => [
+                                                      PopupMenuItem<String>(
+                                                        value: 'toggle',
+                                                        child: Text(
+                                                          t.isPublished
+                                                              ? 'Unpublish'
+                                                              : 'Publish',
+                                                        ),
+                                                      ),
+                                                      const PopupMenuItem<String>(
+                                                        value: 'details',
+                                                        child: Text('View Details'),
+                                                      ),
+                                                      const PopupMenuItem<String>(
+                                                        value: 'delete',
+                                                        child: Text('Delete'),
+                                                      ),
+                                                    ],
+                                                    child: const Padding(
+                                                      padding: EdgeInsets.all(4),
+                                                      child: Icon(Icons.more_vert),
                                                     ),
-                                                    IconButton(
-                                                      tooltip: 'Delete',
-                                                      icon: const Icon(Icons.delete_outline),
-                                                      visualDensity: VisualDensity.compact,
-                                                      onPressed: () => _confirmDeleteOne(t),
-                                                    ),
-                                                  ],
-                                                ),
-                                        ),
-                                      ],
-                                    );
-                                  }).toList(),
+                                                  )
+                                                : Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      IconButton(
+                                                        tooltip: t.isPublished
+                                                            ? 'Unpublish'
+                                                            : 'Publish',
+                                                        icon: Icon(
+                                                          t.isPublished
+                                                              ? Icons.visibility
+                                                              : Icons.visibility_off,
+                                                        ),
+                                                        visualDensity: VisualDensity.compact,
+                                                        onPressed: () {
+                                                          context.read<AdminTracksBloc>().add(
+                                                            UpdateTrackEvent(
+                                                              id: t.trackId,
+                                                              isPublished: !t.isPublished,
+                                                            ),
+                                                          );
+                                                        },
+                                                      ),
+                                                      IconButton(
+                                                        tooltip: 'View Details',
+                                                        icon: const Icon(Icons.info_outline),
+                                                        visualDensity: VisualDensity.compact,
+                                                        onPressed: () => context.push('/admin/tracks/${t.trackId}'),
+                                                      ),
+                                                      IconButton(
+                                                        tooltip: 'Delete',
+                                                        icon: const Icon(Icons.delete_outline),
+                                                        visualDensity: VisualDensity.compact,
+                                                        onPressed: () => _confirmDeleteOne(t),
+                                                      ),
+                                                    ],
+                                                  ),
+                                          ),
+                                        ],
+                                      );
+                                    }).toList(),
+                                  ),
                                 ),
                               );
                             },
@@ -688,7 +837,7 @@ class _AdminTracksPageState extends State<AdminTracksPage> {
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(
-                                      'Total: ${state.total}',
+                                      '${state.total}',
                                       style: theme.textTheme.labelSmall?.copyWith(
                                         color: theme.colorScheme.onPrimaryContainer,
                                         fontWeight: FontWeight.w600,

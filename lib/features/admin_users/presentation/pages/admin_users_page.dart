@@ -453,7 +453,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                           borderRadius: BorderRadius.circular(6),
                                         ),
                                         child: Text(
-                                          'Total: ${state.total}',
+                                          '${state.total}',
                                           style: theme.textTheme.labelSmall?.copyWith(
                                             color: theme.colorScheme.onPrimaryContainer,
                                             fontWeight: FontWeight.w600,

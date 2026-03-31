@@ -571,7 +571,7 @@ class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
-                          'Total: $_total',
+                          '$_total',
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: theme.colorScheme.onPrimaryContainer,
                             fontWeight: FontWeight.w600,
