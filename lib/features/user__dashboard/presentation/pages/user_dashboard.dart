@@ -367,12 +367,12 @@ class _HeaderBar extends StatelessWidget {
             ],
           ),
         ),
-        IconButton.filledTonal(
-          onPressed: () {},
-          icon: const Icon(Icons.notifications_none),
-          tooltip: 'Notifications',
-        ),
-        const SizedBox(width: 8),
+        // IconButton.filledTonal(
+        //   onPressed: () {},
+        //   icon: const Icon(Icons.notifications_none),
+        //   tooltip: 'Notifications',
+        // ),
+        // const SizedBox(width: 8),
         // Quick access to Admin Home if the current user is an admin
         BlocBuilder<AppUserCubit, AppUserState>(
           builder: (context, state) {
@@ -409,11 +409,6 @@ class _HeaderBar extends StatelessWidget {
               itemBuilder: (context) => [
                 const PopupMenuItem(value: 'profile', child: Text('Profile')),
                 const PopupMenuItem(value: 'settings', child: Text('Settings')),
-                if (isAdmin)
-                  const PopupMenuItem(
-                    value: 'admin',
-                    child: Text('Open admin dashboard'),
-                  ),
                 const PopupMenuItem(value: 'logout', child: Text('Logout')),
               ],
             );

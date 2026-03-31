@@ -68,14 +68,14 @@ class _BottomNavBarState extends State<BottomNavBar> {
                       'Your Library',
                       '/library',
                     ),
-                    _buildNavItem(
-                      context,
-                      Icons.money_outlined,
-                      Icons.money,
-                      3,
-                      'Premium',
-                      '/premium',
-                    ),
+                    // _buildNavItem(
+                    //   context,
+                    //   Icons.money_outlined,
+                    //   Icons.money,
+                    //   3,
+                    //   'Premium',
+                    //   '/premium',
+                    // ),
                     _buildNavItem(
                       context,
                       Icons.add_outlined,

@@ -360,12 +360,12 @@ class AppGoRouter {
             ),
           ],
         ),
-        GoRoute(
-          path: '/premium',
-          name: 'premium',
-          builder: (context, state) =>
-              const ComingSoonPage(featureName: 'Premium', selectedIndex: 3),
-        ),
+        // GoRoute(
+        //   path: '/premium',
+        //   name: 'premium',
+        //   builder: (context, state) =>
+        //       const ComingSoonPage(featureName: 'Premium', selectedIndex: 3),
+        // ),
         GoRoute(
           path: '/create',
           name: 'create',
