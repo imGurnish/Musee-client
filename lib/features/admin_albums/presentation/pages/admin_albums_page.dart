@@ -448,7 +448,7 @@ class _AdminAlbumsPageState extends State<AdminAlbumsPage> {
 
     return ListView.separated(
       itemCount: albums.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
         final album = albums[i];
         final isSelected = _selectedAlbumIds.contains(album.id);
@@ -871,7 +871,7 @@ class _AdminAlbumsPageState extends State<AdminAlbumsPage> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceVariant,
+            color: theme.colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(6),
           ),
           child: Text(
@@ -980,7 +980,7 @@ class _AdminAlbumsPageState extends State<AdminAlbumsPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceVariant,
+                color: theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
