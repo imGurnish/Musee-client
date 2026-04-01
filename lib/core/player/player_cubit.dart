@@ -717,6 +717,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         state.copyWith(
           queue: items,
           currentIndex: _sanitizeIndex(state.currentIndex, items.length),
+          recommendationAutoFillEnabled: false,
         ),
       );
       await _refreshQueueIfNeeded();
@@ -769,7 +770,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> addToQueue(List<QueueItem> items) async {
-    emit(state.copyWith(queue: [...state.queue, ...items]));
+    emit(
+      state.copyWith(
+        queue: [...state.queue, ...items],
+        recommendationAutoFillEnabled: false,
+      ),
+    );
     final repo = _repo;
     if (repo != null) {
       unawaited(
@@ -803,6 +809,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       state.copyWith(
         queue: newList,
         currentIndex: _sanitizeIndex(newIndex, newList.length),
+        recommendationAutoFillEnabled: false,
       ),
     );
 
@@ -837,6 +844,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       state.copyWith(
         queue: list,
         currentIndex: _sanitizeIndex(newIndex, list.length),
+        recommendationAutoFillEnabled: false,
       ),
     );
 
@@ -853,6 +861,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         currentIndex: -1,
         isTransitioning: false,
         resolvingUrl: false,
+        recommendationAutoFillEnabled: false,
       ),
     );
     final repo = _repo;
@@ -874,6 +883,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         currentIndex: 0,
         isTransitioning: false,
         resolvingUrl: false,
+        recommendationAutoFillEnabled: false,
       ),
     );
     final repo = _repo;
@@ -1447,7 +1457,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     final refreshedNeeded = 10 - refreshedRemaining;
 
     // 2. Recommendation-based smart fill to always keep next 10 ready
-    if (refreshedNeeded > 0 && state.queue.isNotEmpty && _repo != null) {
+    if (state.recommendationAutoFillEnabled &&
+      refreshedNeeded > 0 &&
+      state.queue.isNotEmpty &&
+      _repo != null) {
       final existingIds = state.queue.map((q) => q.trackId).toSet();
       int remainingNeeded = refreshedNeeded;
 

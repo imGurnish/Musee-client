@@ -71,6 +71,7 @@ class PlayerViewState extends Equatable {
   final int currentIndex; // index within queue for currently playing track
   final bool shuffleEnabled;
   final PlayerRepeatMode repeatMode;
+  final bool recommendationAutoFillEnabled;
 
   const PlayerViewState({
     this.track,
@@ -86,6 +87,7 @@ class PlayerViewState extends Equatable {
     this.currentIndex = -1,
     this.shuffleEnabled = false,
     this.repeatMode = PlayerRepeatMode.off,
+    this.recommendationAutoFillEnabled = false,
   });
 
   PlayerViewState copyWith({
@@ -103,6 +105,7 @@ class PlayerViewState extends Equatable {
     int? currentIndex,
     bool? shuffleEnabled,
     PlayerRepeatMode? repeatMode,
+    bool? recommendationAutoFillEnabled,
   }) {
     return PlayerViewState(
       track: track ?? this.track,
@@ -120,6 +123,8 @@ class PlayerViewState extends Equatable {
       currentIndex: currentIndex ?? this.currentIndex,
       shuffleEnabled: shuffleEnabled ?? this.shuffleEnabled,
       repeatMode: repeatMode ?? this.repeatMode,
+      recommendationAutoFillEnabled:
+          recommendationAutoFillEnabled ?? this.recommendationAutoFillEnabled,
     );
   }
 
@@ -138,5 +143,6 @@ class PlayerViewState extends Equatable {
     currentIndex,
     shuffleEnabled,
     repeatMode,
+    recommendationAutoFillEnabled,
   ];
 }
