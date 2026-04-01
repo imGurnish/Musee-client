@@ -91,6 +91,17 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     );
   }
 
+  Future<void> _stopPlaybackForTrackSwitch() async {
+    _playbackReassertTimer?.cancel();
+    try {
+      await _player.stop();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Failed to stop current track before switch: $e');
+      }
+    }
+  }
+
   PlayerCubit({
     PlayerRepository? repository,
     TrackCacheService? trackCache,
@@ -403,6 +414,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         return Uri.file(inputUrl);
       }
 
+      await _stopPlaybackForTrackSwitch();
+
       await _player.setAudioSource(
         AudioSource.uri(
           toUri(track.url),
@@ -505,6 +518,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           ),
         );
 
+        await _stopPlaybackForTrackSwitch();
+
         await _player.setAudioSource(
           AudioSource.uri(
             toUri(refreshedTrack.url),
@@ -606,6 +621,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       ),
     );
 
+    await _stopPlaybackForTrackSwitch();
+
     final repo = _repo;
     if (repo != null) {
       unawaited(() async {
@@ -649,13 +666,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     final url = await _fetchPlayableUrl(trackId);
     if (url == null) {
-      emit(
-        state.copyWith(
-          buffering: false,
-          resolvingUrl: false,
-          isTransitioning: false,
-          playing: false,
-        ),
+      _emitPlaybackError(
+        'Unable to load this track. Please check your internet and try again.',
       );
       return;
     }
@@ -966,17 +978,16 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       ),
     );
 
+    // Stop current playback immediately so previous track audio does not
+    // continue while the next track URL is being resolved on slow networks.
+    await _stopPlaybackForTrackSwitch();
+
     final url = await _fetchPlayableUrl(item.trackId);
     if (url == null || url.trim().isEmpty) {
       if (switchToken == _trackSwitchToken) {
         _clearSwitchFailSafe();
-        emit(
-          state.copyWith(
-            buffering: false,
-            resolvingUrl: false,
-            isTransitioning: false,
-            playing: false,
-          ),
+        _emitPlaybackError(
+          'Unable to load this track. Please check your internet and try again.',
         );
         _isTrackSwitchInProgress = false;
       }
@@ -1003,6 +1014,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       final uri = url.startsWith('http') || url.startsWith('https')
           ? Uri.parse(url)
           : Uri.file(url);
+
+      await _stopPlaybackForTrackSwitch();
 
       await _player.setAudioSource(AudioSource.uri(uri));
 
@@ -1091,6 +1104,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         final refreshedUri = refreshedUrl.startsWith('http') || refreshedUrl.startsWith('https')
             ? Uri.parse(refreshedUrl)
             : Uri.file(refreshedUrl);
+
+        await _stopPlaybackForTrackSwitch();
 
         await _player.setAudioSource(AudioSource.uri(refreshedUri));
 

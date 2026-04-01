@@ -95,6 +95,7 @@ class _UserDashboardState extends State<UserDashboard> {
         title: item.title,
         artist: item.artists.map((a) => a.name).join(', '),
         imageUrl: item.coverUrl,
+        openSheet: false,
       );
     } else if (item.type == DashboardItemType.album) {
       // Navigate to album
@@ -236,6 +237,7 @@ class _UserDashboardState extends State<UserDashboard> {
                                             artist: t.artistName,
                                             imageUrl: t.albumCoverUrl,
                                             localImagePath: t.localImagePath,
+                                            openSheet: false,
                                           );
                                         },
                                       ),

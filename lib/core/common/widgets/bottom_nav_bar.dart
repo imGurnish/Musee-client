@@ -29,76 +29,100 @@ class _BottomNavBarState extends State<BottomNavBar> {
 
     final cubit = GetIt.I<PlayerCubit>();
 
-    return BlocBuilder<PlayerCubit, PlayerViewState>(
+    return BlocListener<PlayerCubit, PlayerViewState>(
       bloc: cubit,
-      builder: (context, state) {
-        final hasTrack = state.track != null;
-        final barHeight = hasTrack ? 180.0 : 68.0;
-        final boxHeight = hasTrack ? 200.0 : 60.0;
-
-        return BottomAppBar(
-          shape: const CircularNotchedRectangle(),
-          notchMargin: 8.0,
-          color: colorScheme.surface,
-          elevation: 8,
-          padding: const EdgeInsets.all(4),
-          height: barHeight,
-          child: SizedBox(
-            height: boxHeight,
-            child: Column(
-              mainAxisSize: MainAxisSize.max,
-              children: [
-                if (hasTrack) const FloatingPlayerPanel(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: <Widget>[
-                    _buildNavItem(
-                      context,
-                      Icons.home_outlined,
-                      Icons.home,
-                      0,
-                      'Home',
-                      '/dashboard',
-                    ),
-                    _buildNavItem(
-                      context,
-                      Icons.search_outlined,
-                      Icons.search,
-                      1,
-                      'Search',
-                      '/search',
-                    ),
-                    _buildNavItem(
-                      context,
-                      Icons.library_books_outlined,
-                      Icons.library_books,
-                      2,
-                      'Your Library',
-                      '/library',
-                    ),
-                    // _buildNavItem(
-                    //   context,
-                    //   Icons.money_outlined,
-                    //   Icons.money,
-                    //   3,
-                    //   'Premium',
-                    //   '/premium',
-                    // ),
-                    _buildNavItem(
-                      context,
-                      Icons.add_outlined,
-                      Icons.add,
-                      4,
-                      'Create',
-                      '/create',
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
+      listenWhen: (previous, current) {
+        return previous.errorMessage != current.errorMessage &&
+            current.errorMessage != null &&
+            current.errorMessage!.trim().isNotEmpty;
       },
+      listener: (context, state) {
+        final message = state.errorMessage;
+        if (message == null || message.trim().isEmpty) return;
+
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        if (messenger == null) return;
+
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(message),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      },
+      child: BlocBuilder<PlayerCubit, PlayerViewState>(
+        bloc: cubit,
+        builder: (context, state) {
+          final hasTrack = state.track != null;
+          final barHeight = hasTrack ? 180.0 : 68.0;
+          final boxHeight = hasTrack ? 200.0 : 60.0;
+
+          return BottomAppBar(
+            shape: const CircularNotchedRectangle(),
+            notchMargin: 8.0,
+            color: colorScheme.surface,
+            elevation: 8,
+            padding: const EdgeInsets.all(4),
+            height: barHeight,
+            child: SizedBox(
+              height: boxHeight,
+              child: Column(
+                mainAxisSize: MainAxisSize.max,
+                children: [
+                  if (hasTrack) const FloatingPlayerPanel(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: <Widget>[
+                      _buildNavItem(
+                        context,
+                        Icons.home_outlined,
+                        Icons.home,
+                        0,
+                        'Home',
+                        '/dashboard',
+                      ),
+                      _buildNavItem(
+                        context,
+                        Icons.search_outlined,
+                        Icons.search,
+                        1,
+                        'Search',
+                        '/search',
+                      ),
+                      _buildNavItem(
+                        context,
+                        Icons.library_books_outlined,
+                        Icons.library_books,
+                        2,
+                        'Your Library',
+                        '/library',
+                      ),
+                      // _buildNavItem(
+                      //   context,
+                      //   Icons.money_outlined,
+                      //   Icons.money,
+                      //   3,
+                      //   'Premium',
+                      //   '/premium',
+                      // ),
+                      _buildNavItem(
+                        context,
+                        Icons.add_outlined,
+                        Icons.add,
+                        4,
+                        'Create',
+                        '/create',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 

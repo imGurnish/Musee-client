@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -21,67 +22,80 @@ Future<void> showPlayerBottomSheet(
   String? localImagePath,
   Map<String, String>? headers,
   String? trackId,
+  bool openSheet = true,
 }) async {
-  if (_isPlayerSheetOpen) return;
+  final cubit = GetIt.I<PlayerCubit>();
+
+  Future<void> requestPlaybackSwitch() async {
+    try {
+      Future<void> ensureAutoPlay() async {
+        final s = cubit.state;
+        if (cubit.isUserPausedIntent) return;
+        if (!s.playing && !s.buffering && s.track != null) {
+          await cubit.ensurePlaying();
+        }
+      }
+
+      if (trackId != null && (audioUrl == null || audioUrl.isEmpty)) {
+        await cubit.playTrackById(
+          trackId: trackId,
+          title: title,
+          artist: artist,
+          album: album,
+          imageUrl: imageUrl,
+        );
+        return;
+      }
+
+      if (audioUrl != null && audioUrl.isNotEmpty) {
+        final track = PlayerTrack(
+          url: audioUrl,
+          title: title,
+          artist: artist,
+          album: album,
+          imageUrl: imageUrl,
+          localImagePath: localImagePath,
+          headers: headers,
+          trackId: trackId,
+        );
+
+        final currentUrl = cubit.state.track?.url;
+        final isDifferentTrack = currentUrl == null || currentUrl != audioUrl;
+        if (isDifferentTrack) {
+          await cubit.playTrack(track);
+        } else {
+          await ensureAutoPlay();
+        }
+      }
+    } catch (_) {
+      // Player cubit already emits user-facing errors; avoid crashing UI tap flow.
+    }
+  }
+
+  if (!openSheet) {
+    await requestPlaybackSwitch();
+    return;
+  }
+
+  if (_isPlayerSheetOpen) {
+    unawaited(requestPlaybackSwitch());
+    return;
+  }
+
   final now = DateTime.now();
   if (_lastPlayerSheetOpenAt != null &&
       now.difference(_lastPlayerSheetOpenAt!) < const Duration(milliseconds: 500)) {
+    unawaited(requestPlaybackSwitch());
     return;
   }
 
   _isPlayerSheetOpen = true;
   _lastPlayerSheetOpenAt = now;
 
-  final cubit = GetIt.I<PlayerCubit>();
-
   try {
-    Future<void> ensureAutoPlay() async {
-      final s = cubit.state;
-      if (cubit.isUserPausedIntent) return;
-      if (!s.playing && !s.buffering && s.track != null) {
-        await cubit.ensurePlaying();
-      }
-    }
-
-    if (trackId != null && (audioUrl == null || audioUrl.isEmpty)) {
-    // Play by ID (resolves URL and caches metadata)
-    // We don't check for "different track" here because playTrackById handles resolution
-    // and we want to ensure latest metadata/URL is used.
-    // However, if it's the exact same currently playing track ID, we might skip re-loading?
-    // PlayerCubit.playTrack checks URL. playTrackById fetches URL.
-    // Let's let playTrackById handle it, or add a check here.
-    final currentTrackId = cubit.state.track?.trackId;
-    if (currentTrackId != trackId) {
-      await cubit.playTrackById(
-        trackId: trackId,
-        title: title,
-        artist: artist,
-        album: album,
-        imageUrl: imageUrl,
-      );
-    } else {
-      await ensureAutoPlay();
-    }
-    } else if (audioUrl != null && audioUrl.isNotEmpty) {
-    final track = PlayerTrack(
-      url: audioUrl,
-      title: title,
-      artist: artist,
-      album: album,
-      imageUrl: imageUrl,
-      localImagePath: localImagePath,
-      headers: headers,
-      trackId: trackId,
-    );
-
-    final currentUrl = cubit.state.track?.url;
-    final isDifferentTrack = currentUrl == null || currentUrl != audioUrl;
-    if (isDifferentTrack) {
-      await cubit.playTrack(track);
-    } else {
-      await ensureAutoPlay();
-    }
-    }
+    // Dispatch playback request asynchronously so modal opening is never blocked
+    // by network URL resolution or audio source setup.
+    unawaited(requestPlaybackSwitch());
 
     if (!context.mounted) return;
 
