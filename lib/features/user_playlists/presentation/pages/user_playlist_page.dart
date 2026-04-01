@@ -7,6 +7,7 @@ import 'package:musee/features/user_playlists/presentation/bloc/user_playlist_bl
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/core/providers/music_provider_registry.dart';
+import 'package:musee/core/download/download_manager.dart';
 
 class UserPlaylistPage extends StatefulWidget {
   final String playlistId;
@@ -62,6 +63,7 @@ class _UserPlaylistView extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final playerCubit = GetIt.I<PlayerCubit>();
+    final downloadManager = context.read<DownloadManager>();
 
     Future<String?> fetchPlayableUrl(String trackId) async {
       try {
@@ -123,6 +125,20 @@ class _UserPlaylistView extends StatelessWidget {
               );
             }
 
+            void downloadTrack(String trackId) {
+              downloadManager.addToQueue(trackId);
+            }
+
+            void downloadAllTracks() {
+              final trackIds = playlist.tracks
+                  .map((track) => track.trackId)
+                  .toSet()
+                  .toList();
+              for (final trackId in trackIds) {
+                downloadManager.addToQueue(trackId);
+              }
+            }
+
             return CustomScrollView(
               slivers: [
                 SliverAppBar(
@@ -158,11 +174,10 @@ class _UserPlaylistView extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             SizedBox(
-                              width: 44,
-                              height: 44,
+                              width: 52,
+                              height: 52,
                               child: IconButton.filled(
                                 onPressed: canPlayPlaylist
                                     ? () async {
@@ -202,105 +217,155 @@ class _UserPlaylistView extends StatelessWidget {
                                     : null,
                                 icon: const Icon(
                                   Icons.play_arrow_rounded,
-                                  size: 22,
+                                  size: 26,
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            OutlinedButton.icon(
-                              onPressed: canPlayPlaylist
-                                  ? () async {
-                                      final randomTrack = playlist.tracks[
-                                          Random().nextInt(trackCount)];
-                                      final artists = randomTrack.artists
-                                              .isNotEmpty
-                                          ? randomTrack.artists
-                                                .map(
-                                                  (a) => a.name ??
-                                                      'Unknown Artist',
-                                                )
-                                                .join(', ')
-                                          : creatorName;
-                                      // Replace queue with all playlist tracks
-                                      final queueItems = playlist.tracks
-                                          .map((track) {
-                                            final trackArtists =
-                                                track.artists.isNotEmpty
-                                                    ? track.artists
-                                                          .map((a) =>
-                                                              a.name ??
-                                                              'Unknown Artist')
-                                                          .join(', ')
-                                                    : creatorName;
-                                            return QueueItem(
-                                              trackId: track.trackId,
-                                              title: track.title,
-                                              artist: trackArtists,
-                                              album: playlist.name,
-                                              imageUrl: playlist.coverUrl,
-                                              durationSeconds:
-                                                  track.duration,
-                                            );
-                                          })
-                                          .toList();
-                                      await playerCubit
-                                          .replaceQueue(queueItems);
-                                      await playTrack(
-                                        randomTrack.trackId,
-                                        title: randomTrack.title,
-                                        artist: artists,
-                                      );
-                                    }
-                                  : null,
-                              icon: const Icon(Icons.shuffle_rounded),
-                              label: const Text('Shuffle'),
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(0, 40),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            FilledButton.tonalIcon(
-                              onPressed: playlist.tracks.isEmpty
-                                  ? null
-                                  : () async {
-                                      final queueItems = playlist.tracks.map(
-                                        (track) {
-                                          final artists =
-                                              track.artists.isNotEmpty
-                                                  ? track.artists
-                                                        .map((a) =>
+                            const Spacer(),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 40,
+                                  height: 40,
+                                  child: IconButton.outlined(
+                                    onPressed: canPlayPlaylist
+                                        ? () async {
+                                            final randomTrack = playlist.tracks[
+                                                Random().nextInt(trackCount)];
+                                            final artists = randomTrack
+                                                    .artists.isNotEmpty
+                                                ? randomTrack.artists
+                                                      .map(
+                                                        (a) =>
                                                             a.name ??
-                                                            'Unknown Artist')
-                                                        .join(', ')
-                                                  : creatorName;
-                                          return QueueItem(
-                                            trackId: track.trackId,
-                                            title: track.title,
-                                            artist: artists,
-                                            album: playlist.name,
-                                            imageUrl: playlist.coverUrl,
-                                            durationSeconds: track.duration,
-                                          );
-                                        },
-                                      ).toList();
-                                      await playerCubit
-                                          .addToQueue(queueItems);
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'Added $trackCount tracks to queue',
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    },
-                              icon: const Icon(Icons.queue_music_rounded),
-                              label: const Text('Queue All'),
-                              style: FilledButton.styleFrom(
-                                minimumSize: const Size(0, 40),
-                              ),
+                                                            'Unknown Artist',
+                                                      )
+                                                      .join(', ')
+                                                : creatorName;
+                                            // Replace queue with all playlist tracks
+                                            final queueItems = playlist.tracks
+                                                .map((track) {
+                                                  final trackArtists =
+                                                      track.artists.isNotEmpty
+                                                      ? track.artists
+                                                            .map(
+                                                              (a) =>
+                                                                  a.name ??
+                                                                  'Unknown Artist',
+                                                            )
+                                                            .join(', ')
+                                                      : creatorName;
+                                                  return QueueItem(
+                                                    trackId: track.trackId,
+                                                    title: track.title,
+                                                    artist: trackArtists,
+                                                    album: playlist.name,
+                                                    imageUrl: playlist.coverUrl,
+                                                    durationSeconds:
+                                                        track.duration,
+                                                  );
+                                                })
+                                                .toList();
+                                            await playerCubit
+                                                .replaceQueue(queueItems);
+                                            await playTrack(
+                                              randomTrack.trackId,
+                                              title: randomTrack.title,
+                                              artist: artists,
+                                            );
+                                          }
+                                        : null,
+                                    icon: const Icon(
+                                      Icons.shuffle_rounded,
+                                      size: 19,
+                                    ),
+                                    tooltip: 'Shuffle',
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 40,
+                                  height: 40,
+                                  child: IconButton.filledTonal(
+                                    onPressed: playlist.tracks.isEmpty
+                                        ? null
+                                        : () async {
+                                            final queueItems = playlist.tracks
+                                                .map((track) {
+                                                  final artists =
+                                                      track.artists.isNotEmpty
+                                                      ? track.artists
+                                                            .map(
+                                                              (a) =>
+                                                                  a.name ??
+                                                                  'Unknown Artist',
+                                                            )
+                                                            .join(', ')
+                                                      : creatorName;
+                                                  return QueueItem(
+                                                    trackId: track.trackId,
+                                                    title: track.title,
+                                                    artist: artists,
+                                                    album: playlist.name,
+                                                    imageUrl: playlist.coverUrl,
+                                                    durationSeconds:
+                                                        track.duration,
+                                                  );
+                                                })
+                                                .toList();
+                                            await playerCubit
+                                                .addToQueue(queueItems);
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Added $trackCount tracks to queue',
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          },
+                                    icon: const Icon(
+                                      Icons.queue_music_rounded,
+                                      size: 19,
+                                    ),
+                                    tooltip: 'Queue all',
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 40,
+                                  height: 40,
+                                  child: IconButton.filled(
+                                    onPressed: playlist.tracks.isEmpty
+                                        ? null
+                                        : () {
+                                            downloadAllTracks();
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Added $trackCount tracks to downloads',
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                    style: IconButton.styleFrom(
+                                      backgroundColor:
+                                          theme.colorScheme.primary,
+                                      foregroundColor:
+                                          theme.colorScheme.onPrimary,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.download_for_offline_rounded,
+                                      size: 19,
+                                    ),
+                                    tooltip: 'Download all tracks',
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -549,6 +614,19 @@ class _UserPlaylistView extends StatelessWidget {
                                                             'queue',
                                                           ),
                                                     ),
+                                                    ListTile(
+                                                      leading: const Icon(
+                                                        Icons.download_rounded,
+                                                      ),
+                                                      title: const Text(
+                                                        'Download',
+                                                      ),
+                                                      onTap: () =>
+                                                          Navigator.pop(
+                                                            context,
+                                                            'download',
+                                                          ),
+                                                    ),
                                                   ],
                                                 ),
                                               );
@@ -571,6 +649,17 @@ class _UserPlaylistView extends StatelessWidget {
                                             const SnackBar(
                                               content:
                                                   Text('Added to queue'),
+                                            ),
+                                          );
+                                        }
+                                      } else if (action == 'download') {
+                                        downloadTrack(t.trackId);
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                              content:
+                                                  Text('Added to downloads'),
                                             ),
                                           );
                                         }
