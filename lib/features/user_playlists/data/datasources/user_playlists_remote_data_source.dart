@@ -107,8 +107,18 @@ class UserPlaylistsRemoteDataSourceImpl implements UserPlaylistsRemoteDataSource
   UserPlaylistsRemoteDataSourceImpl(this._dio, this.supabase)
     : basePath = '${AppSecrets.backendUrl}/api/user/playlists';
 
-  Map<String, String> _authHeader() {
-    final token = supabase.auth.currentSession?.accessToken;
+  Future<Map<String, String>> _authHeader({bool allowRefresh = true}) async {
+    var token = supabase.auth.currentSession?.accessToken;
+
+    if ((token == null || token.isEmpty) && allowRefresh) {
+      try {
+        await supabase.auth.refreshSession();
+      } catch (_) {
+        // Ignore refresh errors; we still validate token below.
+      }
+      token = supabase.auth.currentSession?.accessToken;
+    }
+
     if (token == null || token.isEmpty) {
       throw StateError('Missing Supabase access token for user API request');
     }
@@ -117,10 +127,29 @@ class UserPlaylistsRemoteDataSourceImpl implements UserPlaylistsRemoteDataSource
 
   @override
   Future<UserPlaylistDetailDTO> getPlaylist(String playlistId) async {
-    final res = await _dio.get(
-      '$basePath/$playlistId',
-      options: dio.Options(headers: _authHeader()),
-    );
-    return UserPlaylistDetailDTO.fromJson(Map<String, dynamic>.from(res.data));
+    final encodedPlaylistId = Uri.encodeComponent(playlistId);
+    final endpoint = '$basePath/$encodedPlaylistId';
+
+    try {
+      final res = await _dio.get(
+        endpoint,
+        options: dio.Options(headers: await _authHeader()),
+      );
+      return UserPlaylistDetailDTO.fromJson(Map<String, dynamic>.from(res.data));
+    } on dio.DioException catch (e) {
+      final statusCode = e.response?.statusCode;
+      if (statusCode == 401 || statusCode == 403) {
+        final retryRes = await _dio.get(
+          endpoint,
+          options: dio.Options(
+            headers: await _authHeader(allowRefresh: true),
+          ),
+        );
+        return UserPlaylistDetailDTO.fromJson(
+          Map<String, dynamic>.from(retryRes.data),
+        );
+      }
+      rethrow;
+    }
   }
 }
