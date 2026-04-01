@@ -870,6 +870,49 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
   }
 
+  Future<void> stopPlayback({
+    bool clearQueueItems = false,
+    bool clearCurrentTrack = true,
+  }) async {
+    _userPaused = true;
+    _playbackReassertTimer?.cancel();
+    _switchFailSafeTimer?.cancel();
+
+    try {
+      await _player.stop();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Failed to stop playback: $e');
+      }
+    }
+
+    final shouldClearQueue = clearQueueItems;
+    final nextQueue = shouldClearQueue ? const <QueueItem>[] : state.queue;
+    final nextIndex = shouldClearQueue
+        ? -1
+        : _sanitizeIndex(state.currentIndex, state.queue.length);
+
+    emit(
+      state.copyWith(
+        track: clearCurrentTrack ? null : state.track,
+        queue: nextQueue,
+        currentIndex: nextIndex,
+        playing: false,
+        buffering: false,
+        resolvingUrl: false,
+        isTransitioning: false,
+        clearErrorMessage: true,
+      ),
+    );
+
+    if (shouldClearQueue) {
+      final repo = _repo;
+      if (repo != null) {
+        unawaited(repo.clearQueue());
+      }
+    }
+  }
+
   /// Replace the entire queue with new items and start playing from the first item
   Future<void> replaceQueue(List<QueueItem> items) async {
     if (items.isEmpty) {
