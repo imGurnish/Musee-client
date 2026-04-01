@@ -9,11 +9,13 @@ import 'package:musee/core/player/player_state.dart';
 class BottomNavBar extends StatefulWidget {
   final int selectedIndex;
   final ValueChanged<int>? onItemSelected;
+  final ValueChanged<int>? onItemReselected;
 
   const BottomNavBar({
     super.key,
     required this.selectedIndex,
     this.onItemSelected,
+    this.onItemReselected,
   });
 
   @override
@@ -115,12 +117,15 @@ class _BottomNavBarState extends State<BottomNavBar> {
     return Expanded(
       child: InkWell(
         onTap: () {
-          if (!isSelected) {
-            if (widget.onItemSelected != null) {
-              widget.onItemSelected!(index);
-            } else {
-              context.push(route);
-            }
+          if (isSelected) {
+            widget.onItemReselected?.call(index);
+            return;
+          }
+
+          if (widget.onItemSelected != null) {
+            widget.onItemSelected!(index);
+          } else {
+            context.push(route);
           }
         },
         borderRadius: BorderRadius.circular(12),
