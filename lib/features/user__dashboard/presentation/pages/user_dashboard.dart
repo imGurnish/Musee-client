@@ -99,10 +99,9 @@ class _UserDashboardState extends State<UserDashboard> {
     } else if (item.type == DashboardItemType.album) {
       // Navigate to album
       context.push('/albums/${item.id}');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Playlist details are coming soon')),
-      );
+    } else if (item.type == DashboardItemType.playlist) {
+      // Navigate to playlist
+      context.push('/playlists/${item.id}');
     }
   }
 

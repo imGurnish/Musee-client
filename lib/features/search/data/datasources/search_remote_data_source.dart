@@ -44,6 +44,9 @@ class SearchRemoteDataSourceImpl implements SearchRemoteDataSource {
         Uri.parse(
           '${AppSecrets.backendUrl}/api/user/artists?page=0&limit=3&q=$q',
         ),
+        Uri.parse(
+          '${AppSecrets.backendUrl}/api/playlists/search?page=0&limit=5&q=$q',
+        ),
       ];
 
       final backendResponses = await Future.wait(
@@ -90,6 +93,20 @@ class SearchRemoteDataSourceImpl implements SearchRemoteDataSource {
           final m = (it as Map).cast<String, dynamic>();
           final name = m['name']?.toString();
           if (name != null && name.isNotEmpty) suggestions.add(name);
+        }
+      }
+
+      // Playlists
+      if (backendResponses.length > 3 &&
+          backendResponses[3].statusCode == 200) {
+        final data = json.decode(backendResponses[3].body);
+        final items = _extractItems(data);
+        for (final it in items) {
+          final m = (it as Map).cast<String, dynamic>();
+          final name = m['name']?.toString();
+          final title = m['title']?.toString();
+          final value = (name != null && name.isNotEmpty) ? name : title;
+          if (value != null && value.isNotEmpty) suggestions.add(value);
         }
       }
 

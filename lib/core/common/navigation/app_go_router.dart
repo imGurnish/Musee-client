@@ -35,6 +35,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:async';
 import 'package:musee/features/user_albums/presentation/pages/user_album_page.dart';
+import 'package:musee/features/user_playlists/presentation/pages/user_playlist_page.dart';
 import 'package:musee/features/search/presentation/pages/search_page.dart';
 import 'package:musee/features/search/presentation/pages/search_results_page.dart';
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
@@ -130,6 +131,14 @@ class AppGoRouter {
                   builder: (context, state) {
                     final id = state.pathParameters['id'] ?? '';
                     return UserAlbumPage(albumId: id);
+                  },
+                ),
+                GoRoute(
+                  path: Routes.userPlaylist,
+                  name: 'user_playlist',
+                  builder: (context, state) {
+                    final id = state.pathParameters['id'] ?? '';
+                    return UserPlaylistPage(playlistId: id);
                   },
                 ),
                 GoRoute(

@@ -32,6 +32,9 @@ class Routes {
   // User album details
   static const String userAlbum = '/albums/:id';
 
+  // User playlist details
+  static const String userPlaylist = '/playlists/:id';
+
   // Forbidden / error
   static const String forbidden = '/forbidden';
 

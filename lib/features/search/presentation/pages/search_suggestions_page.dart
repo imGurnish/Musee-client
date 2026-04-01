@@ -90,7 +90,7 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
       ),
       filled: true,
       fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
-      hintText: 'Search songs, albums, artists',
+      hintText: 'Search songs, albums, artists, playlists',
       hintStyle: TextStyle(
         color: isDark ? Colors.grey[400] : Colors.grey[600],
         fontSize: 16,
@@ -191,7 +191,7 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Enter a search term above to find songs, albums, and artists',
+              'Enter a search term above to find songs, albums, artists, and playlists',
               style: textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurface.withAlpha(179),
               ),

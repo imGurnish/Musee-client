@@ -810,9 +810,7 @@ class _PlaylistTile extends StatelessWidget {
         subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
         trailing: const _TypeChip(label: 'Playlist'),
         onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Playlist details are coming soon')),
-          );
+          context.push('/playlists/${playlist.playlistId}');
         },
       ),
     );

@@ -847,6 +847,30 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
   }
 
+  /// Replace the entire queue with new items and start playing from the first item
+  Future<void> replaceQueue(List<QueueItem> items) async {
+    if (items.isEmpty) {
+      await clearQueue();
+      return;
+    }
+
+    emit(
+      state.copyWith(
+        queue: items,
+        currentIndex: 0,
+        isTransitioning: false,
+        resolvingUrl: false,
+      ),
+    );
+    final repo = _repo;
+    if (repo != null) {
+      unawaited(repo.clearQueue());
+      unawaited(
+        repo.addToQueue(trackIds: items.map((e) => e.trackId).toList()),
+      );
+    }
+  }
+
   Future<void> next({bool userInitiated = true}) async {
     // userInitiated true when tapped button; false when auto-advance
     if (_isBusySwitching) return;

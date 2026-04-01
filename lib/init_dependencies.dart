@@ -82,6 +82,11 @@ import 'package:musee/features/user_albums/data/repositories/user_albums_reposit
 import 'package:musee/features/user_albums/domain/repository/user_albums_repository.dart';
 import 'package:musee/features/user_albums/domain/usecases/get_user_album.dart';
 import 'package:musee/features/user_albums/presentation/bloc/user_album_bloc.dart';
+import 'package:musee/features/user_playlists/data/datasources/user_playlists_remote_data_source.dart';
+import 'package:musee/features/user_playlists/data/repositories/user_playlists_repository_impl.dart';
+import 'package:musee/features/user_playlists/domain/repository/user_playlists_repository.dart';
+import 'package:musee/features/user_playlists/domain/usecases/get_user_playlist.dart';
+import 'package:musee/features/user_playlists/presentation/bloc/user_playlist_bloc.dart';
 import 'package:musee/features/user__dashboard/data/datasources/user_dashboard_remote_data_source.dart';
 import 'package:musee/features/user__dashboard/data/repositories/user_dashboard_repository_impl.dart';
 import 'package:musee/features/user__dashboard/data/services/user_dashboard_cache_service.dart';
@@ -245,6 +250,7 @@ Future<void> initDependencies() async {
 
   // user features
   _initUserAlbums();
+  _initUserPlaylists();
   _initUserArtists();
   _initUserDashboard();
   _initSearch();
@@ -505,6 +511,32 @@ void _initUserAlbums() {
     )
     // bloc
     ..registerFactory(() => UserAlbumBloc(serviceLocator<GetUserAlbum>()));
+}
+
+void _initUserPlaylists() {
+  serviceLocator
+    // datasource
+    ..registerLazySingleton<UserPlaylistsRemoteDataSource>(
+      () => UserPlaylistsRemoteDataSourceImpl(
+        serviceLocator<Dio>(),
+        serviceLocator(),
+      ),
+    )
+    // repository
+    ..registerLazySingleton<UserPlaylistsRepository>(
+      () => UserPlaylistsRepositoryImpl(
+        serviceLocator<UserPlaylistsRemoteDataSource>(),
+        serviceLocator<TrackCacheService>(),
+        serviceLocator<ConnectivityService>(),
+        serviceLocator<UserMediaDetailCacheService>(),
+      ),
+    )
+    // use cases
+    ..registerFactory(
+      () => GetUserPlaylist(serviceLocator<UserPlaylistsRepository>()),
+    )
+    // bloc
+    ..registerFactory(() => UserPlaylistBloc(serviceLocator<GetUserPlaylist>()));
 }
 
 void _initUserArtists() {
