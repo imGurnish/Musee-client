@@ -96,6 +96,7 @@ import 'package:musee/features/user__dashboard/domain/usecases/list_trending.dar
 import 'package:musee/features/user__dashboard/presentation/bloc/user_dashboard_cubit.dart';
 import 'package:musee/features/search/data/datasources/search_remote_data_source.dart';
 import 'package:musee/features/search/data/repositories/search_repository_impl.dart';
+import 'package:musee/features/search/data/services/search_recents_service.dart';
 import 'package:musee/features/search/domain/repository/search_repository.dart';
 import 'package:musee/features/search/domain/usecases/get_suggestions.dart';
 import 'package:musee/features/search/domain/usecases/get_search_results.dart';
@@ -600,6 +601,9 @@ void _initSearch() {
     // repository
     ..registerLazySingleton<SearchRepository>(
       () => SearchRepositoryImpl(serviceLocator()),
+    )
+    ..registerLazySingleton<SearchRecentsService>(
+      () => SearchRecentsServiceImpl(),
     )
     // use cases
     ..registerFactory(() => GetSuggestions(serviceLocator()))

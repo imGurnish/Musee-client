@@ -36,7 +36,7 @@ import 'package:go_router/go_router.dart';
 import 'dart:async';
 import 'package:musee/features/user_albums/presentation/pages/user_album_page.dart';
 import 'package:musee/features/user_playlists/presentation/pages/user_playlist_page.dart';
-import 'package:musee/features/search/presentation/pages/search_page.dart';
+import 'package:musee/features/search/presentation/pages/search_suggestions_page.dart';
 import 'package:musee/features/search/presentation/pages/search_results_page.dart';
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
 import 'package:musee/core/common/pages/coming_soon_page.dart';
@@ -168,7 +168,11 @@ class AppGoRouter {
                         child: SearchResultsPage(query: q),
                       );
                     }
-                    return const SearchPage();
+                    return BlocProvider(
+                      create: (_) =>
+                          SearchBloc(serviceLocator(), serviceLocator()),
+                      child: const SearchSuggestionsPage(),
+                    );
                   },
                 ),
               ],

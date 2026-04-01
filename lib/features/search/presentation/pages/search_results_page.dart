@@ -8,6 +8,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:get_it/get_it.dart';
+import 'package:musee/features/search/data/services/search_recents_service.dart';
+import 'package:musee/features/search/domain/entities/search_recent_item.dart';
 
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/download/download_manager.dart';
@@ -629,6 +631,17 @@ class _TrackTile extends StatelessWidget {
   }
 
   Future<void> _playTrack(BuildContext context, String artistNames) async {
+    await GetIt.I<SearchRecentsService>().addRecent(
+      SearchRecentItem(
+        type: SearchRecentType.track,
+        id: track.trackId,
+        title: track.title,
+        subtitle: artistNames,
+        imageUrl: track.imageUrl,
+        updatedAt: DateTime.now(),
+      ),
+    );
+
     await showPlayerBottomSheet(
       context,
       trackId: track.trackId,
@@ -666,7 +679,17 @@ class _ArtistTile extends StatelessWidget {
           ],
         ),
         trailing: const _TypeChip(label: 'Artist'),
-        onTap: () {
+        onTap: () async {
+          await GetIt.I<SearchRecentsService>().addRecent(
+            SearchRecentItem(
+              type: SearchRecentType.artist,
+              id: artist.artistId,
+              title: artist.name ?? 'Artist',
+              subtitle: 'Artist',
+              imageUrl: artist.avatarUrl,
+              updatedAt: DateTime.now(),
+            ),
+          );
           context.push('/artists/${artist.artistId}');
         },
       ),
@@ -688,7 +711,11 @@ class _AlbumTile extends StatelessWidget {
     return _ResultTileContainer(
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => context.push('/albums/${album.albumId}'),
+        onTap: () async {
+          await _saveAlbumRecent();
+          if (!context.mounted) return;
+          context.push('/albums/${album.albumId}');
+        },
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
           child: Row(
@@ -767,6 +794,7 @@ class _AlbumTile extends StatelessWidget {
 
   void _handleAlbumAction(BuildContext context, String action) {
     if (action == 'open') {
+      _saveAlbumRecent();
       context.push('/albums/${album.albumId}');
       return;
     }
@@ -785,6 +813,19 @@ class _AlbumTile extends StatelessWidget {
         const SnackBar(content: Text('Download is available in album view')),
       );
     }
+  }
+
+  Future<void> _saveAlbumRecent() {
+    return GetIt.I<SearchRecentsService>().addRecent(
+      SearchRecentItem(
+        type: SearchRecentType.album,
+        id: album.albumId,
+        title: album.title,
+        subtitle: album.artists.map((a) => a.name ?? a.artistId).join(', '),
+        imageUrl: album.coverUrl,
+        updatedAt: DateTime.now(),
+      ),
+    );
   }
 }
 
@@ -809,7 +850,17 @@ class _PlaylistTile extends StatelessWidget {
         ),
         subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
         trailing: const _TypeChip(label: 'Playlist'),
-        onTap: () {
+        onTap: () async {
+          await GetIt.I<SearchRecentsService>().addRecent(
+            SearchRecentItem(
+              type: SearchRecentType.playlist,
+              id: playlist.playlistId,
+              title: playlist.name,
+              subtitle: subtitle,
+              imageUrl: playlist.coverUrl,
+              updatedAt: DateTime.now(),
+            ),
+          );
           context.push('/playlists/${playlist.playlistId}');
         },
       ),

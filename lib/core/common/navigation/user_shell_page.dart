@@ -17,11 +17,16 @@ class UserShellPage extends StatelessWidget {
           final branchIndex = _branchIndexFromNav(index);
           if (branchIndex == null) return;
 
-          navigationShell.goBranch(branchIndex);
+          navigationShell.goBranch(
+            branchIndex,
+            initialLocation: index == 1,
+          );
         },
         onItemReselected: (index) {
           if (index == 0) {
             navigationShell.goBranch(0, initialLocation: true);
+          } else if (index == 1) {
+            navigationShell.goBranch(1, initialLocation: true);
           }
         },
       ),
