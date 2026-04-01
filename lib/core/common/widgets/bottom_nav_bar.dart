@@ -45,12 +45,24 @@ class _BottomNavBarState extends State<BottomNavBar> {
 
         messenger
           ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
+          ..hideCurrentMaterialBanner()
+          ..showMaterialBanner(
+            MaterialBanner(
               content: Text(message),
-              behavior: SnackBarBehavior.floating,
+              backgroundColor: Theme.of(context).colorScheme.errorContainer,
+              actions: [
+                TextButton(
+                  onPressed: messenger.hideCurrentMaterialBanner,
+                  child: const Text('Dismiss'),
+                ),
+              ],
             ),
           );
+
+        Future<void>.delayed(const Duration(seconds: 3), () {
+          if (!mounted) return;
+          messenger.hideCurrentMaterialBanner();
+        });
       },
       child: BlocBuilder<PlayerCubit, PlayerViewState>(
         bloc: cubit,

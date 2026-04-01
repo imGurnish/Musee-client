@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
@@ -661,16 +662,48 @@ class _DownloadButton extends StatelessWidget {
     return BlocBuilder<DownloadManager, DownloadState>(
       builder: (context, state) {
         final status = state.status[trackId];
-        final progress = state.progress[trackId] ?? 0.0;
+        final progress = (state.progress[trackId] ?? 0.0).clamp(0.0, 1.0);
+        final errorText = state.errors[trackId];
+        final manager = context.read<DownloadManager>();
+        final colorScheme = Theme.of(context).colorScheme;
 
-        if (status == DownloadStatus.downloading) {
-          return SizedBox(
-            width: 48,
-            height: 48,
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: CircularProgressIndicator(value: progress, strokeWidth: 3),
+        if (status == DownloadStatus.pending ||
+            status == DownloadStatus.downloading) {
+          final bool isPending = status == DownloadStatus.pending;
+          return Tooltip(
+            message: isPending
+                ? 'Preparing download... Tap to cancel'
+                : 'Downloading ${(progress * 100).round()}% - Tap to cancel',
+            child: InkResponse(
+              radius: 28,
+              onTap: () => manager.cancel(trackId),
+              child: _SquigglyDownloadLoader(
+                progress: progress,
+                isPending: isPending,
+                colorScheme: colorScheme,
+              ),
             ),
+          );
+        }
+
+        if (status == DownloadStatus.failed) {
+          return IconButton.filledTonal(
+            tooltip: errorText == null || errorText.isEmpty
+                ? 'Retry download'
+                : 'Retry download: $errorText',
+            onPressed: () => manager.addToQueue(trackId),
+            icon: Icon(
+              Icons.refresh_rounded,
+              color: colorScheme.error,
+            ),
+          );
+        }
+
+        if (status == DownloadStatus.cancelled) {
+          return IconButton.filledTonal(
+            tooltip: 'Resume download',
+            onPressed: () => manager.addToQueue(trackId),
+            icon: const Icon(Icons.download_for_offline_rounded),
           );
         }
 
@@ -680,17 +713,17 @@ class _DownloadButton extends StatelessWidget {
             final isDownloaded = snapshot.data != null;
 
             if (isDownloaded || status == DownloadStatus.completed) {
-              return IconButton(
+              return IconButton.filledTonal(
                 tooltip: 'Downloaded',
                 icon: Icon(
                   Icons.download_done_rounded,
-                  color: Theme.of(context).colorScheme.primary,
+                  color: colorScheme.primary,
                 ),
                 onPressed: () {},
               );
             }
 
-            return IconButton(
+            return IconButton.filledTonal(
               tooltip: 'Download',
               icon: const Icon(Icons.download_rounded),
               onPressed: () {
@@ -701,5 +734,171 @@ class _DownloadButton extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _SquigglyDownloadLoader extends StatefulWidget {
+  final double progress;
+  final bool isPending;
+  final ColorScheme colorScheme;
+
+  const _SquigglyDownloadLoader({
+    required this.progress,
+    required this.isPending,
+    required this.colorScheme,
+  });
+
+  @override
+  State<_SquigglyDownloadLoader> createState() => _SquigglyDownloadLoaderState();
+}
+
+class _SquigglyDownloadLoaderState extends State<_SquigglyDownloadLoader>
+    with SingleTickerProviderStateMixin {
+  static const double _loaderSize = 34;
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      tween: Tween<double>(end: widget.progress),
+      builder: (context, animatedProgress, _) {
+        return AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return SizedBox(
+              width: _loaderSize,
+              height: _loaderSize,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  CustomPaint(
+                    size: const Size.square(_loaderSize),
+                    painter: _SquigglyRingPainter(
+                      progress: widget.isPending ? null : animatedProgress,
+                      phase: _controller.value,
+                      color: widget.colorScheme.primary,
+                      backgroundColor:
+                          widget.colorScheme.surfaceContainerHighest,
+                    ),
+                  ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    child: widget.isPending
+                        ? Transform.translate(
+                            key: const ValueKey('pending'),
+                            offset: Offset(
+                              0,
+                              -1.2 * math.sin(_controller.value * 2 * math.pi),
+                            ),
+                            child: Icon(
+                              Icons.downloading_rounded,
+                              size: 14,
+                              color: widget.colorScheme.primary,
+                            ),
+                          )
+                        : Text(
+                            '${(animatedProgress * 100).round()}%',
+                            key: const ValueKey('progress'),
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 9.5,
+                                  letterSpacing: -0.1,
+                                  color: widget.colorScheme.primary,
+                                ),
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _SquigglyRingPainter extends CustomPainter {
+  final double? progress;
+  final double phase;
+  final Color color;
+  final Color backgroundColor;
+
+  const _SquigglyRingPainter({
+    required this.progress,
+    required this.phase,
+    required this.color,
+    required this.backgroundColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.width / 2) - 2.2;
+
+    final bg = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..color = backgroundColor;
+    canvas.drawCircle(center, radius, bg);
+
+    final sweep = progress == null
+        ? math.pi * (1.35 + 0.30 * math.sin(phase * 2 * math.pi).abs())
+        : (2 * math.pi * progress!.clamp(0.0, 1.0));
+    final start = -math.pi / 2;
+
+    final sweepRatio = (sweep / (2 * math.pi)).clamp(0.0, 1.0);
+    final segments = math.max(24, (96 * sweepRatio).round());
+    final waveAmp = 0.35;
+    // Keep squiggle density visually stable as the visible arc gets shorter.
+    final waveCount = math.max(0.9, 5.0 * sweepRatio);
+    final wavePhase = phase * 2 * math.pi;
+    final path = Path();
+    for (int i = 0; i <= segments; i++) {
+      final t = i / segments;
+      final a = start + (sweep * t);
+      final wave = math.sin((t * waveCount * 2 * math.pi) + wavePhase);
+      final r = radius + (wave * waveAmp);
+      final p = Offset(center.dx + r * math.cos(a), center.dy + r * math.sin(a));
+      if (i == 0) {
+        path.moveTo(p.dx, p.dy);
+      } else {
+        path.lineTo(p.dx, p.dy);
+      }
+    }
+
+    final fg = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    canvas.drawPath(path, fg);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SquigglyRingPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.phase != phase ||
+        oldDelegate.color != color ||
+        oldDelegate.backgroundColor != backgroundColor;
   }
 }
