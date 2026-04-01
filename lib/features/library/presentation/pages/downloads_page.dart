@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
@@ -7,6 +8,7 @@ import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/core/player/player_cubit.dart';
+import 'package:musee/features/player/domain/entities/queue_item.dart';
 
 class DownloadsPage extends StatefulWidget {
   const DownloadsPage({super.key});
@@ -149,6 +151,67 @@ class _DownloadsPageState extends State<DownloadsPage> {
     );
   }
 
+  Future<void> _playDownloadedTracks(List<CachedTrack> tracks) async {
+    if (tracks.isEmpty || _isMutating) return;
+
+    final queueItems = tracks
+        .map(
+          (track) => QueueItem(
+            trackId: track.trackId,
+            title: track.title,
+            artist: track.artistName,
+            album: track.albumTitle,
+            imageUrl: track.albumCoverUrl,
+            localImagePath: track.localImagePath,
+            durationSeconds: track.durationSeconds,
+          ),
+        )
+        .toList();
+
+    final first = tracks.first;
+    final playerCubit = context.read<PlayerCubit>();
+    await playerCubit.replaceQueue(queueItems);
+    if (!mounted) return;
+    await playerCubit.playTrackById(
+      trackId: first.trackId,
+      title: first.title,
+      artist: first.artistName,
+      album: first.albumTitle,
+      imageUrl: first.albumCoverUrl,
+    );
+  }
+
+  Future<void> _shuffleDownloadedTracks(List<CachedTrack> tracks) async {
+    if (tracks.length < 2 || _isMutating) return;
+
+    final shuffled = List<CachedTrack>.from(tracks)..shuffle(Random());
+    await _playDownloadedTracks(shuffled);
+  }
+
+  Future<void> _queueDownloadedTracks(List<CachedTrack> tracks) async {
+    if (tracks.isEmpty || _isMutating) return;
+
+    final queueItems = tracks
+        .map(
+          (track) => QueueItem(
+            trackId: track.trackId,
+            title: track.title,
+            artist: track.artistName,
+            album: track.albumTitle,
+            imageUrl: track.albumCoverUrl,
+            localImagePath: track.localImagePath,
+            durationSeconds: track.durationSeconds,
+          ),
+        )
+        .toList();
+
+    await context.read<PlayerCubit>().replaceQueue(queueItems);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Queued ${tracks.length} downloaded tracks')),
+    );
+  }
+
   String _formatBytes(int bytes) {
     if (bytes <= 0) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB'];
@@ -236,6 +299,98 @@ class _DownloadsPageState extends State<DownloadsPage> {
                         ),
                       ),
                     ),
+
+                    if (tracks.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.start,
+                            children: [
+                              Material(
+                                color: _isMutating
+                                    ? theme.colorScheme.surfaceContainerHighest
+                                    : theme.colorScheme.primaryContainer,
+                                elevation: 2,
+                                shadowColor: theme.colorScheme.shadow.withValues(
+                                  alpha: 0.2,
+                                ),
+                                borderRadius: BorderRadius.circular(999),
+                                child: InkWell(
+                                  onTap: _isMutating
+                                      ? null
+                                      : () => _playDownloadedTracks(tracks),
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Icon(
+                                      Icons.play_arrow_rounded,
+                                      size: 28,
+                                      color: _isMutating
+                                          ? theme.colorScheme.onSurfaceVariant
+                                          : theme.colorScheme.onPrimaryContainer,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Material(
+                                color: _isMutating || tracks.length < 2
+                                    ? theme.colorScheme.surfaceContainerHighest
+                                    : theme.colorScheme.secondaryContainer,
+                                elevation: 1,
+                                shadowColor: theme.colorScheme.shadow.withValues(
+                                  alpha: 0.14,
+                                ),
+                                borderRadius: BorderRadius.circular(999),
+                                child: InkWell(
+                                  onTap: _isMutating || tracks.length < 2
+                                      ? null
+                                      : () => _shuffleDownloadedTracks(tracks),
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Icon(
+                                      Icons.shuffle_rounded,
+                                      size: 22,
+                                      color: _isMutating || tracks.length < 2
+                                          ? theme.colorScheme.onSurfaceVariant
+                                          : theme.colorScheme.onSecondaryContainer,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Material(
+                                color: _isMutating
+                                    ? theme.colorScheme.surfaceContainerHighest
+                                    : theme.colorScheme.tertiaryContainer,
+                                elevation: 1,
+                                shadowColor: theme.colorScheme.shadow.withValues(
+                                  alpha: 0.14,
+                                ),
+                                borderRadius: BorderRadius.circular(999),
+                                child: InkWell(
+                                  onTap: _isMutating
+                                      ? null
+                                      : () => _queueDownloadedTracks(tracks),
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Icon(
+                                      Icons.queue_music_rounded,
+                                      size: 22,
+                                      color: _isMutating
+                                          ? theme.colorScheme.onSurfaceVariant
+                                          : theme.colorScheme.onTertiaryContainer,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
 
                     if (activeDownloads.isNotEmpty) ...[
                       const SliverToBoxAdapter(
