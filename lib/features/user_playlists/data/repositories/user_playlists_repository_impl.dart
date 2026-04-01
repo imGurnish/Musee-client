@@ -200,6 +200,7 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
           ..trackId = track.trackId
           ..title = track.title
           ..durationSeconds = track.duration
+          ..isExplicit = track.isExplicit
           ..artistName = track.artists.map((a) => a.name ?? 'Unknown').join(', ')
           ..albumCoverUrl = detail.coverUrl
           ..cachedAt = DateTime.now(),

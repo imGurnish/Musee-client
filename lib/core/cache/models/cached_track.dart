@@ -28,7 +28,7 @@ class CachedTrack extends HiveObject {
   late int durationSeconds;
 
   @HiveField(7)
-  late bool isExplicit;
+  bool isExplicit = false;
 
   /// Local file path when audio is downloaded, null otherwise
   @HiveField(8)
