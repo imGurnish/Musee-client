@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:audio_session/audio_session.dart';
 import 'package:bloc/bloc.dart';
@@ -45,6 +46,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   bool _isAdvancingNext = false;
   bool _userPaused = false;
   int _trackSwitchToken = 0;
+  final _random = math.Random();
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
@@ -915,11 +917,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     try {
       final currentIdx = state.currentIndex;
 
-      // Check if there's a next track
-      if (currentIdx + 1 < state.queue.length) {
-        // Simply advance to next track - don't remove current
-        // This is cleaner and avoids index confusion
-        final nextIndex = currentIdx + 1;
+      if (!userInitiated && state.repeatMode == PlayerRepeatMode.one && currentIdx >= 0) {
+        await _playAtIndex(currentIdx);
+        return;
+      }
+
+      final nextIndex = _resolveNextIndex(currentIdx);
+
+      if (nextIndex >= 0) {
         await _playAtIndex(nextIndex);
         unawaited(_refreshQueueIfNeeded());
       } else {
@@ -939,6 +944,51 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       _isAdvancingNext = false;
       emit(state.copyWith(isTransitioning: _isTrackSwitchInProgress));
     }
+  }
+
+  int _resolveNextIndex(int currentIdx) {
+    final queueLength = state.queue.length;
+    if (queueLength <= 0) return -1;
+
+    if (currentIdx < 0) return 0;
+
+    if (state.shuffleEnabled) {
+      final remainingStart = currentIdx + 1;
+      if (remainingStart < queueLength) {
+        final remainingCount = queueLength - remainingStart;
+        final randomOffset = _random.nextInt(remainingCount);
+        return remainingStart + randomOffset;
+      }
+
+      if (state.repeatMode == PlayerRepeatMode.all) {
+        return _random.nextInt(queueLength);
+      }
+
+      return -1;
+    }
+
+    if (currentIdx + 1 < queueLength) {
+      return currentIdx + 1;
+    }
+
+    if (state.repeatMode == PlayerRepeatMode.all) {
+      return 0;
+    }
+
+    return -1;
+  }
+
+  void toggleShuffle() {
+    emit(state.copyWith(shuffleEnabled: !state.shuffleEnabled));
+  }
+
+  void cycleRepeatMode() {
+    final nextMode = switch (state.repeatMode) {
+      PlayerRepeatMode.off => PlayerRepeatMode.all,
+      PlayerRepeatMode.all => PlayerRepeatMode.one,
+      PlayerRepeatMode.one => PlayerRepeatMode.off,
+    };
+    emit(state.copyWith(repeatMode: nextMode));
   }
 
   Future<void> _playAtIndex(int index) async {

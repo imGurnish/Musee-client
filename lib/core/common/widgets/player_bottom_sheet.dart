@@ -190,6 +190,19 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
           final dur = state.duration.inMilliseconds > 0
               ? state.duration
               : const Duration(seconds: 1);
+          final shuffleEnabled = state.shuffleEnabled;
+          final repeatMode = state.repeatMode;
+          final repeatTooltip = switch (repeatMode) {
+            PlayerRepeatMode.off => 'Repeat: Off',
+            PlayerRepeatMode.all => 'Repeat: Loop all',
+            PlayerRepeatMode.one => 'Repeat: One track',
+          };
+          final repeatIcon = switch (repeatMode) {
+            PlayerRepeatMode.one => Icons.repeat_one_rounded,
+            PlayerRepeatMode.off || PlayerRepeatMode.all => Icons.repeat_rounded,
+          };
+          final controlColor = theme.colorScheme.onSurfaceVariant;
+          final activeControlColor = theme.colorScheme.primary;
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -337,9 +350,14 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
               Row(
                 children: [
                   IconButton(
-                    tooltip: 'Enhance / Shuffle',
-                    onPressed: () {},
-                    icon: const Icon(Icons.auto_awesome_rounded),
+                    tooltip: shuffleEnabled ? 'Shuffle: On' : 'Shuffle: Off',
+                    onPressed: canControlPlayback
+                        ? () => context.read<PlayerCubit>().toggleShuffle()
+                        : null,
+                    icon: Icon(
+                      Icons.shuffle_rounded,
+                      color: shuffleEnabled ? activeControlColor : controlColor,
+                    ),
                   ),
                   const Spacer(),
                   IconButton(
@@ -393,9 +411,16 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
                   ),
                   const Spacer(),
                   IconButton(
-                    tooltip: 'Sleep timer',
-                    onPressed: () {},
-                    icon: const Icon(Icons.timer_rounded),
+                    tooltip: repeatTooltip,
+                    onPressed: canControlPlayback
+                        ? () => context.read<PlayerCubit>().cycleRepeatMode()
+                        : null,
+                    icon: Icon(
+                      repeatIcon,
+                      color: repeatMode == PlayerRepeatMode.off
+                          ? controlColor
+                          : activeControlColor,
+                    ),
                   ),
                 ],
               ),
@@ -861,16 +886,20 @@ class _SquigglyRingPainter extends CustomPainter {
       ..color = backgroundColor;
     canvas.drawCircle(center, radius, bg);
 
-    final sweep = progress == null
-        ? math.pi * (1.35 + 0.30 * math.sin(phase * 2 * math.pi).abs())
-        : (2 * math.pi * progress!.clamp(0.0, 1.0));
-    final start = -math.pi / 2;
+    final isPending = progress == null;
+    final sweep = isPending
+      // Keep pending arc short so it doesn't visually imply high completion.
+      ? (2 * math.pi) * (0.22 + 0.08 * math.sin(phase * 2 * math.pi).abs())
+      : (2 * math.pi * progress!.clamp(0.0, 1.0));
+    final start = isPending
+      ? (-math.pi / 2) + (phase * 2 * math.pi * 0.8)
+      : -math.pi / 2;
 
     final sweepRatio = (sweep / (2 * math.pi)).clamp(0.0, 1.0);
     final segments = math.max(24, (96 * sweepRatio).round());
-    final waveAmp = 0.35;
+    final waveAmp = isPending ? 0.18 : 0.35;
     // Keep squiggle density visually stable as the visible arc gets shorter.
-    final waveCount = math.max(0.9, 5.0 * sweepRatio);
+    final waveCount = isPending ? 1.3 : math.max(0.9, 5.0 * sweepRatio);
     final wavePhase = phase * 2 * math.pi;
     final path = Path();
     for (int i = 0; i <= segments; i++) {
