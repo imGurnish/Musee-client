@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:audio_session/audio_session.dart';
 import 'package:bloc/bloc.dart';
@@ -45,6 +46,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   bool _isAdvancingNext = false;
   bool _userPaused = false;
   int _trackSwitchToken = 0;
+  final _random = math.Random();
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
@@ -89,6 +91,17 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         errorMessage: message,
       ),
     );
+  }
+
+  Future<void> _stopPlaybackForTrackSwitch() async {
+    _playbackReassertTimer?.cancel();
+    try {
+      await _player.stop();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Failed to stop current track before switch: $e');
+      }
+    }
   }
 
   PlayerCubit({
@@ -403,6 +416,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         return Uri.file(inputUrl);
       }
 
+      await _stopPlaybackForTrackSwitch();
+
       await _player.setAudioSource(
         AudioSource.uri(
           toUri(track.url),
@@ -505,6 +520,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           ),
         );
 
+        await _stopPlaybackForTrackSwitch();
+
         await _player.setAudioSource(
           AudioSource.uri(
             toUri(refreshedTrack.url),
@@ -606,6 +623,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       ),
     );
 
+    await _stopPlaybackForTrackSwitch();
+
     final repo = _repo;
     if (repo != null) {
       unawaited(() async {
@@ -649,13 +668,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     final url = await _fetchPlayableUrl(trackId);
     if (url == null) {
-      emit(
-        state.copyWith(
-          buffering: false,
-          resolvingUrl: false,
-          isTransitioning: false,
-          playing: false,
-        ),
+      _emitPlaybackError(
+        'Unable to load this track. Please check your internet and try again.',
       );
       return;
     }
@@ -703,6 +717,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         state.copyWith(
           queue: items,
           currentIndex: _sanitizeIndex(state.currentIndex, items.length),
+          recommendationAutoFillEnabled: false,
         ),
       );
       await _refreshQueueIfNeeded();
@@ -755,7 +770,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> addToQueue(List<QueueItem> items) async {
-    emit(state.copyWith(queue: [...state.queue, ...items]));
+    emit(
+      state.copyWith(
+        queue: [...state.queue, ...items],
+        recommendationAutoFillEnabled: false,
+      ),
+    );
     final repo = _repo;
     if (repo != null) {
       unawaited(
@@ -789,6 +809,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       state.copyWith(
         queue: newList,
         currentIndex: _sanitizeIndex(newIndex, newList.length),
+        recommendationAutoFillEnabled: false,
       ),
     );
 
@@ -823,6 +844,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       state.copyWith(
         queue: list,
         currentIndex: _sanitizeIndex(newIndex, list.length),
+        recommendationAutoFillEnabled: false,
       ),
     );
 
@@ -839,11 +861,80 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         currentIndex: -1,
         isTransitioning: false,
         resolvingUrl: false,
+        recommendationAutoFillEnabled: false,
       ),
     );
     final repo = _repo;
     if (repo != null) {
       unawaited(repo.clearQueue());
+    }
+  }
+
+  Future<void> stopPlayback({
+    bool clearQueueItems = false,
+    bool clearCurrentTrack = true,
+  }) async {
+    _userPaused = true;
+    _playbackReassertTimer?.cancel();
+    _switchFailSafeTimer?.cancel();
+
+    try {
+      await _player.stop();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Failed to stop playback: $e');
+      }
+    }
+
+    final shouldClearQueue = clearQueueItems;
+    final nextQueue = shouldClearQueue ? const <QueueItem>[] : state.queue;
+    final nextIndex = shouldClearQueue
+        ? -1
+        : _sanitizeIndex(state.currentIndex, state.queue.length);
+
+    emit(
+      state.copyWith(
+        track: clearCurrentTrack ? null : state.track,
+        queue: nextQueue,
+        currentIndex: nextIndex,
+        playing: false,
+        buffering: false,
+        resolvingUrl: false,
+        isTransitioning: false,
+        clearErrorMessage: true,
+      ),
+    );
+
+    if (shouldClearQueue) {
+      final repo = _repo;
+      if (repo != null) {
+        unawaited(repo.clearQueue());
+      }
+    }
+  }
+
+  /// Replace the entire queue with new items and start playing from the first item
+  Future<void> replaceQueue(List<QueueItem> items) async {
+    if (items.isEmpty) {
+      await clearQueue();
+      return;
+    }
+
+    emit(
+      state.copyWith(
+        queue: items,
+        currentIndex: 0,
+        isTransitioning: false,
+        resolvingUrl: false,
+        recommendationAutoFillEnabled: false,
+      ),
+    );
+    final repo = _repo;
+    if (repo != null) {
+      unawaited(repo.clearQueue());
+      unawaited(
+        repo.addToQueue(trackIds: items.map((e) => e.trackId).toList()),
+      );
     }
   }
 
@@ -879,11 +970,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     try {
       final currentIdx = state.currentIndex;
 
-      // Check if there's a next track
-      if (currentIdx + 1 < state.queue.length) {
-        // Simply advance to next track - don't remove current
-        // This is cleaner and avoids index confusion
-        final nextIndex = currentIdx + 1;
+      if (!userInitiated && state.repeatMode == PlayerRepeatMode.one && currentIdx >= 0) {
+        await _playAtIndex(currentIdx);
+        return;
+      }
+
+      final nextIndex = _resolveNextIndex(currentIdx);
+
+      if (nextIndex >= 0) {
         await _playAtIndex(nextIndex);
         unawaited(_refreshQueueIfNeeded());
       } else {
@@ -903,6 +997,51 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       _isAdvancingNext = false;
       emit(state.copyWith(isTransitioning: _isTrackSwitchInProgress));
     }
+  }
+
+  int _resolveNextIndex(int currentIdx) {
+    final queueLength = state.queue.length;
+    if (queueLength <= 0) return -1;
+
+    if (currentIdx < 0) return 0;
+
+    if (state.shuffleEnabled) {
+      final remainingStart = currentIdx + 1;
+      if (remainingStart < queueLength) {
+        final remainingCount = queueLength - remainingStart;
+        final randomOffset = _random.nextInt(remainingCount);
+        return remainingStart + randomOffset;
+      }
+
+      if (state.repeatMode == PlayerRepeatMode.all) {
+        return _random.nextInt(queueLength);
+      }
+
+      return -1;
+    }
+
+    if (currentIdx + 1 < queueLength) {
+      return currentIdx + 1;
+    }
+
+    if (state.repeatMode == PlayerRepeatMode.all) {
+      return 0;
+    }
+
+    return -1;
+  }
+
+  void toggleShuffle() {
+    emit(state.copyWith(shuffleEnabled: !state.shuffleEnabled));
+  }
+
+  void cycleRepeatMode() {
+    final nextMode = switch (state.repeatMode) {
+      PlayerRepeatMode.off => PlayerRepeatMode.all,
+      PlayerRepeatMode.all => PlayerRepeatMode.one,
+      PlayerRepeatMode.one => PlayerRepeatMode.off,
+    };
+    emit(state.copyWith(repeatMode: nextMode));
   }
 
   Future<void> _playAtIndex(int index) async {
@@ -942,17 +1081,16 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       ),
     );
 
+    // Stop current playback immediately so previous track audio does not
+    // continue while the next track URL is being resolved on slow networks.
+    await _stopPlaybackForTrackSwitch();
+
     final url = await _fetchPlayableUrl(item.trackId);
     if (url == null || url.trim().isEmpty) {
       if (switchToken == _trackSwitchToken) {
         _clearSwitchFailSafe();
-        emit(
-          state.copyWith(
-            buffering: false,
-            resolvingUrl: false,
-            isTransitioning: false,
-            playing: false,
-          ),
+        _emitPlaybackError(
+          'Unable to load this track. Please check your internet and try again.',
         );
         _isTrackSwitchInProgress = false;
       }
@@ -979,6 +1117,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       final uri = url.startsWith('http') || url.startsWith('https')
           ? Uri.parse(url)
           : Uri.file(url);
+
+      await _stopPlaybackForTrackSwitch();
 
       await _player.setAudioSource(AudioSource.uri(uri));
 
@@ -1067,6 +1207,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         final refreshedUri = refreshedUrl.startsWith('http') || refreshedUrl.startsWith('https')
             ? Uri.parse(refreshedUrl)
             : Uri.file(refreshedUrl);
+
+        await _stopPlaybackForTrackSwitch();
 
         await _player.setAudioSource(AudioSource.uri(refreshedUri));
 
@@ -1358,7 +1500,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     final refreshedNeeded = 10 - refreshedRemaining;
 
     // 2. Recommendation-based smart fill to always keep next 10 ready
-    if (refreshedNeeded > 0 && state.queue.isNotEmpty && _repo != null) {
+    if (state.recommendationAutoFillEnabled &&
+      refreshedNeeded > 0 &&
+      state.queue.isNotEmpty &&
+      _repo != null) {
       final existingIds = state.queue.map((q) => q.trackId).toSet();
       int remainingNeeded = refreshedNeeded;
 

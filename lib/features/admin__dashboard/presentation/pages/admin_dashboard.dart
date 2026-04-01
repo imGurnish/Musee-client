@@ -31,18 +31,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
       drawer: Drawer(child: AdminSidebar()),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final w = constraints.maxWidth;
-          final int crossAxisCount;
-          if (w < 350) {
-            crossAxisCount = 1;
-          } else if (w < 600) {
-            crossAxisCount = 2;
-          } else if (w < 1000) {
-            crossAxisCount = 3;
-          } else {
-            crossAxisCount = 4;
-          }
-
           return Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -73,114 +61,91 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
                 // Cards grid
                 Expanded(
-                  child: GridView.count(
-                    crossAxisCount: crossAxisCount,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 1.2,
-                    children: [
-                      AdminCard(
-                        title: 'Users',
-                        subtitle: 'Manage all app users',
-                        icon: Icons.people,
-                        color: theme.colorScheme.primary,
-                        onTap: () {
-                          context.push(Routes.adminUsers);
-                        },
-                      ),
-                      AdminCard(
-                        title: 'Artists',
-                        subtitle: 'Manage artists',
-                        icon: Icons.mic,
-                        color: theme.colorScheme.secondary,
-                        onTap: () {
-                          context.push(Routes.adminArtists);
-                        },
-                      ),
-                      AdminCard(
-                        title: 'Tracks',
-                        subtitle: 'Manage tracks',
-                        icon: Icons.music_note,
-                        color: Colors.green,
-                        onTap: () {
-                          context.push('/admin/tracks');
-                        },
-                      ),
-                      AdminCard(
-                        title: 'Albums',
-                        subtitle: 'Manage albums',
-                        icon: Icons.album,
-                        color: theme.colorScheme.secondary.withValues(
-                          alpha: 0.85,
+                  child: GridView.builder(
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 290,
+                      mainAxisSpacing: 16,
+                      crossAxisSpacing: 16,
+                      mainAxisExtent: 188,
+                    ),
+                    itemCount: 9,
+                    itemBuilder: (context, index) {
+                      final cards = [
+                        (
+                          'Users',
+                          'Manage all app users',
+                          Icons.people,
+                          theme.colorScheme.primary,
+                          Routes.adminUsers,
                         ),
-                        onTap: () {
-                          context.push("/admin/albums");
-                        },
-                      ),
-                      AdminCard(
-                        title: 'Playlists',
-                        subtitle: 'Manage playlists',
-                        icon: Icons.queue_music,
-                        color: Colors.teal,
-                        onTap: () {
-                          context.push(Routes.adminPlaylists);
-                        },
-                      ),
-                      AdminCard(
-                        title: 'Import Playlist',
-                        subtitle: 'Playlist with all songs',
-                        icon: Icons.playlist_add,
-                        color: Colors.tealAccent.shade700,
-                        onTap: () {
-                          context.push(Routes.adminPlaylistImport);
-                        },
-                      ),
-                      AdminCard(
-                        title: 'Import Track',
-                        subtitle: 'From JioSaavn metadata',
-                        icon: Icons.download,
-                        color: Colors.blue,
-                        onTap: () {
-                          context.push(Routes.adminTrackImport);
-                        },
-                      ),
-                      AdminCard(
-                        title: 'Import Album',
-                        subtitle: 'Album with songs and artists',
-                        icon: Icons.library_music,
-                        color: Colors.cyan,
-                        onTap: () {
-                          context.push(Routes.adminAlbumImport);
-                        },
-                      ),
-                      AdminCard(
-                        title: 'Plans',
-                        subtitle: 'Manage subscription plans',
-                        icon: Icons.subscriptions,
-                        color: Colors.indigo,
-                        onTap: () {
-                          context.push('/admin/plans');
-                        },
-                      ),
-                      AdminCard(
-                        title: 'Countries',
-                        subtitle: 'Manage countries',
-                        icon: Icons.public,
-                        color: Colors.deepOrange,
-                        onTap: () {
-                          context.push(Routes.adminCountries);
-                        },
-                      ),
-                      AdminCard(
-                        title: 'Regions',
-                        subtitle: 'Manage regions',
-                        icon: Icons.map,
-                        color: Colors.purple,
-                        onTap: () {
-                          context.push(Routes.adminRegions);
-                        },
-                      ),
-                    ],
+                        (
+                          'Artists',
+                          'Manage artists',
+                          Icons.mic,
+                          theme.colorScheme.secondary,
+                          Routes.adminArtists,
+                        ),
+                        (
+                          'Tracks',
+                          'Manage tracks',
+                          Icons.music_note,
+                          Colors.green,
+                          '/admin/tracks',
+                        ),
+                        (
+                          'Albums',
+                          'Manage albums',
+                          Icons.album,
+                          theme.colorScheme.secondary.withValues(alpha: 0.85),
+                          '/admin/albums',
+                        ),
+                        (
+                          'Playlists',
+                          'Manage playlists',
+                          Icons.queue_music,
+                          Colors.teal,
+                          Routes.adminPlaylists,
+                        ),
+                        (
+                          'JioSaavn Import',
+                          'Auto Fetch',
+                          Icons.download,
+                          Colors.cyan,
+                          Routes.adminImport,
+                        ),
+                        (
+                          'Plans',
+                          'Manage subscription plans',
+                          Icons.subscriptions,
+                          Colors.indigo,
+                          '/admin/plans',
+                        ),
+                        (
+                          'Countries',
+                          'Manage countries',
+                          Icons.public,
+                          Colors.deepOrange,
+                          Routes.adminCountries,
+                        ),
+                        (
+                          'Regions',
+                          'Manage regions',
+                          Icons.map,
+                          Colors.purple,
+                          Routes.adminRegions,
+                        ),
+                      ];
+
+                      final card = cards[index];
+                      return AdminCard(
+                        title: card.$1,
+                        subtitle: card.$2,
+                        icon: card.$3,
+                        color: card.$4,
+                        onTap: () => context.push(card.$5),
+                      );
+                    },
                   ),
                 ),
               ],

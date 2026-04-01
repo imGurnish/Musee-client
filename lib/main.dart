@@ -1,4 +1,5 @@
-import 'package:device_preview/device_preview.dart';
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -60,13 +61,15 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late final GoRouter _router;
   bool _hasInitializedAuth = false;
+  bool _logoutStopHandled = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Initialize router with AppUserCubit
     _router = AppGoRouter.createRouter(serviceLocator<AppUserCubit>());
 
@@ -80,25 +83,64 @@ class _MyAppState extends State<MyApp> {
   }
 
   @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      unawaited(serviceLocator<PlayerCubit>().stopPlayback());
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'musee',
-      debugShowCheckedModeBanner: false,
-      routerConfig: _router,
-      // --- Light Theme Definition ---
-      theme: ThemeData(
-        cardColor: AppColors.lightColorScheme.secondary.withAlpha(10),
-        colorScheme: AppColors.lightColorScheme,
-        useMaterial3: true,
+    return BlocListener<AuthBloc, AuthState>(
+      listenWhen: (previous, current) {
+        final isLogoutTransition =
+            current is AuthInitial &&
+            (previous is AuthLoading || previous is AuthSuccess);
+
+        if (isLogoutTransition && !_logoutStopHandled) {
+          return true;
+        }
+
+        if (current is AuthSuccess) {
+          _logoutStopHandled = false;
+        }
+
+        return false;
+      },
+      listener: (context, state) {
+        _logoutStopHandled = true;
+        unawaited(
+          serviceLocator<PlayerCubit>().stopPlayback(
+            clearQueueItems: true,
+            clearCurrentTrack: true,
+          ),
+        );
+      },
+      child: MaterialApp.router(
+        title: 'Musee',
+        debugShowCheckedModeBanner: false,
+        routerConfig: _router,
+        // --- Light Theme Definition ---
+        theme: ThemeData(
+          cardColor: AppColors.lightColorScheme.secondary.withAlpha(10),
+          colorScheme: AppColors.lightColorScheme,
+          useMaterial3: true,
+        ),
+        // Dark Theme
+        darkTheme: ThemeData(
+          cardColor: AppColors.darkColorScheme.secondary.withAlpha(10),
+          colorScheme: AppColors.darkColorScheme,
+          useMaterial3: true,
+        ),
+        // Automatically selects theme based on system settings
+        themeMode: ThemeMode.system,
       ),
-      // Dark Theme
-      darkTheme: ThemeData(
-        cardColor: AppColors.darkColorScheme.secondary.withAlpha(10),
-        colorScheme: AppColors.darkColorScheme,
-        useMaterial3: true,
-      ),
-      // Automatically selects theme based on system settings
-      themeMode: ThemeMode.system,
     );
   }
 }

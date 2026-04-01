@@ -24,9 +24,7 @@ import 'package:musee/features/admin_tracks/presentation/pages/admin_tracks_page
 import 'package:musee/features/admin_tracks/presentation/pages/admin_track_create_page.dart';
 import 'package:musee/features/admin_tracks/presentation/pages/admin_track_detail_page.dart';
 import 'package:musee/features/admin_tracks/presentation/bloc/admin_tracks_bloc.dart';
-import 'package:musee/features/admin_external_import/presentation/pages/admin_external_track_import_page.dart';
-import 'package:musee/features/admin_external_import/presentation/pages/admin_external_album_import_page.dart';
-import 'package:musee/features/admin_external_import/presentation/pages/admin_external_playlist_import_page.dart';
+import 'package:musee/features/admin_external_import/presentation/pages/admin_external_import_page.dart';
 import 'package:musee/features/admin_playlists/presentation/pages/admin_playlists_page.dart';
 import 'package:musee/features/admin_playlists/presentation/pages/admin_playlist_detail_page.dart';
 import 'package:musee/features/admin_playlists/presentation/bloc/admin_playlist_detail_bloc.dart';
@@ -37,7 +35,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:async';
 import 'package:musee/features/user_albums/presentation/pages/user_album_page.dart';
-import 'package:musee/features/search/presentation/pages/search_page.dart';
+import 'package:musee/features/user_playlists/presentation/pages/user_playlist_page.dart';
+import 'package:musee/features/search/presentation/pages/search_suggestions_page.dart';
 import 'package:musee/features/search/presentation/pages/search_results_page.dart';
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
 import 'package:musee/core/common/pages/coming_soon_page.dart';
@@ -45,13 +44,10 @@ import 'package:musee/features/user_artists/presentation/pages/user_artist_page.
 import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.dart';
 import 'package:musee/features/library/presentation/pages/user_library_page.dart';
 import 'package:musee/features/library/presentation/pages/downloads_page.dart';
+import 'package:musee/core/common/navigation/user_shell_page.dart';
 
 class AppGoRouter {
   static GoRouter createRouter(AppUserCubit appUserCubit) {
-    final isAdmin =
-        appUserCubit.state is AppUserLoggedIn &&
-        (appUserCubit.state as AppUserLoggedIn).user.userType == UserType.admin;
-
     return GoRouter(
       debugLogDiagnostics: true,
       // Start from dashboard; redirect callback will handle admin vs user
@@ -108,14 +104,106 @@ class AppGoRouter {
         // Legacy root -> redirect to canonical dashboard
         GoRoute(
           path: Routes.root,
-          redirect: (context, state) =>
-              isAdmin ? Routes.adminArtists : Routes.dashboard,
+          redirect: (context, state) {
+            final appState = appUserCubit.state;
+            final isAdmin =
+                appState is AppUserLoggedIn &&
+                appState.user.userType == UserType.admin;
+            return isAdmin ? Routes.adminArtists : Routes.dashboard;
+          },
         ),
 
-        GoRoute(
-          path: Routes.dashboard,
-          name: 'user_dashboard',
-          builder: (context, state) => UserDashboard(),
+        StatefulShellRoute.indexedStack(
+          builder: (context, state, navigationShell) {
+            return UserShellPage(navigationShell: navigationShell);
+          },
+          branches: [
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: Routes.dashboard,
+                  name: 'user_dashboard',
+                  builder: (context, state) => const UserDashboard(),
+                ),
+                GoRoute(
+                  path: Routes.userAlbum,
+                  name: 'user_album',
+                  builder: (context, state) {
+                    final id = state.pathParameters['id'] ?? '';
+                    return UserAlbumPage(albumId: id);
+                  },
+                ),
+                GoRoute(
+                  path: Routes.userPlaylist,
+                  name: 'user_playlist',
+                  builder: (context, state) {
+                    final id = state.pathParameters['id'] ?? '';
+                    return UserPlaylistPage(playlistId: id);
+                  },
+                ),
+                GoRoute(
+                  path: '/artists/:id',
+                  name: 'user_artist',
+                  builder: (context, state) {
+                    final id = state.pathParameters['id'] ?? '';
+                    return BlocProvider(
+                      create: (_) => serviceLocator<UserArtistBloc>(),
+                      child: UserArtistPage(artistId: id),
+                    );
+                  },
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/search',
+                  name: 'search',
+                  builder: (context, state) {
+                    final q = state.uri.queryParameters['q'];
+                    if (q != null && q.trim().isNotEmpty) {
+                      return BlocProvider(
+                        create: (_) =>
+                            SearchBloc(serviceLocator(), serviceLocator()),
+                        child: SearchResultsPage(query: q),
+                      );
+                    }
+                    return BlocProvider(
+                      create: (_) =>
+                          SearchBloc(serviceLocator(), serviceLocator()),
+                      child: const SearchSuggestionsPage(),
+                    );
+                  },
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/library',
+                  name: 'library',
+                  builder: (context, state) => const UserLibraryPage(),
+                  routes: [
+                    GoRoute(
+                      path: 'downloads',
+                      name: 'downloads',
+                      builder: (context, state) => const DownloadsPage(),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/create',
+                  name: 'create',
+                  builder: (context, state) =>
+                      const ComingSoonPage(featureName: 'Create'),
+                ),
+              ],
+            ),
+          ],
         ),
 
         GoRoute(
@@ -238,13 +326,19 @@ class AppGoRouter {
         GoRoute(
           path: Routes.adminTrackImport,
           name: 'admin_track_import',
-          builder: (context, state) => const AdminExternalTrackImportPage(),
+          builder: (context, state) => const AdminExternalImportPage(),
         ),
 
         GoRoute(
           path: Routes.adminAlbumImport,
           name: 'admin_album_import',
-          builder: (context, state) => const AdminExternalAlbumImportPage(),
+          builder: (context, state) => const AdminExternalImportPage(),
+        ),
+
+        GoRoute(
+          path: Routes.adminImport,
+          name: 'admin_import',
+          builder: (context, state) => const AdminExternalImportPage(),
         ),
 
         GoRoute(
@@ -259,8 +353,7 @@ class AppGoRouter {
           builder: (context, state) {
             final playlistId = state.pathParameters['id'] ?? '';
             return BlocProvider(
-              create: (context) =>
-                  serviceLocator<AdminPlaylistDetailBloc>(),
+              create: (context) => serviceLocator<AdminPlaylistDetailBloc>(),
               child: AdminPlaylistDetailPage(playlistId: playlistId),
             );
           },
@@ -281,7 +374,7 @@ class AppGoRouter {
         GoRoute(
           path: Routes.adminPlaylistImport,
           name: 'admin_playlist_import',
-          builder: (context, state) => const AdminExternalPlaylistImportPage(),
+          builder: (context, state) => const AdminExternalImportPage(),
         ),
 
         GoRoute(
@@ -306,69 +399,12 @@ class AppGoRouter {
           },
         ),
 
-        GoRoute(
-          path: Routes.userAlbum,
-          name: 'user_album',
-          builder: (context, state) {
-            final id = state.pathParameters['id'] ?? '';
-            return UserAlbumPage(albumId: id);
-          },
-        ),
-
-        GoRoute(
-          path: '/artists/:id',
-          name: 'user_artist',
-          builder: (context, state) {
-            final id = state.pathParameters['id'] ?? '';
-            return BlocProvider(
-              create: (_) => serviceLocator<UserArtistBloc>(),
-              child: UserArtistPage(artistId: id),
-            );
-          },
-        ),
-
-        // Search entry via GoRouter (used by BottomNavBar)
-        GoRoute(
-          path: '/search',
-          name: 'search',
-          builder: (context, state) {
-            final q = state.uri.queryParameters['q'];
-            if (q != null && q.trim().isNotEmpty) {
-              return BlocProvider(
-                create: (_) => SearchBloc(serviceLocator(), serviceLocator()),
-                child: SearchResultsPage(query: q),
-              );
-            }
-            return const SearchPage();
-          },
-        ),
-
-        // Coming soon placeholders
-        GoRoute(
-          path: '/library',
-          name: 'library',
-          builder: (context, state) => const UserLibraryPage(),
-          routes: [
-            GoRoute(
-              path: 'downloads',
-              name: 'downloads',
-              builder: (context, state) => const DownloadsPage(),
-            ),
-          ],
-        ),
-        GoRoute(
-          path: '/premium',
-          name: 'premium',
-          builder: (context, state) =>
-              const ComingSoonPage(featureName: 'Premium', selectedIndex: 3),
-        ),
-        GoRoute(
-          path: '/create',
-          name: 'create',
-          builder: (context, state) =>
-              const ComingSoonPage(featureName: 'Create', selectedIndex: 4),
-        ),
-
+        // GoRoute(
+        //   path: '/premium',
+        //   name: 'premium',
+        //   builder: (context, state) =>
+        //       const ComingSoonPage(featureName: 'Premium'),
+        // ),
         GoRoute(
           path: Routes.forbidden,
           name: 'forbidden',

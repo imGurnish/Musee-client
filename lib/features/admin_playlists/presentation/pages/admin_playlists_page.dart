@@ -14,6 +14,9 @@ class AdminPlaylistsPage extends StatefulWidget {
 
 class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
   final _searchCtrl = TextEditingController();
+  int _page = 0;
+  int _limit = 20;
+  int _total = 0;
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _items = const [];
@@ -21,13 +24,20 @@ class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
   @override
   void initState() {
     super.initState();
+    _searchCtrl.addListener(_onSearchTextChanged);
     _load();
   }
 
   @override
   void dispose() {
+    _searchCtrl.removeListener(_onSearchTextChanged);
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  void _onSearchTextChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   Map<String, String> _headers() {
@@ -38,7 +48,9 @@ class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
     };
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page, int? limit}) async {
+    final nextPage = page ?? _page;
+    final nextLimit = limit ?? _limit;
     setState(() {
       _loading = true;
       _error = null;
@@ -48,8 +60,8 @@ class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
       final res = await client.get(
         '${AppSecrets.backendUrl}/api/admin/playlists',
         queryParameters: {
-          'page': 0,
-          'limit': 100,
+          'page': nextPage,
+          'limit': nextLimit,
           if (_searchCtrl.text.trim().isNotEmpty) 'q': _searchCtrl.text.trim(),
         },
         options: dio.Options(headers: _headers()),
@@ -59,6 +71,9 @@ class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
       setState(() {
+        _page = (data['page'] as num?)?.toInt() ?? nextPage;
+        _limit = (data['limit'] as num?)?.toInt() ?? nextLimit;
+        _total = (data['total'] as num?)?.toInt() ?? list.length;
         _items = list;
         _loading = false;
       });
@@ -159,7 +174,7 @@ class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
           context,
         ).showSnackBar(const SnackBar(content: Text('Saved')));
       }
-      await _load();
+      await _load(page: 0);
     } on dio.DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -194,7 +209,7 @@ class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
         '${AppSecrets.backendUrl}/api/admin/playlists/$id',
         options: dio.Options(headers: _headers()),
       );
-      await _load();
+      await _load(page: _page);
     } on dio.DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -203,8 +218,199 @@ class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
     }
   }
 
+  void _showMobileMenu(Map<String, dynamic> row) {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              row['name']?.toString() ?? 'Untitled',
+              style: Theme.of(context).textTheme.titleLarge,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('View Details'),
+            onTap: () {
+              Navigator.pop(ctx);
+              context.push('/admin/playlists/${row['playlist_id']}');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('Edit'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _upsert(existing: row);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline, color: Colors.red),
+            title: const Text('Delete', style: TextStyle(color: Colors.red)),
+            onTap: () {
+              Navigator.pop(ctx);
+              _delete(row['playlist_id'].toString());
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileSearchFilters(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Search Playlists',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.search_rounded,
+                size: 20,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'Search playlists',
+                    border: InputBorder.none,
+                    isDense: true,
+                    hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _load(page: 0),
+                ),
+              ),
+              if (_searchCtrl.text.trim().isNotEmpty)
+                IconButton(
+                  tooltip: 'Clear',
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    _searchCtrl.clear();
+                    setState(() {});
+                    _load(page: 0);
+                  },
+                ),
+              const SizedBox(width: 6),
+              FilledButton.tonal(
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                  _load(page: 0);
+                },
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(42, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Icon(Icons.arrow_forward_rounded, size: 18),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDesktopSearchFilters(ThemeData theme) {
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.search_rounded,
+                  size: 20,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextField(
+                    controller: _searchCtrl,
+                    decoration: InputDecoration(
+                      hintText: 'Search playlists',
+                      border: InputBorder.none,
+                      isDense: true,
+                      hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _load(page: 0),
+                  ),
+                ),
+                if (_searchCtrl.text.trim().isNotEmpty)
+                  IconButton(
+                    tooltip: 'Clear',
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      setState(() {});
+                      _load(page: 0);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        FilledButton.tonalIcon(
+          onPressed: () {
+            FocusScope.of(context).unfocus();
+            _load(page: 0);
+          },
+          icon: const Icon(Icons.search_rounded),
+          label: const Text('Search'),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(110, 42),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 760;
+    final isSearchMobile = MediaQuery.of(context).size.width < 768;
+    final totalPages = (_total / _limit).ceil().clamp(1, 999999);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin • Playlists'),
@@ -220,21 +426,15 @@ class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchCtrl,
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Search playlists',
-                    ),
-                    onSubmitted: (_) => _load(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(onPressed: _load, child: const Text('Search')),
-              ],
+            Card(
+              elevation: 0,
+              color: theme.colorScheme.surfaceContainerLowest,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: isSearchMobile
+                    ? _buildMobileSearchFilters(theme)
+                    : _buildDesktopSearchFilters(theme),
+              ),
             ),
             const SizedBox(height: 12),
             Expanded(
@@ -244,15 +444,77 @@ class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
                   ? Center(child: Text(_error!))
                   : ListView.separated(
                       itemCount: _items.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
                       itemBuilder: (context, index) {
                         final row = _items[index];
+                        if (isMobile) {
+                          return Card(
+                            elevation: 0,
+                            child: InkWell(
+                              onTap: () => context.push('/admin/playlists/${row['playlist_id']}'),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      child: Text(
+                                        (row['name']?.toString().isNotEmpty == true)
+                                            ? row['name'].toString()[0].toUpperCase()
+                                            : 'P',
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            row['name']?.toString() ?? 'Untitled',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: theme.textTheme.titleSmall,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            'language: ${row['language_code'] ?? '—'}',
+                                            style: theme.textTheme.bodySmall,
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: row['is_public'] == true
+                                                  ? Colors.green.withOpacity(0.15)
+                                                  : Colors.orange.withOpacity(0.15),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: Text(
+                                              row['is_public'] == true ? 'Public' : 'Private',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w500,
+                                                color: row['is_public'] == true
+                                                    ? Colors.green[700]
+                                                    : Colors.orange[700],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.more_vert),
+                                      onPressed: () => _showMobileMenu(row),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }
                         return ListTile(
-                          onTap: () {
-                            context.push(
-                              '/admin/playlists/${row['playlist_id']}',
-                            );
-                          },
+                          onTap: () => context.push('/admin/playlists/${row['playlist_id']}'),
                           title: Text(row['name']?.toString() ?? 'Untitled'),
                           subtitle: Text(
                             'playlist_id: ${row['playlist_id']}\n'
@@ -260,23 +522,126 @@ class _AdminPlaylistsPageState extends State<AdminPlaylistsPage> {
                             '• language: ${row['language_code'] ?? '—'}',
                           ),
                           isThreeLine: true,
-                          trailing: Wrap(
-                            spacing: 4,
-                            children: [
-                              IconButton(
-                                onPressed: () => _upsert(existing: row),
-                                icon: const Icon(Icons.edit_outlined),
+                          trailing: PopupMenuButton<String>(
+                            onSelected: (value) {
+                              if (value == 'edit') {
+                                _upsert(existing: row);
+                              } else if (value == 'delete') {
+                                _delete(row['playlist_id'].toString());
+                              }
+                            },
+                            itemBuilder: (context) => const [
+                              PopupMenuItem<String>(
+                                value: 'edit',
+                                child: Text('Edit'),
                               ),
-                              IconButton(
-                                onPressed: () =>
-                                    _delete(row['playlist_id'].toString()),
-                                icon: const Icon(Icons.delete_outline),
+                              PopupMenuItem<String>(
+                                value: 'delete',
+                                child: Text('Delete'),
                               ),
                             ],
+                            child: const Icon(Icons.more_vert),
                           ),
                         );
                       },
                     ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerLowest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 8,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '$_total',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onPrimaryContainer,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        height: 36,
+                        width: 36,
+                        child: FilledButton.tonal(
+                          onPressed: _page > 0 ? () => _load(page: _page - 1) : null,
+                          style: FilledButton.styleFrom(padding: EdgeInsets.zero),
+                          child: const Icon(Icons.chevron_left, size: 18),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '${_page + 1} / $totalPages',
+                      style: theme.textTheme.labelSmall,
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 8,
+                    children: [
+                      SizedBox(
+                        height: 36,
+                        width: 36,
+                        child: FilledButton.tonal(
+                          onPressed: _page < (totalPages - 1) ? () => _load(page: _page + 1) : null,
+                          style: FilledButton.styleFrom(padding: EdgeInsets.zero),
+                          child: const Icon(Icons.chevron_right, size: 18),
+                        ),
+                      ),
+                      PopupMenuButton<int>(
+                        initialValue: _limit,
+                        onSelected: (v) {
+                          setState(() => _limit = v);
+                          _load(page: 0, limit: v);
+                        },
+                        itemBuilder: (context) => [10, 20, 50, 100]
+                            .map((e) => PopupMenuItem(value: e, child: Text(e.toString())))
+                            .toList(),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: theme.colorScheme.outline),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            spacing: 4,
+                            children: [
+                              Text(_limit.toString(), style: theme.textTheme.labelSmall),
+                              Icon(Icons.arrow_drop_down, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),

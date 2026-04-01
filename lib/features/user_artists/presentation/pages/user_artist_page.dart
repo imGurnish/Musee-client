@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
-import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.dart';
 
 class UserArtistPage extends StatefulWidget {
@@ -212,7 +211,6 @@ class _UserArtistView extends StatelessWidget {
           },
         ),
       ),
-      bottomNavigationBar: const BottomNavBar(selectedIndex: 0),
     );
   }
 }

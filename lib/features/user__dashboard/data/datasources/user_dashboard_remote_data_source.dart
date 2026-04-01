@@ -23,12 +23,16 @@ class DashboardItemDTO extends DashboardItem {
       _ => DashboardItemType.album,
     };
 
-    // ID determination
+    // Preserve source-specific IDs so navigation and API calls remain stable.
     final trackId = json['track_id']?.toString();
     final albumId = json['album_id']?.toString();
-    final id = type == DashboardItemType.track
-      ? (trackId ?? '')
-      : (albumId ?? json['id']?.toString() ?? '');
+    final playlistId = json['playlist_id']?.toString();
+    final id = switch (type) {
+      DashboardItemType.track => trackId ?? json['id']?.toString() ?? '',
+      DashboardItemType.playlist =>
+        playlistId ?? albumId ?? json['id']?.toString() ?? '',
+      DashboardItemType.album => albumId ?? json['id']?.toString() ?? '',
+    };
 
     return DashboardItemDTO(
       id: id,

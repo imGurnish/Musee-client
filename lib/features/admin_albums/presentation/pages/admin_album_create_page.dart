@@ -130,7 +130,7 @@ class _AdminAlbumCreatePageState extends State<AdminAlbumCreatePage> {
         title: const Text('Create Album'),
         actions: [
           TextButton.icon(
-            onPressed: () => context.push(Routes.adminAlbumImport),
+            onPressed: () => context.push(Routes.adminImport),
             icon: const Icon(Icons.cloud_download),
             label: const Text('Import from JioSaavn'),
           ),

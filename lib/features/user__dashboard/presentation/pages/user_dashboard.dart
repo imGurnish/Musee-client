@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:musee/core/common/cubit/app_user_cubit.dart';
-import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 import 'package:musee/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:musee/features/user__dashboard/presentation/widgets/horizontal_media_section.dart';
 import 'package:musee/features/user__dashboard/presentation/widgets/section_header.dart';
@@ -76,9 +75,7 @@ class _UserDashboardState extends State<UserDashboard> {
             fullscreenDialog: true,
             builder: (_) => BlocProvider(
               create: (_) => serviceLocator<OnboardingBloc>(),
-              child: OnboardingPage(
-                userId: userId,
-              ),
+              child: OnboardingPage(userId: userId),
             ),
           ),
         );
@@ -98,14 +95,14 @@ class _UserDashboardState extends State<UserDashboard> {
         title: item.title,
         artist: item.artists.map((a) => a.name).join(', '),
         imageUrl: item.coverUrl,
+        openSheet: false,
       );
     } else if (item.type == DashboardItemType.album) {
       // Navigate to album
       context.push('/albums/${item.id}');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Playlist details are coming soon')),
-      );
+    } else if (item.type == DashboardItemType.playlist) {
+      // Navigate to playlist
+      context.push('/playlists/${item.id}');
     }
   }
 
@@ -158,7 +155,6 @@ class _UserDashboardState extends State<UserDashboard> {
           return previous.track?.trackId != current.track?.trackId;
         },
         child: Scaffold(
-          bottomNavigationBar: BottomNavBar(selectedIndex: 0),
           body: SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -198,8 +194,9 @@ class _UserDashboardState extends State<UserDashboard> {
                         .toList();
 
                     return RefreshIndicator(
-                      onRefresh: () =>
-                          context.read<UserDashboardCubit>().load(forceRefresh: true),
+                      onRefresh: () => context.read<UserDashboardCubit>().load(
+                        forceRefresh: true,
+                      ),
                       child: CustomScrollView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         slivers: [
@@ -240,6 +237,7 @@ class _UserDashboardState extends State<UserDashboard> {
                                             artist: t.artistName,
                                             imageUrl: t.albumCoverUrl,
                                             localImagePath: t.localImagePath,
+                                            openSheet: false,
                                           );
                                         },
                                       ),
@@ -367,12 +365,12 @@ class _HeaderBar extends StatelessWidget {
             ],
           ),
         ),
-        IconButton.filledTonal(
-          onPressed: () {},
-          icon: const Icon(Icons.notifications_none),
-          tooltip: 'Notifications',
-        ),
-        const SizedBox(width: 8),
+        // IconButton.filledTonal(
+        //   onPressed: () {},
+        //   icon: const Icon(Icons.notifications_none),
+        //   tooltip: 'Notifications',
+        // ),
+        // const SizedBox(width: 8),
         // Quick access to Admin Home if the current user is an admin
         BlocBuilder<AppUserCubit, AppUserState>(
           builder: (context, state) {
@@ -390,9 +388,6 @@ class _HeaderBar extends StatelessWidget {
         const SizedBox(width: 8),
         BlocBuilder<AppUserCubit, AppUserState>(
           builder: (context, state) {
-            final isAdmin =
-                state is AppUserLoggedIn &&
-                state.user.userType == UserType.admin;
             return PopupMenuButton<String>(
               icon: const CircleAvatar(child: Icon(Icons.person)),
               onSelected: (value) {
@@ -409,11 +404,6 @@ class _HeaderBar extends StatelessWidget {
               itemBuilder: (context) => [
                 const PopupMenuItem(value: 'profile', child: Text('Profile')),
                 const PopupMenuItem(value: 'settings', child: Text('Settings')),
-                if (isAdmin)
-                  const PopupMenuItem(
-                    value: 'admin',
-                    child: Text('Open admin dashboard'),
-                  ),
                 const PopupMenuItem(value: 'logout', child: Text('Logout')),
               ],
             );

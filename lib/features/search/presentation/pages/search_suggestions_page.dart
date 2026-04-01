@@ -1,8 +1,11 @@
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
+import 'package:musee/features/search/data/services/search_recents_service.dart';
+import 'package:musee/features/search/domain/entities/search_recent_item.dart';
+import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
+import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 
 /// Search suggestions page that displays search suggestions as user types
 /// Provides autocomplete functionality and navigation to search results
@@ -17,13 +20,18 @@ class SearchSuggestionsPage extends StatefulWidget {
 
 class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
   late final TextEditingController _searchController;
+  late final SearchRecentsService _recentsService;
+  List<SearchRecentItem> _recents = const <SearchRecentItem>[];
+  bool _isLoadingRecents = false;
 
   @override
   void initState() {
     super.initState();
+    _recentsService = serviceLocator<SearchRecentsService>();
     _searchController = TextEditingController(text: widget.query);
     _setupSearchControllerListener();
     _initializeWithQuery();
+    _loadRecents();
   }
 
   @override
@@ -48,11 +56,7 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: _buildAppBar(),
-      body: _buildBody(),
-      bottomNavigationBar: const BottomNavBar(selectedIndex: 1),
-    );
+    return Scaffold(appBar: _buildAppBar(), body: _buildBody());
   }
 
   /// Builds app bar with search field
@@ -61,7 +65,6 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
       backgroundColor: Colors.transparent,
       elevation: 0,
       title: _buildSearchField(),
-      titleSpacing: 0,
       actions: [IconButton(icon: const Icon(Icons.mic), onPressed: () => {})],
       actionsPadding: const EdgeInsets.symmetric(horizontal: 4),
     );
@@ -95,7 +98,7 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
       ),
       filled: true,
       fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
-      hintText: 'Search songs, albums, artists',
+      hintText: 'Search songs, albums, artists, playlists',
       hintStyle: TextStyle(
         color: isDark ? Colors.grey[400] : Colors.grey[600],
         fontSize: 16,
@@ -151,6 +154,10 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
 
   /// Builds content based on current BLoC state
   Widget _buildStateBasedContent(BuildContext context, SearchState state) {
+    if (_searchController.text.trim().isEmpty) {
+      return _buildRecentsState();
+    }
+
     return switch (state) {
       SuggestionLoading() => _buildLoadingState(),
       SuggestionError(message: final message) => _buildErrorState(message),
@@ -159,6 +166,109 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
             ? _buildEmptyState()
             : _buildSuggestionsList(suggestions),
       _ => _buildInitialState(),
+    };
+  }
+
+  Widget _buildRecentsState() {
+    if (_isLoadingRecents) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_recents.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: _buildSuggestionsContainerDecoration(),
+      child: Column(
+        children: [
+          ListTile(
+            title: Text(
+              'Recent searches',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            trailing: TextButton(
+              onPressed: _clearRecents,
+              child: const Text('Clear'),
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.separated(
+              itemCount: _recents.length,
+              separatorBuilder: _buildSuggestionSeparator,
+              itemBuilder: (context, index) {
+                final item = _recents[index];
+                return ListTile(
+                  leading: _buildRecentLeading(item),
+                  title: Text(
+                    item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: item.subtitle == null
+                      ? null
+                      : Text(
+                          item.subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                  trailing: _buildTypeBadge(item.type),
+                  onTap: () => _openRecent(item),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentLeading(SearchRecentItem item) {
+    if (item.imageUrl != null && item.imageUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.network(
+          item.imageUrl!,
+          width: 40,
+          height: 40,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Icon(_iconForType(item.type)),
+        ),
+      );
+    }
+
+    return Icon(_iconForType(item.type));
+  }
+
+  Widget _buildTypeBadge(SearchRecentType type) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        switch (type) {
+          SearchRecentType.track => 'Song',
+          SearchRecentType.album => 'Album',
+          SearchRecentType.artist => 'Artist',
+          SearchRecentType.playlist => 'Playlist',
+        },
+        style: Theme.of(context).textTheme.labelSmall,
+      ),
+    );
+  }
+
+  IconData _iconForType(SearchRecentType type) {
+    return switch (type) {
+      SearchRecentType.track => Icons.music_note,
+      SearchRecentType.album => Icons.album,
+      SearchRecentType.artist => Icons.person,
+      SearchRecentType.playlist => Icons.queue_music_rounded,
     };
   }
 
@@ -196,7 +306,7 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Enter a search term above to find songs, albums, and artists',
+              'Enter a search term above to find songs, albums, artists, and playlists',
               style: textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurface.withAlpha(179),
               ),
@@ -306,9 +416,12 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
 
   /// Handles search text changes and triggers suggestions
   void _handleSearchTextChanged(String query) {
-    if (query.isNotEmpty) {
+    if (query.trim().isNotEmpty) {
       _triggerSuggestions(query);
+      return;
     }
+
+    setState(() {});
   }
 
   /// Handles search submission and navigates to results
@@ -350,7 +463,55 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
 
   /// Navigates to search results page
   void _navigateToSearchResults(String query) {
-    context.pop();
-    context.push("/search?q=${Uri.encodeComponent(query)}");
+    context.go("/search?q=${Uri.encodeComponent(query)}");
+  }
+
+  Future<void> _loadRecents() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingRecents = true;
+    });
+
+    final recents = await _recentsService.getRecents(limit: 12);
+    if (!mounted) return;
+
+    setState(() {
+      _recents = recents;
+      _isLoadingRecents = false;
+    });
+  }
+
+  Future<void> _clearRecents() async {
+    await _recentsService.clearRecents();
+    await _loadRecents();
+  }
+
+  Future<void> _openRecent(SearchRecentItem item) async {
+    await _recentsService.addRecent(item);
+    if (!mounted) return;
+
+    switch (item.type) {
+      case SearchRecentType.track:
+        await showPlayerBottomSheet(
+          context,
+          trackId: item.id,
+          audioUrl: null,
+          title: item.title,
+          artist: item.subtitle ?? 'Unknown Artist',
+          imageUrl: item.imageUrl,
+        );
+        break;
+      case SearchRecentType.album:
+        context.push('/albums/${item.id}');
+        break;
+      case SearchRecentType.artist:
+        context.push('/artists/${item.id}');
+        break;
+      case SearchRecentType.playlist:
+        context.push('/playlists/${item.id}');
+        break;
+    }
+
+    await _loadRecents();
   }
 }

@@ -82,6 +82,11 @@ import 'package:musee/features/user_albums/data/repositories/user_albums_reposit
 import 'package:musee/features/user_albums/domain/repository/user_albums_repository.dart';
 import 'package:musee/features/user_albums/domain/usecases/get_user_album.dart';
 import 'package:musee/features/user_albums/presentation/bloc/user_album_bloc.dart';
+import 'package:musee/features/user_playlists/data/datasources/user_playlists_remote_data_source.dart';
+import 'package:musee/features/user_playlists/data/repositories/user_playlists_repository_impl.dart';
+import 'package:musee/features/user_playlists/domain/repository/user_playlists_repository.dart';
+import 'package:musee/features/user_playlists/domain/usecases/get_user_playlist.dart';
+import 'package:musee/features/user_playlists/presentation/bloc/user_playlist_bloc.dart';
 import 'package:musee/features/user__dashboard/data/datasources/user_dashboard_remote_data_source.dart';
 import 'package:musee/features/user__dashboard/data/repositories/user_dashboard_repository_impl.dart';
 import 'package:musee/features/user__dashboard/data/services/user_dashboard_cache_service.dart';
@@ -91,6 +96,7 @@ import 'package:musee/features/user__dashboard/domain/usecases/list_trending.dar
 import 'package:musee/features/user__dashboard/presentation/bloc/user_dashboard_cubit.dart';
 import 'package:musee/features/search/data/datasources/search_remote_data_source.dart';
 import 'package:musee/features/search/data/repositories/search_repository_impl.dart';
+import 'package:musee/features/search/data/services/search_recents_service.dart';
 import 'package:musee/features/search/domain/repository/search_repository.dart';
 import 'package:musee/features/search/domain/usecases/get_suggestions.dart';
 import 'package:musee/features/search/domain/usecases/get_search_results.dart';
@@ -110,7 +116,7 @@ import 'package:musee/core/cache/services/image_cache_service.dart';
 import 'package:musee/core/cache/services/user_media_detail_cache_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:musee/features/admin_external_import/data/jiosaavn_api_client.dart';
-import 'package:musee/features/admin_external_import/data/admin_external_import_service.dart';
+import 'package:musee/features/admin_external_import/data/admin_import_queue_client.dart';
 import 'package:musee/features/user_onboarding/data/datasources/onboarding_remote_data_source.dart';
 import 'package:musee/features/user_onboarding/data/repositories/onboarding_repository_impl.dart';
 import 'package:musee/features/user_onboarding/domain/repository/onboarding_repository.dart';
@@ -236,19 +242,16 @@ Future<void> initDependencies() async {
   _initAdminPlaylists();
 
   serviceLocator.registerLazySingleton<JioSaavnApiClient>(() => JioSaavnApiClient());
-  serviceLocator.registerLazySingleton<AdminExternalImportService>(
-    () => AdminExternalImportService(
-      jioApi: serviceLocator<JioSaavnApiClient>(),
-      artistsApi: serviceLocator<AdminArtistsRemoteDataSource>(),
-      albumsApi: serviceLocator<AdminAlbumsRemoteDataSource>(),
-      tracksApi: serviceLocator<AdminTracksRemoteDataSource>(),
-      supabase: serviceLocator<SupabaseClient>(),
+  serviceLocator.registerLazySingleton<AdminImportQueueClient>(
+    () => AdminImportQueueClient(
       dioClient: serviceLocator<Dio>(),
+      supabase: serviceLocator<SupabaseClient>(),
     ),
   );
 
   // user features
   _initUserAlbums();
+  _initUserPlaylists();
   _initUserArtists();
   _initUserDashboard();
   _initSearch();
@@ -511,6 +514,32 @@ void _initUserAlbums() {
     ..registerFactory(() => UserAlbumBloc(serviceLocator<GetUserAlbum>()));
 }
 
+void _initUserPlaylists() {
+  serviceLocator
+    // datasource
+    ..registerLazySingleton<UserPlaylistsRemoteDataSource>(
+      () => UserPlaylistsRemoteDataSourceImpl(
+        serviceLocator<Dio>(),
+        serviceLocator(),
+      ),
+    )
+    // repository
+    ..registerLazySingleton<UserPlaylistsRepository>(
+      () => UserPlaylistsRepositoryImpl(
+        serviceLocator<UserPlaylistsRemoteDataSource>(),
+        serviceLocator<TrackCacheService>(),
+        serviceLocator<ConnectivityService>(),
+        serviceLocator<UserMediaDetailCacheService>(),
+      ),
+    )
+    // use cases
+    ..registerFactory(
+      () => GetUserPlaylist(serviceLocator<UserPlaylistsRepository>()),
+    )
+    // bloc
+    ..registerFactory(() => UserPlaylistBloc(serviceLocator<GetUserPlaylist>()));
+}
+
 void _initUserArtists() {
   serviceLocator
     // datasource
@@ -572,6 +601,9 @@ void _initSearch() {
     // repository
     ..registerLazySingleton<SearchRepository>(
       () => SearchRepositoryImpl(serviceLocator()),
+    )
+    ..registerLazySingleton<SearchRecentsService>(
+      () => SearchRecentsServiceImpl(),
     )
     // use cases
     ..registerFactory(() => GetSuggestions(serviceLocator()))

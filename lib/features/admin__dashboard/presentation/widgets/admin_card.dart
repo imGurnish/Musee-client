@@ -20,24 +20,36 @@ class AdminCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              theme.colorScheme.surfaceContainerLow,
+              theme.colorScheme.surfaceContainer,
+            ],
+          ),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Container(
+              width: 44,
+              height: 4,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            const SizedBox(height: 10),
             CircleAvatar(
               backgroundColor: color.withValues(alpha: 0.12),
               foregroundColor: color,
@@ -46,17 +58,28 @@ class AdminCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 6),
-            Expanded(
+            Flexible(
               child: Text(
                 subtitle,
                 style: theme.textTheme.bodySmall,
                 overflow: TextOverflow.ellipsis,
-                maxLines: 3,
+                maxLines: 2,
+              ),
+            ),
+            const Spacer(),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Icon(
+                Icons.arrow_outward_rounded,
+                size: 18,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
             // const SizedBox(height: 8),

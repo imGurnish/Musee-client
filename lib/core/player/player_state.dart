@@ -1,6 +1,8 @@
 import 'package:equatable/equatable.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 
+enum PlayerRepeatMode { off, all, one }
+
 class PlayerTrack extends Equatable {
   final String? trackId; // nullable when playing ad-hoc URL not from queue
   final String url;
@@ -67,6 +69,9 @@ class PlayerViewState extends Equatable {
   final double volume;
   final List<QueueItem> queue;
   final int currentIndex; // index within queue for currently playing track
+  final bool shuffleEnabled;
+  final PlayerRepeatMode repeatMode;
+  final bool recommendationAutoFillEnabled;
 
   const PlayerViewState({
     this.track,
@@ -80,6 +85,9 @@ class PlayerViewState extends Equatable {
     this.volume = 1.0,
     this.queue = const <QueueItem>[],
     this.currentIndex = -1,
+    this.shuffleEnabled = false,
+    this.repeatMode = PlayerRepeatMode.off,
+    this.recommendationAutoFillEnabled = false,
   });
 
   PlayerViewState copyWith({
@@ -95,6 +103,9 @@ class PlayerViewState extends Equatable {
     double? volume,
     List<QueueItem>? queue,
     int? currentIndex,
+    bool? shuffleEnabled,
+    PlayerRepeatMode? repeatMode,
+    bool? recommendationAutoFillEnabled,
   }) {
     return PlayerViewState(
       track: track ?? this.track,
@@ -110,6 +121,10 @@ class PlayerViewState extends Equatable {
       volume: volume ?? this.volume,
       queue: queue ?? this.queue,
       currentIndex: currentIndex ?? this.currentIndex,
+      shuffleEnabled: shuffleEnabled ?? this.shuffleEnabled,
+      repeatMode: repeatMode ?? this.repeatMode,
+      recommendationAutoFillEnabled:
+          recommendationAutoFillEnabled ?? this.recommendationAutoFillEnabled,
     );
   }
 
@@ -126,5 +141,8 @@ class PlayerViewState extends Equatable {
     volume,
     queue,
     currentIndex,
+    shuffleEnabled,
+    repeatMode,
+    recommendationAutoFillEnabled,
   ];
 }

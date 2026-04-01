@@ -17,6 +17,7 @@ class Routes {
   static const String adminTracks = '/admin/tracks';
   static const String adminTrackCreate = '/admin/tracks/create-new';
   static const String adminTrackDetail = '/admin/tracks/:id';
+  static const String adminImport = '/admin/import/external';
   static const String adminTrackImport = '/admin/tracks/import/external';
   static const String adminAlbumImport = '/admin/albums/import/external';
   static const String adminPlaylists = '/admin/playlists';
@@ -30,6 +31,9 @@ class Routes {
 
   // User album details
   static const String userAlbum = '/albums/:id';
+
+  // User playlist details
+  static const String userPlaylist = '/playlists/:id';
 
   // Forbidden / error
   static const String forbidden = '/forbidden';
