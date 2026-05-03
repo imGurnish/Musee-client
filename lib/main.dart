@@ -26,7 +26,6 @@ void main() async {
   configureUrlStrategy();
   GoRouter.optionURLReflectsImperativeAPIs = true;
 
-  await MediaControlsService.instance.initialize();
 
   await initDependencies();
 

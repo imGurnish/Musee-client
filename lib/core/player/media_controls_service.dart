@@ -30,6 +30,7 @@ class MediaControlsService {
 
   _MuseeAudioHandler? _handler;
   bool _initialized = false;
+  MediaControlCallbacks? _callbacks;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -44,16 +45,15 @@ class MediaControlsService {
       ),
     );
 
-    if (platform_io.isAndroidPlatform) {
-      try {
-        await AudioService.androidForceEnableMediaButtons();
-      } catch (_) {}
+    if (_callbacks != null) {
+      _handler!.callbacks = _callbacks;
     }
 
     _initialized = true;
   }
 
   void configureCallbacks(MediaControlCallbacks callbacks) {
+    _callbacks = callbacks;
     _handler?.callbacks = callbacks;
   }
 
@@ -214,5 +214,11 @@ class _MuseeAudioHandler extends BaseAudioHandler with SeekHandler {
   @override
   Future<void> stop() async {
     await _safeRun(callbacks?.onStop);
+    await super.stop();
+  }
+
+  @override
+  Future<void> onTaskRemoved() async {
+    await stop();
   }
 }

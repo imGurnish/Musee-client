@@ -24,7 +24,7 @@ import 'package:musee/core/platform/platform_io_stub.dart'
 import 'player_state.dart';
 
 class PlayerCubit extends Cubit<PlayerViewState> {
-  final AudioPlayer _player;
+  late final AudioPlayer _player;
   final PlayerRepository? _repo; // optional to allow previous initialization
   final TrackCacheService? _trackCache;
   final AudioCacheService? _audioCache;
@@ -46,6 +46,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   bool _isAdvancingNext = false;
   bool _userPaused = false;
   int _trackSwitchToken = 0;
+  bool _platformAudioInitialized = false;
   final _random = math.Random();
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
@@ -96,7 +97,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   Future<void> _stopPlaybackForTrackSwitch() async {
     _playbackReassertTimer?.cancel();
     try {
-      await _player.stop();
+      if (_platformAudioInitialized) {
+        await _player.stop();
+      }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[PlayerCubit] Failed to stop current track before switch: $e');
@@ -112,8 +115,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     MusicProviderRegistry? musicProviderRegistry,
      ListeningHistoryRepository? listeningHistoryRepository,
      SupabaseClient? supabaseClient,
-  }) : _player = AudioPlayer(),
-       _repo = repository,
+  }) : _repo = repository,
        _trackCache = trackCache,
        _audioCache = audioCache,
        _imageCache = imageCache,
@@ -124,13 +126,53 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _init();
   }
 
-  Future<void> _init() async {
+  Future<void> _ensurePlatformAudio() async {
+    if (_platformAudioInitialized) return;
+    _platformAudioInitialized = true;
+    _player = AudioPlayer(
+      handleAudioSessionActivation: false,
+      handleInterruptions: false,
+    );
+    _setupPlayerStreams();
     try {
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
     } catch (_) {}
-
     await MediaControlsService.instance.initialize();
+    _publishNowPlaying(state);
+  }
+
+  void _setupPlayerStreams() {
+    _positionSub = _player.positionStream.listen((pos) {
+      emit(state.copyWith(position: pos));
+    });
+    _durationSub = _player.durationStream.listen((dur) {
+      emit(state.copyWith(duration: dur ?? Duration.zero));
+    });
+    _playerStateSub = _player.playerStateStream.listen((ps) async {
+      final playing = ps.playing;
+      if (playing) {
+        _userPaused = false;
+      }
+      final buffering =
+          ps.processingState == ProcessingState.loading ||
+          ps.processingState == ProcessingState.buffering;
+      emit(
+        state.copyWith(
+          playing: playing,
+          buffering: buffering,
+          isTransitioning: _isBusySwitching,
+        ),
+      );
+
+      // Auto-advance when current track completes
+      if (ps.processingState == ProcessingState.completed && !_isTrackSwitchInProgress && !_isAdvancingNext) {
+        unawaited(_playNextInternal());
+      }
+    });
+  }
+
+  Future<void> _init() async {
     MediaControlsService.instance.configureCallbacks(
       MediaControlCallbacks(
         onPlay: () async {
@@ -147,7 +189,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           try {
             _userPaused = true;
             _playbackReassertTimer?.cancel();
-            await _player.pause();
+            if (_platformAudioInitialized) {
+              await _player.pause();
+            }
           } catch (e) {
             _emitPlaybackError('Unable to pause playback.');
             if (kDebugMode) {
@@ -187,7 +231,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         },
         onStop: () async {
           _userPaused = false;
-          await _player.stop();
+          if (_platformAudioInitialized) {
+            await _player.stop();
+          }
           emit(
             state.copyWith(
               playing: false,
@@ -199,34 +245,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         },
       ),
     );
-
-    _positionSub = _player.positionStream.listen((pos) {
-      emit(state.copyWith(position: pos));
-    });
-    _durationSub = _player.durationStream.listen((dur) {
-      emit(state.copyWith(duration: dur ?? Duration.zero));
-    });
-    _playerStateSub = _player.playerStateStream.listen((ps) async {
-      final playing = ps.playing;
-      if (playing) {
-        _userPaused = false;
-      }
-      final buffering =
-          ps.processingState == ProcessingState.loading ||
-          ps.processingState == ProcessingState.buffering;
-      emit(
-        state.copyWith(
-          playing: playing,
-          buffering: buffering,
-          isTransitioning: _isBusySwitching,
-        ),
-      );
-
-      // Auto-advance when current track completes
-      if (ps.processingState == ProcessingState.completed && !_isTrackSwitchInProgress && !_isAdvancingNext) {
-        unawaited(_playNextInternal());
-      }
-    });
 
     _viewStateSub = stream.listen((viewState) {
       _publishNowPlaying(viewState);
@@ -417,12 +435,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       }
 
       await _stopPlaybackForTrackSwitch();
+      await _ensurePlatformAudio();
 
       await _player.setAudioSource(
         AudioSource.uri(
           toUri(track.url),
           headers: headers.isEmpty ? null : headers,
         ),
+        initialPosition: const Duration(milliseconds: 50),
       );
 
       if (_userPaused) {
@@ -521,12 +541,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         );
 
         await _stopPlaybackForTrackSwitch();
+        await _ensurePlatformAudio();
 
         await _player.setAudioSource(
           AudioSource.uri(
             toUri(refreshedTrack.url),
             headers: headers.isEmpty ? null : headers,
           ),
+          initialPosition: const Duration(milliseconds: 50),
         );
 
         if (_userPaused) {
@@ -624,6 +646,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     );
 
     await _stopPlaybackForTrackSwitch();
+    await _ensurePlatformAudio();
 
     final repo = _repo;
     if (repo != null) {
@@ -879,7 +902,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _switchFailSafeTimer?.cancel();
 
     try {
-      await _player.stop();
+      if (_platformAudioInitialized) {
+        await _player.stop();
+      }
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[PlayerCubit] Failed to stop playback: $e');
@@ -950,7 +975,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (idx > 0) {
       await _playAtIndex(idx - 1);
     } else {
-      await _player.seek(Duration.zero);
+      if (_platformAudioInitialized) await _player.seek(Duration.zero);
     }
   }
 
@@ -982,7 +1007,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         unawaited(_refreshQueueIfNeeded());
       } else {
         // End of queue - stop playback
-        await _player.stop();
+        if (_platformAudioInitialized) await _player.stop();
         emit(
           state.copyWith(
             playing: false,
@@ -1119,8 +1144,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           : Uri.file(url);
 
       await _stopPlaybackForTrackSwitch();
+      await _ensurePlatformAudio();
 
-      await _player.setAudioSource(AudioSource.uri(uri));
+      await _player.setAudioSource(
+        AudioSource.uri(uri),
+        initialPosition: const Duration(milliseconds: 50),
+      );
 
       if (_userPaused) {
         await _player.pause();
@@ -1209,8 +1238,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
             : Uri.file(refreshedUrl);
 
         await _stopPlaybackForTrackSwitch();
+        await _ensurePlatformAudio();
 
-        await _player.setAudioSource(AudioSource.uri(refreshedUri));
+        await _player.setAudioSource(
+          AudioSource.uri(refreshedUri),
+          initialPosition: const Duration(milliseconds: 50),
+        );
 
         if (_userPaused) {
           await _player.pause();
@@ -1428,6 +1461,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> togglePlayPause() async {
+    if (!_platformAudioInitialized) return;
     if (_player.playing) {
       _userPaused = true;
       _playbackReassertTimer?.cancel();
@@ -1446,6 +1480,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> ensurePlaying({bool ignoreUserPause = false}) async {
+    if (!_platformAudioInitialized) return;
     if (_isTrackSwitchInProgress) return;
     if (!ignoreUserPause && _userPaused) return;
     if (state.track == null) return;
@@ -1455,6 +1490,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> seek(Duration position) async {
+    if (!_platformAudioInitialized) return;
     final maxDuration = state.duration;
     if (maxDuration > Duration.zero && position > maxDuration) {
       await _player.seek(maxDuration);
@@ -1468,6 +1504,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> setVolume(double volume) async {
+    if (!_platformAudioInitialized) return;
     final safeVolume = volume.clamp(0.0, 1.0).toDouble();
     await _player.setVolume(safeVolume);
     emit(state.copyWith(volume: safeVolume));
@@ -1651,7 +1688,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       playing: viewState.playing,
       buffering: viewState.buffering,
       position: viewState.position,
-      bufferedPosition: _player.bufferedPosition,
+      bufferedPosition: _platformAudioInitialized ? _player.bufferedPosition : Duration.zero,
       hasPrevious: hasPrevious,
       hasNext: hasNext,
       duration: viewState.duration,
@@ -1669,7 +1706,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     await _durationSub?.cancel();
     await _playerStateSub?.cancel();
     await _viewStateSub?.cancel();
-    await _player.dispose();
+    if (_platformAudioInitialized) await _player.dispose();
     return super.close();
   }
 }
