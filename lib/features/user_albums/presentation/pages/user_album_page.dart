@@ -6,7 +6,6 @@ import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:musee/features/user_albums/presentation/bloc/user_album_bloc.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
-import 'package:musee/core/providers/music_provider_registry.dart';
 import 'package:musee/core/download/download_manager.dart';
 
 class UserAlbumPage extends StatefulWidget {
@@ -71,13 +70,6 @@ class _UserAlbumView extends StatelessWidget {
     final playerCubit = GetIt.I<PlayerCubit>();
     final downloadManager = context.read<DownloadManager>();
 
-    Future<String?> fetchPlayableUrl(String trackId) async {
-      try {
-        return GetIt.I<MusicProviderRegistry>().getStreamUrl(trackId);
-      } catch (_) {
-        return null;
-      }
-    }
 
     return Scaffold(
       body: SafeArea(
@@ -111,24 +103,18 @@ class _UserAlbumView extends StatelessWidget {
               required String title,
               required String artist,
             }) async {
-              final url = await fetchPlayableUrl(trackId);
-              if (url == null) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Unable to load stream URL')),
-                  );
-                }
-                return;
-              }
               if (!context.mounted) return;
+              // Don't pre-fetch URL — showPlayerBottomSheet with trackId
+              // (and no audioUrl) uses playTrackById which shows metadata
+              // instantly while resolving the stream URL in the background.
               await showPlayerBottomSheet(
                 context,
-                audioUrl: url,
                 title: title,
                 artist: artist,
                 album: album.title,
                 imageUrl: album.coverUrl,
                 trackId: trackId,
+                openSheet: false,
               );
             }
 
