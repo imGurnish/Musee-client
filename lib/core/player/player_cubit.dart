@@ -635,8 +635,30 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       _logCurrentTrackPlay(wasSkipped: true);
     }
 
+    // Try to get a cached local image for instant artwork display.
+    String? localImagePath;
+    if (_trackCache != null) {
+      try {
+        final cached = await _trackCache.getTrack(trackId);
+        localImagePath = cached?.localImagePath;
+      } catch (_) {}
+    }
+
+    // Emit provisional track info immediately so the UI updates the moment
+    // the user taps a track — before any network call.
+    final provisionalTrack = PlayerTrack(
+      trackId: trackId,
+      url: '', // will be filled once URL resolves
+      title: title ?? 'Unknown Title',
+      artist: artist ?? 'Unknown Artist',
+      album: album,
+      imageUrl: imageUrl,
+      localImagePath: localImagePath,
+    );
+
     emit(
       state.copyWith(
+        track: provisionalTrack,
         resolvingUrl: true,
         buffering: true,
         isTransitioning: true,
@@ -707,6 +729,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       artist: artist ?? 'Unknown Artist',
       album: album,
       imageUrl: imageUrl,
+      localImagePath: localImagePath,
     );
 
     await playTrack(track);
@@ -1098,22 +1121,20 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     final item = state.queue[index];
 
-    final existingUrl = state.track?.url;
-    final canUseProvisionalUrl = existingUrl != null && existingUrl.trim().isNotEmpty;
-    final provisionalTrack = canUseProvisionalUrl
-        ? PlayerTrack(
-            trackId: item.trackId,
-            url: existingUrl,
-            title: item.title.isEmpty ? 'Unknown Title' : item.title,
-            artist: item.artist.isEmpty ? 'Unknown Artist' : item.artist,
-            album: item.album,
-            imageUrl: item.imageUrl,
-            localImagePath: item.localImagePath,
-          )
-        : null;
+    // Always emit provisional track metadata from the queue item immediately
+    // so the UI shows the correct title/artist/artwork before URL resolves.
+    final provisionalTrack = PlayerTrack(
+      trackId: item.trackId,
+      url: '', // placeholder — will be replaced once URL resolves
+      title: item.title.isEmpty ? 'Unknown Title' : item.title,
+      artist: item.artist.isEmpty ? 'Unknown Artist' : item.artist,
+      album: item.album,
+      imageUrl: item.imageUrl,
+      localImagePath: item.localImagePath,
+    );
     emit(
       state.copyWith(
-        track: provisionalTrack ?? state.track,
+        track: provisionalTrack,
         buffering: true,
         resolvingUrl: true,
         isTransitioning: true,
