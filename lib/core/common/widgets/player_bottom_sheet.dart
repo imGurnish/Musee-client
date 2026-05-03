@@ -156,7 +156,81 @@ class _PlayerSheetBody extends StatefulWidget {
   State<_PlayerSheetBody> createState() => _PlayerSheetBodyState();
 }
 
-class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
+class _PlayerSheetBodyState extends State<_PlayerSheetBody>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _slideController;
+  double _dragDx = 0;
+  bool _swiping = false;
+
+  /// Direction the content is sliding out: -1 = left (next), 1 = right (prev)
+  int _slideDirection = 0;
+
+  static const double _swipeThreshold = 50;
+  static const Duration _slideDuration = Duration(milliseconds: 300);
+
+  @override
+  void initState() {
+    super.initState();
+    _slideController = AnimationController(
+      vsync: this,
+      duration: _slideDuration,
+    );
+  }
+
+  @override
+  void dispose() {
+    _slideController.dispose();
+    super.dispose();
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails d) {
+    if (_swiping) return;
+    setState(() => _dragDx += d.delta.dx);
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails d) {
+    if (_swiping) return;
+    final cubit = context.read<PlayerCubit>();
+    final canControl = cubit.state.track != null || cubit.state.playing;
+    if (!canControl) {
+      setState(() => _dragDx = 0);
+      return;
+    }
+
+    if (_dragDx.abs() > _swipeThreshold) {
+      final goNext = _dragDx < 0;
+      _triggerSlide(goNext ? -1 : 1, cubit);
+    } else {
+      setState(() => _dragDx = 0);
+    }
+  }
+
+  Future<void> _triggerSlide(int direction, PlayerCubit cubit) async {
+    _swiping = true;
+    _slideDirection = direction;
+    _dragDx = 0;
+
+    // Phase 1: slide current content out
+    _slideController.value = 0;
+    await _slideController.forward();
+
+    // Fire track change
+    if (direction < 0) {
+      cubit.next(userInitiated: true);
+    } else {
+      cubit.previous();
+    }
+
+    // Phase 2: reset & slide new content in from opposite side
+    _slideDirection = -direction;
+    _slideController.value = 1;
+    await _slideController.reverse();
+
+    _swiping = false;
+    _slideDirection = 0;
+    if (mounted) setState(() {});
+  }
+
   String _fmt(Duration d) {
     final total = d.inSeconds;
     final m = (total ~/ 60).toString();
@@ -250,69 +324,110 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody> {
 
               const SizedBox(height: 12),
 
-              // Artwork (large square)
+              // Artwork + Track info — swipeable area
               Expanded(
-                child: Center(
-                  child: AspectRatio(
-                    aspectRatio: 1,
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        child: ClipRRect(
-                          key: ValueKey(
-                            '${state.track?.trackId ?? state.track?.url ?? 'none'}:${state.track?.localImagePath ?? state.track?.imageUrl ?? ''}',
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          child: _buildArtwork(
-                            imageUrl: imageUrl,
-                            localPath: state.track?.localImagePath,
-                            theme: theme,
+                child: GestureDetector(
+                onHorizontalDragUpdate: _onHorizontalDragUpdate,
+                onHorizontalDragEnd: _onHorizontalDragEnd,
+                behavior: HitTestBehavior.translucent,
+                child: AnimatedBuilder(
+                  animation: _slideController,
+                  builder: (context, child) {
+                    // During drag: follow finger; during animation: slide out/in
+                    final double dx;
+                    final double opacity;
+                    if (_swiping) {
+                      final t = Curves.easeInOutCubic
+                          .transform(_slideController.value);
+                      dx = _slideDirection *
+                          t *
+                          MediaQuery.of(context).size.width * 0.35;
+                      opacity = (1 - t).clamp(0.3, 1.0);
+                    } else {
+                      dx = _dragDx * 0.4; // dampened drag follow
+                      opacity = 1.0;
+                    }
+
+                    return Opacity(
+                      opacity: opacity,
+                      child: Transform.translate(
+                        offset: Offset(dx, 0),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Artwork (large square)
+                      Expanded(
+                        child: Center(
+                          child: AspectRatio(
+                            aspectRatio: 1,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 220),
+                              child: ClipRRect(
+                                key: ValueKey(
+                                  '${state.track?.trackId ?? state.track?.url ?? 'none'}:${state.track?.localImagePath ?? state.track?.imageUrl ?? ''}',
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                child: _buildArtwork(
+                                  imageUrl: imageUrl,
+                                  localPath: state.track?.localImagePath,
+                                  theme: theme,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
-                    ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Title + Add
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style:
+                                      theme.textTheme.headlineSmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  subtitleText,
+                                  style: theme.textTheme.bodyLarge?.copyWith(
+                                    color: subtitleColor,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (state.track?.trackId != null)
+                            _DownloadButton(trackId: state.track!.trackId!),
+                          const SizedBox(width: 8),
+                          IconButton.filledTonal(
+                            tooltip: 'Add to library',
+                            onPressed: () {},
+                            icon: const Icon(Icons.add_rounded),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Title + Add
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitleText,
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            color: subtitleColor,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (state.track?.trackId != null)
-                    _DownloadButton(trackId: state.track!.trackId!),
-                  const SizedBox(width: 8),
-                  IconButton.filledTonal(
-                    tooltip: 'Add to library',
-                    onPressed: () {},
-                    icon: const Icon(Icons.add_rounded),
-                  ),
-                ],
+                ),
               ),
 
               const SizedBox(height: 8),

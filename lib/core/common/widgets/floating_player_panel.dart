@@ -6,8 +6,87 @@ import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
 
-class FloatingPlayerPanel extends StatelessWidget {
+class FloatingPlayerPanel extends StatefulWidget {
   const FloatingPlayerPanel({super.key});
+
+  @override
+  State<FloatingPlayerPanel> createState() => _FloatingPlayerPanelState();
+}
+
+class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _slideController;
+  double _dragDx = 0;
+  bool _swiping = false;
+
+  /// Direction the content is sliding out: -1 = left (next), 1 = right (prev)
+  int _slideDirection = 0;
+
+  static const double _swipeThreshold = 40;
+  static const Duration _slideDuration = Duration(milliseconds: 280);
+
+  @override
+  void initState() {
+    super.initState();
+    _slideController = AnimationController(
+      vsync: this,
+      duration: _slideDuration,
+    );
+  }
+
+  @override
+  void dispose() {
+    _slideController.dispose();
+    super.dispose();
+  }
+
+  void _onHorizontalDragUpdate(DragUpdateDetails d) {
+    if (_swiping) return;
+    setState(() => _dragDx += d.delta.dx);
+  }
+
+  void _onHorizontalDragEnd(DragEndDetails d) {
+    if (_swiping) return;
+    final cubit = GetIt.I<PlayerCubit>();
+    final canControl = cubit.state.track != null || cubit.state.playing;
+    if (!canControl) {
+      setState(() => _dragDx = 0);
+      return;
+    }
+
+    if (_dragDx.abs() > _swipeThreshold) {
+      final goNext = _dragDx < 0;
+      _triggerSlide(goNext ? -1 : 1, cubit);
+    } else {
+      setState(() => _dragDx = 0);
+    }
+  }
+
+  Future<void> _triggerSlide(int direction, PlayerCubit cubit) async {
+    _swiping = true;
+    _slideDirection = direction;
+    _dragDx = 0;
+
+    // Phase 1: slide current content out
+    _slideController.value = 0;
+    await _slideController.forward();
+
+    // Fire track change
+    if (direction < 0) {
+      cubit.next(userInitiated: true);
+    } else {
+      cubit.previous();
+    }
+
+    // Phase 2: slide new content in from opposite side
+    _slideDirection = -direction;
+    _slideController.value = 1;
+    await _slideController.reverse();
+
+    _swiping = false;
+    _slideDirection = 0;
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +114,10 @@ class FloatingPlayerPanel extends StatelessWidget {
             ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
             : 0.0;
 
-        return InkWell(
+        return GestureDetector(
+          onHorizontalDragUpdate: _onHorizontalDragUpdate,
+          onHorizontalDragEnd: _onHorizontalDragEnd,
+          child: InkWell(
           onTap: hasTrack
               ? () {
                   final t = track; // non-null under hasTrack
@@ -64,8 +146,32 @@ class FloatingPlayerPanel extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Top row: artwork • title/artist • controls
-                Row(
+                // Top row: artwork • title/artist • controls — animated on swipe
+                AnimatedBuilder(
+                  animation: _slideController,
+                  builder: (context, child) {
+                    final double dx;
+                    final double opacity;
+                    if (_swiping) {
+                      final t = Curves.easeInOutCubic
+                          .transform(_slideController.value);
+                      dx = _slideDirection *
+                          t *
+                          MediaQuery.of(context).size.width * 0.3;
+                      opacity = (1 - t).clamp(0.3, 1.0);
+                    } else {
+                      dx = _dragDx * 0.35; // dampened drag follow
+                      opacity = 1.0;
+                    }
+                    return Opacity(
+                      opacity: opacity,
+                      child: Transform.translate(
+                        offset: Offset(dx, 0),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     // Artwork
@@ -165,6 +271,7 @@ class FloatingPlayerPanel extends StatelessWidget {
                     ),
                   ],
                 ),
+                ),
 
                 // Progress bar + time codes
                 Column(
@@ -193,6 +300,7 @@ class FloatingPlayerPanel extends StatelessWidget {
               ],
             ),
           ),
+        ),
         );
       },
     );
