@@ -397,7 +397,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   Future<void> playTrack(PlayerTrack track) async {
     _userPaused = false;
     if (track.trackId != null && state.track?.trackId != track.trackId) {
-      unawaited(_logCurrentTrackPlay(wasSkipped: true));
+      _logCurrentTrackPlay(wasSkipped: true);
     }
 
     final switchToken = ++_trackSwitchToken;
@@ -632,7 +632,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }) async {
     _userPaused = false;
     if (state.track?.trackId != null && state.track?.trackId != trackId) {
-      unawaited(_logCurrentTrackPlay(wasSkipped: true));
+      _logCurrentTrackPlay(wasSkipped: true);
     }
 
     emit(
@@ -749,7 +749,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   Future<void> playFromQueueTrackId(String trackId) async {
     if (state.track?.trackId != null && state.track?.trackId != trackId) {
-      unawaited(_logCurrentTrackPlay(wasSkipped: true));
+      _logCurrentTrackPlay(wasSkipped: true);
     }
 
     final localIdx = state.queue.indexWhere((q) => q.trackId == trackId);
@@ -963,14 +963,31 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
   }
 
+  /// Cancel any in-progress track switch so a new one can start immediately.
+  /// The stale async callbacks will see a mismatched _trackSwitchToken and
+  /// no-op, so this is safe.
+  void _cancelInProgressSwitch() {
+    if (!_isBusySwitching) return;
+    ++_trackSwitchToken;
+    _isTrackSwitchInProgress = false;
+    _isAdvancingNext = false;
+    _clearSwitchFailSafe();
+    _playbackReassertTimer?.cancel();
+  }
+
   Future<void> next({bool userInitiated = true}) async {
     // userInitiated true when tapped button; false when auto-advance
-    if (_isBusySwitching) return;
+    if (_isBusySwitching) {
+      if (!userInitiated) return; // auto-advance respects the lock
+      _cancelInProgressSwitch();
+    }
     await _playNextInternal(userInitiated: userInitiated);
   }
 
   Future<void> previous() async {
-    if (_isBusySwitching) return;
+    if (_isBusySwitching) {
+      _cancelInProgressSwitch();
+    }
     final idx = state.currentIndex;
     if (idx > 0) {
       await _playAtIndex(idx - 1);
@@ -990,7 +1007,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         clearErrorMessage: true,
       ),
     );
-    unawaited(_logCurrentTrackPlay(wasSkipped: userInitiated));
+    _logCurrentTrackPlay(wasSkipped: userInitiated);
 
     try {
       final currentIdx = state.currentIndex;
@@ -1377,17 +1394,20 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _currentTrackStartedAt = DateTime.now();
     unawaited(_trackCache?.updateLastPlayed(trackId));
 
-    _snapshotLogTimer = Timer(const Duration(seconds: 12), () async {
+    _snapshotLogTimer = Timer(const Duration(seconds: 12), () {
       if (state.track?.trackId == trackId && _player.playing) {
-        await _logCurrentTrackPlay(wasSkipped: false, preserveSession: true);
+        _logCurrentTrackPlay(wasSkipped: false, preserveSession: true);
       }
     });
   }
 
-  Future<void> _logCurrentTrackPlay({
+  /// Enqueue a play-log entry. Fully synchronous — the entry is buffered
+  /// in memory and flushed to the backend in periodic batches, so this
+  /// never blocks track transitions.
+  void _logCurrentTrackPlay({
     required bool wasSkipped,
     bool preserveSession = false,
-  }) async {
+  }) {
     final listeningRepo = _listeningHistoryRepository;
     final supabase = _supabaseClient;
     final trackId = _currentTrackIdForLogging ?? state.track?.trackId;
@@ -1398,7 +1418,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (userId == null || userId.isEmpty) return;
 
     final startedAt = _currentTrackStartedAt;
-    final playerPositionSeconds = _player.position.inSeconds;
+    final playerPositionSeconds =
+        _platformAudioInitialized ? _player.position.inSeconds : 0;
     final fallbackElapsedSeconds = startedAt == null
         ? 0
         : DateTime.now().difference(startedAt).inSeconds;
@@ -1431,32 +1452,27 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     final listeningContext = state.currentIndex >= 0 ? 'playlist' : 'library';
 
-    try {
-      await listeningRepo.logTrackPlay(
-        TrackPlayData(
-          userId: userId,
-          trackId: trackId,
-          timeListenedSeconds: timeListenedSeconds,
-          totalDurationSeconds: totalDurationSeconds,
-          completionPercentage: completionPercentage,
-          wasSkipped: wasSkipped,
-          skipAtSeconds: wasSkipped ? timeListenedSeconds : null,
-          listeningContext: listeningContext,
-          contextId: null,
-          deviceType: deviceType,
-        ),
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[PlayerCubit] Failed to log track play: $e');
-      }
-    } finally {
-      if (!preserveSession) {
-        _snapshotLogTimer?.cancel();
-        _snapshotLogTimer = null;
-        _currentTrackStartedAt = null;
-        _currentTrackIdForLogging = null;
-      }
+    // Non-blocking enqueue — no await, no try/catch needed.
+    listeningRepo.logTrackPlay(
+      TrackPlayData(
+        userId: userId,
+        trackId: trackId,
+        timeListenedSeconds: timeListenedSeconds,
+        totalDurationSeconds: totalDurationSeconds,
+        completionPercentage: completionPercentage,
+        wasSkipped: wasSkipped,
+        skipAtSeconds: wasSkipped ? timeListenedSeconds : null,
+        listeningContext: listeningContext,
+        contextId: null,
+        deviceType: deviceType,
+      ),
+    );
+
+    if (!preserveSession) {
+      _snapshotLogTimer?.cancel();
+      _snapshotLogTimer = null;
+      _currentTrackStartedAt = null;
+      _currentTrackIdForLogging = null;
     }
   }
 
@@ -1698,7 +1714,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   @override
   Future<void> close() async {
-    await _logCurrentTrackPlay(wasSkipped: true);
+    _logCurrentTrackPlay(wasSkipped: true);
+    // Flush any buffered play-logs before shutting down.
+    await _listeningHistoryRepository?.flushPlayLogs();
+    await _listeningHistoryRepository?.dispose();
     _snapshotLogTimer?.cancel();
     _playbackReassertTimer?.cancel();
     _switchFailSafeTimer?.cancel();

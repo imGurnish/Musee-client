@@ -49,7 +49,7 @@ class ListeningHistoryBloc extends Bloc<ListeningHistoryEvent, ListeningHistoryS
         contextId: event.contextId,
       );
 
-      await repository.logTrackPlay(playData);
+      repository.logTrackPlay(playData);
       emit(const TrackPlayLogged());
     } catch (e) {
       emit(TrackPlayLoggingError(_getErrorMessage(e)));
