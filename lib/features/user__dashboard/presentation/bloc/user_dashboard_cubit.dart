@@ -343,4 +343,47 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
 
     return _decorateWithCacheState(unique);
   }
+
+  Future<List<DashboardItem>> fetchSuggestedAlbums({
+    int page = 0,
+    int limit = 50,
+  }) async {
+    List<DashboardItem> madeForYouAlbums = const [];
+    List<DashboardItem> trendingAlbums = const [];
+
+    try {
+      final result = await _listMadeForYou(page: page, limit: limit);
+      madeForYouAlbums = result.items
+          .where((item) => item.type == DashboardItemType.album)
+          .toList();
+    } catch (_) {}
+
+    try {
+      final result = await _listTrending(page: page, limit: limit);
+      trendingAlbums = result.items
+          .where((item) => item.type == DashboardItemType.album)
+          .toList();
+    } catch (_) {}
+
+    final combined = <DashboardItem>[
+      ...state.recommendations.where(
+        (item) => item.type == DashboardItemType.album,
+      ),
+      ...state.trending.where((item) => item.type == DashboardItemType.album),
+      ...state.madeForYou.where((item) => item.type == DashboardItemType.album),
+      ...trendingAlbums,
+      ...madeForYouAlbums,
+    ];
+
+    final seen = <String>{};
+    final unique = <DashboardItem>[];
+    for (final item in combined) {
+      final key = item.albumId ?? item.id;
+      if (seen.add(key)) {
+        unique.add(item);
+      }
+    }
+
+    return _decorateWithCacheState(unique);
+  }
 }

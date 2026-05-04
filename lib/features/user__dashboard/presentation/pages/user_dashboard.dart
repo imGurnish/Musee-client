@@ -265,6 +265,36 @@ class _UserDashboardState extends State<UserDashboard> {
     );
   }
 
+  void _openAlbumsForYou(BuildContext context, UserDashboardState state) {
+    final albums = _collectUniqueItems(
+      state,
+      type: DashboardItemType.album,
+      limit: 24,
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BlocProvider.value(
+          value: context.read<UserDashboardCubit>(),
+          child: _SuggestedAlbumsPage(initialAlbums: albums),
+        ),
+      ),
+    );
+  }
+
+  void _openTrendingPicks(BuildContext context, UserDashboardState state) {
+    final trending = _collectUniqueItems(state, limit: 50);
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _TrendingPicksPage(
+          items: trending,
+          onItemTap: _handleItemTap,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocProvider<UserDashboardCubit>(
@@ -410,7 +440,7 @@ class _UserDashboardState extends State<UserDashboard> {
                             child: SectionHeader(
                               title: 'Trending picks',
                               onSeeAll: () =>
-                                  _openSuggestedTracks(context, state),
+                                  _openTrendingPicks(context, state),
                             ),
                           ),
                           if (state.loadingTrending)
@@ -450,7 +480,7 @@ class _UserDashboardState extends State<UserDashboard> {
                             child: SectionHeader(
                               title: 'Albums for you',
                               onSeeAll: () =>
-                                  _openSuggestedTracks(context, state),
+                                  _openAlbumsForYou(context, state),
                             ),
                           ),
                           SliverToBoxAdapter(
@@ -955,35 +985,61 @@ class _SuggestedTracksPage extends StatefulWidget {
 
 class _SuggestedTracksPageState extends State<_SuggestedTracksPage> {
   late List<DashboardItem> _tracks;
+  final _seen = <String>{};
+  final _scrollController = ScrollController();
   bool _loading = false;
+  bool _reachedEnd = false;
+  int _page = 0;
+  static const _pageSize = 30;
+  static const _maxItems = 200;
 
   @override
   void initState() {
     super.initState();
-    _tracks = widget.initialTracks;
-    _loadMore();
+    _tracks = [];
+    _addUnique(widget.initialTracks);
+    _scrollController.addListener(_onScroll);
+    _fetchMore();
   }
 
-  Future<void> _loadMore() async {
-    if (_loading) return;
-    setState(() => _loading = true);
-    final more = await context.read<UserDashboardCubit>().fetchSuggestedTracks(
-      limit: 60,
-    );
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
-    final seen = <String>{};
-    final merged = <DashboardItem>[];
-    for (final item in [..._tracks, ...more]) {
+  void _addUnique(List<DashboardItem> items) {
+    for (final item in items) {
       final key = item.trackId ?? item.id;
-      if (seen.add(key)) {
-        merged.add(item);
-      }
+      if (_seen.add(key)) _tracks.add(item);
     }
+  }
 
+  void _onScroll() {
+    if (_loading || _reachedEnd) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 300) {
+      _fetchMore();
+    }
+  }
+
+  Future<void> _fetchMore() async {
+    if (_loading || _reachedEnd || _tracks.length >= _maxItems) return;
+    setState(() => _loading = true);
+
+    final before = _tracks.length;
+    final more = await context.read<UserDashboardCubit>().fetchSuggestedTracks(
+      page: _page,
+      limit: _pageSize,
+    );
+    _page++;
+
+    _addUnique(more);
     if (!mounted) return;
     setState(() {
-      _tracks = merged;
       _loading = false;
+      _reachedEnd =
+          _tracks.length == before || _tracks.length >= _maxItems;
     });
   }
 
@@ -1003,21 +1059,32 @@ class _SuggestedTracksPageState extends State<_SuggestedTracksPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Suggested tracks'),
+        title: Text('Suggested tracks (${_tracks.length})'),
         actions: [
-          IconButton(
-            onPressed: _loadMore,
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Refresh suggestions',
-          ),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
         ],
       ),
       body: _tracks.isEmpty && _loading
           ? const Center(child: CircularProgressIndicator())
           : ListView.separated(
-              itemCount: _tracks.length,
+              controller: _scrollController,
+              itemCount: _tracks.length + (_reachedEnd ? 0 : 1),
               separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, index) {
+                if (index >= _tracks.length) {
+                  return const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
                 final item = _tracks[index];
                 final subtitle = item.artists.isNotEmpty
                     ? item.artists.map((artist) => artist.name).join(', ')
@@ -1060,3 +1127,258 @@ class _SuggestedTracksPageState extends State<_SuggestedTracksPage> {
     );
   }
 }
+
+class _SuggestedAlbumsPage extends StatefulWidget {
+  final List<DashboardItem> initialAlbums;
+  const _SuggestedAlbumsPage({required this.initialAlbums});
+
+  @override
+  State<_SuggestedAlbumsPage> createState() => _SuggestedAlbumsPageState();
+}
+
+class _SuggestedAlbumsPageState extends State<_SuggestedAlbumsPage> {
+  late List<DashboardItem> _albums;
+  final _seen = <String>{};
+  final _scrollController = ScrollController();
+  bool _loading = false;
+  bool _reachedEnd = false;
+  int _page = 0;
+  static const _pageSize = 30;
+  static const _maxItems = 200;
+
+  @override
+  void initState() {
+    super.initState();
+    _albums = [];
+    _addUnique(widget.initialAlbums);
+    _scrollController.addListener(_onScroll);
+    _fetchMore();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _addUnique(List<DashboardItem> items) {
+    for (final item in items) {
+      final key = item.albumId ?? item.id;
+      if (_seen.add(key)) _albums.add(item);
+    }
+  }
+
+  void _onScroll() {
+    if (_loading || _reachedEnd) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 300) {
+      _fetchMore();
+    }
+  }
+
+  Future<void> _fetchMore() async {
+    if (_loading || _reachedEnd || _albums.length >= _maxItems) return;
+    setState(() => _loading = true);
+
+    final before = _albums.length;
+    final more = await context.read<UserDashboardCubit>().fetchSuggestedAlbums(
+      page: _page,
+      limit: _pageSize,
+    );
+    _page++;
+
+    _addUnique(more);
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _reachedEnd =
+          _albums.length == before || _albums.length >= _maxItems;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Albums for you (${_albums.length})'),
+        actions: [
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+        ],
+      ),
+      body: _albums.isEmpty && _loading
+          ? const Center(child: CircularProgressIndicator())
+          : CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.all(16),
+                  sliver: SliverGrid(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final item = _albums[index];
+                        final artistNames = item.artists.isNotEmpty
+                            ? item.artists.map((a) => a.name).join(', ')
+                            : 'Unknown artist';
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => context
+                              .push('/albums/${item.albumId ?? item.id}'),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: SizedBox.expand(
+                                    child: _AlbumGridImage(item: item),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                item.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                artistNames,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      childCount: _albums.length,
+                    ),
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 200,
+                      mainAxisSpacing: 16,
+                      crossAxisSpacing: 16,
+                      childAspectRatio: 0.75,
+                    ),
+                  ),
+                ),
+                if (!_reachedEnd)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+class _AlbumGridImage extends StatelessWidget {
+  final DashboardItem item;
+  const _AlbumGridImage({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme;
+    if (item.localImagePath != null) {
+      return Image.file(
+        File(item.localImagePath!),
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _fallback(color),
+      );
+    }
+    if (item.coverUrl != null && item.coverUrl!.isNotEmpty) {
+      return Image.network(item.coverUrl!, fit: BoxFit.cover);
+    }
+    return _fallback(color);
+  }
+
+  Widget _fallback(ColorScheme color) {
+    return Container(
+      color: color.primaryContainer.withValues(alpha: 0.35),
+      alignment: Alignment.center,
+      child:
+          Icon(Icons.album_rounded, size: 48, color: color.onPrimaryContainer),
+    );
+  }
+}
+
+class _TrendingPicksPage extends StatelessWidget {
+  final List<DashboardItem> items;
+  final void Function(BuildContext, DashboardItem) onItemTap;
+  const _TrendingPicksPage({required this.items, required this.onItemTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Trending picks')),
+      body: items.isEmpty
+          ? const Center(child: Text('No trending items'))
+          : ListView.separated(
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                final subtitle = item.artists.isNotEmpty
+                    ? item.artists.map((a) => a.name).join(', ')
+                    : 'Unknown artist';
+                final typeLabel = switch (item.type) {
+                  DashboardItemType.track => 'Song',
+                  DashboardItemType.album => 'Album',
+                  DashboardItemType.playlist => 'Playlist',
+                };
+                return ListTile(
+                  leading: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: _TrendingImage(
+                        item: MediaItem(
+                          title: item.title,
+                          subtitle: subtitle,
+                          imageUrl: item.coverUrl,
+                          localImagePath: item.localImagePath,
+                          icon: switch (item.type) {
+                            DashboardItemType.track =>
+                              Icons.music_note_rounded,
+                            DashboardItemType.album => Icons.album_rounded,
+                            DashboardItemType.playlist =>
+                              Icons.queue_music_rounded,
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                  title: Text(
+                    item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    '$typeLabel • $subtitle',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => onItemTap(context, item),
+                );
+              },
+            ),
+    );
+  }
+}
+
