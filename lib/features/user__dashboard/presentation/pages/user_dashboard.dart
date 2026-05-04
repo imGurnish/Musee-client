@@ -133,18 +133,142 @@ class _UserDashboardState extends State<UserDashboard> {
         ? item.artists.first.name
         : 'Unknown';
     if (item.type == DashboardItemType.track) {
-      return 'Song • $artistName';
+      final plays = item.playCount != null
+          ? ' • ${_formatCompactCount(item.playCount)} plays'
+          : '';
+      final likes = item.likesCount != null
+          ? ' • ${_formatCompactCount(item.likesCount)} likes'
+          : '';
+      return 'Song • $artistName$plays$likes';
     }
     if (item.type == DashboardItemType.playlist) {
-      return 'Playlist • $artistName';
+      final likes = item.likesCount != null
+          ? ' • ${_formatCompactCount(item.likesCount)} likes'
+          : '';
+      return 'Playlist • $artistName$likes';
     }
-    return 'Album • $artistName';
+    final tracks = item.totalTracks != null
+        ? ' • ${item.totalTracks} tracks'
+        : '';
+    final likes = item.likesCount != null
+        ? ' • ${_formatCompactCount(item.likesCount)} likes'
+        : '';
+    return 'Album • $artistName$tracks$likes';
+  }
+
+  String _formatCompactCount(int? value) {
+    if (value == null) return '-';
+    if (value >= 1000000) {
+      final reduced = value / 1000000;
+      return reduced >= 10
+          ? '${reduced.toStringAsFixed(0)}M'
+          : '${reduced.toStringAsFixed(1)}M';
+    }
+    if (value >= 1000) {
+      final reduced = value / 1000;
+      return reduced >= 10
+          ? '${reduced.toStringAsFixed(0)}K'
+          : '${reduced.toStringAsFixed(1)}K';
+    }
+    return value.toString();
+  }
+
+  List<DashboardItem> _collectUniqueItems(
+    UserDashboardState state, {
+    DashboardItemType? type,
+    int limit = 12,
+  }) {
+    final source = <DashboardItem>[
+      ...state.recommendations,
+      ...state.trending,
+      ...state.madeForYou,
+    ];
+
+    final seen = <String>{};
+    final output = <DashboardItem>[];
+    for (final item in source) {
+      if (type != null && item.type != type) continue;
+      final key = switch (item.type) {
+        DashboardItemType.track => item.trackId ?? item.id,
+        DashboardItemType.album => item.albumId ?? item.id,
+        DashboardItemType.playlist => item.playlistId ?? item.id,
+      };
+      if (seen.add(key)) {
+        output.add(item);
+      }
+      if (output.length >= limit) break;
+    }
+
+    return output;
+  }
+
+  List<DashboardArtist> _collectTopArtists(
+    UserDashboardState state, {
+    int limit = 12,
+  }) {
+    final scoreByArtist = <String, int>{};
+    final artistById = <String, DashboardArtist>{};
+    final items = [
+      ...state.recommendations,
+      ...state.trending,
+      ...state.madeForYou,
+    ];
+
+    for (final item in items) {
+      for (final artist in item.artists) {
+        artistById[artist.artistId] = artist;
+        scoreByArtist.update(
+          artist.artistId,
+          (value) => value + 1,
+          ifAbsent: () => 1,
+        );
+      }
+    }
+
+    final sorted = scoreByArtist.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return sorted
+        .take(limit)
+        .map((entry) => artistById[entry.key])
+        .whereType<DashboardArtist>()
+        .toList();
+  }
+
+  MediaItem _toMediaItem(BuildContext context, DashboardItem item) {
+    return MediaItem(
+      title: item.title,
+      subtitle: _getSubtitle(item),
+      imageUrl: item.coverUrl,
+      localImagePath: item.localImagePath,
+      icon: _getIcon(item.type),
+      mediaTypeLabel: _getTypeLabel(item.type),
+      isCached: item.isCached,
+      onTap: () => _handleItemTap(context, item),
+    );
+  }
+
+  void _openSuggestedTracks(BuildContext context, UserDashboardState state) {
+    final initialTracks = _collectUniqueItems(
+      state,
+      type: DashboardItemType.track,
+      limit: 24,
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BlocProvider.value(
+          value: context.read<UserDashboardCubit>(),
+          child: _SuggestedTracksPage(initialTracks: initialTracks),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider<UserDashboardCubit>(
-      create: (_) => GetIt.I<UserDashboardCubit>()..load(),
+      create: (_) => GetIt.I<UserDashboardCubit>()..load(limit: 32),
       child: BlocListener<PlayerCubit, PlayerViewState>(
         listener: (context, playerState) {
           if (playerState.track?.trackId != null) {
@@ -163,36 +287,30 @@ class _UserDashboardState extends State<UserDashboard> {
 
                 return BlocBuilder<UserDashboardCubit, UserDashboardState>(
                   builder: (context, state) {
-                    final madeForYouItems = state.madeForYou
-                        .map(
-                          (item) => MediaItem(
-                            title: item.title,
-                            subtitle: _getSubtitle(item),
-                            imageUrl: item.coverUrl,
-                            localImagePath: item.localImagePath,
-                            icon: _getIcon(item.type),
-                            mediaTypeLabel: _getTypeLabel(item.type),
-                            isCached: item.isCached,
-                            onTap: () => _handleItemTap(context, item),
-                          ),
-                        )
-                        .toList();
+                    final suggestedTrackItems = _collectUniqueItems(
+                      state,
+                      type: DashboardItemType.track,
+                      limit: 12,
+                    ).map((item) => _toMediaItem(context, item)).toList();
 
-                    final trendingItems = state.trending
-                        .map(
-                          (item) => MediaItem(
-                            title: item.title,
-                            subtitle: _getSubtitle(item),
-                            imageUrl: item.coverUrl,
-                            localImagePath: item.localImagePath,
-                            icon: _getIcon(item.type),
-                            mediaTypeLabel: _getTypeLabel(item.type),
-                            isCached: item.isCached,
-                            onTap: () => _handleItemTap(context, item),
-                          ),
-                        )
-                        .toList();
+                    final albumItems = _collectUniqueItems(
+                      state,
+                      type: DashboardItemType.album,
+                      limit: 12,
+                    ).map((item) => _toMediaItem(context, item)).toList();
 
+                    final playlistItems = _collectUniqueItems(
+                      state,
+                      type: DashboardItemType.playlist,
+                      limit: 8,
+                    ).map((item) => _toMediaItem(context, item)).toList();
+
+                    final trendingItems = _collectUniqueItems(
+                      state,
+                      limit: 10,
+                    ).map((item) => _toMediaItem(context, item)).toList();
+
+                    final topArtists = _collectTopArtists(state, limit: 10);
                     return RefreshIndicator(
                       onRefresh: () => context.read<UserDashboardCubit>().load(
                         forceRefresh: true,
@@ -243,29 +361,31 @@ class _UserDashboardState extends State<UserDashboard> {
                                       ),
                                     )
                                     .toList(),
-                                onSeeAll: () {},
-                                cardWidth: isCompact ? 140 : 160,
+                                cardWidth: isCompact ? 132 : 148,
                               ),
                             ),
                           const SliverToBoxAdapter(child: SizedBox(height: 8)),
                           SliverToBoxAdapter(
                             child: SectionHeader(
-                              title: 'Made for you',
-                              onSeeAll: () {},
+                              title: 'Suggested tracks',
+                              onSeeAll: () =>
+                                  _openSuggestedTracks(context, state),
                             ),
                           ),
-                          if (state.loadingMadeForYou)
+                          if (state.loadingMadeForYou &&
+                              suggestedTrackItems.isEmpty)
                             SliverToBoxAdapter(
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16.0,
                                 ),
                                 child: _HorizontalSectionSkeleton(
-                                  cardWidth: isCompact ? 160 : 190,
+                                  cardWidth: isCompact ? 132 : 148,
                                 ),
                               ),
                             )
-                          else if (state.errorMadeForYou != null)
+                          else if (state.errorMadeForYou != null &&
+                              suggestedTrackItems.isEmpty)
                             SliverToBoxAdapter(
                               child: Padding(
                                 padding: const EdgeInsets.all(16.0),
@@ -278,8 +398,8 @@ class _UserDashboardState extends State<UserDashboard> {
                             SliverToBoxAdapter(
                               child: HorizontalMediaSection(
                                 title: '',
-                                items: madeForYouItems,
-                                cardWidth: isCompact ? 160 : 190,
+                                items: suggestedTrackItems,
+                                cardWidth: isCompact ? 132 : 148,
                               ),
                             ),
 
@@ -288,8 +408,9 @@ class _UserDashboardState extends State<UserDashboard> {
                           ),
                           SliverToBoxAdapter(
                             child: SectionHeader(
-                              title: 'Trending now',
-                              onSeeAll: () {},
+                              title: 'Trending picks',
+                              onSeeAll: () =>
+                                  _openSuggestedTracks(context, state),
                             ),
                           ),
                           if (state.loadingTrending)
@@ -298,7 +419,7 @@ class _UserDashboardState extends State<UserDashboard> {
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16.0,
                                 ),
-                                child: const _TrendingListSkeleton(),
+                                child: const _CompactFeedSkeleton(),
                               ),
                             )
                           else if (state.errorTrending != null)
@@ -311,7 +432,69 @@ class _UserDashboardState extends State<UserDashboard> {
                               ),
                             )
                           else
-                            _TrendingListSection(items: trendingItems),
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                ),
+                                child: _CompactFeedSection(
+                                  items: trendingItems,
+                                ),
+                              ),
+                            ),
+
+                          SliverToBoxAdapter(
+                            child: SizedBox(height: isCompact ? 10 : 14),
+                          ),
+                          SliverToBoxAdapter(
+                            child: SectionHeader(
+                              title: 'Albums for you',
+                              onSeeAll: () =>
+                                  _openSuggestedTracks(context, state),
+                            ),
+                          ),
+                          SliverToBoxAdapter(
+                            child: HorizontalMediaSection(
+                              title: '',
+                              items: albumItems,
+                              cardWidth: isCompact ? 128 : 142,
+                            ),
+                          ),
+
+                          if (playlistItems.isNotEmpty)
+                            SliverToBoxAdapter(
+                              child: SizedBox(height: isCompact ? 10 : 14),
+                            ),
+                          if (playlistItems.isNotEmpty)
+                            SliverToBoxAdapter(
+                              child: const SectionHeader(
+                                title: 'Playlists to try',
+                              ),
+                            ),
+                          if (playlistItems.isNotEmpty)
+                            SliverToBoxAdapter(
+                              child: HorizontalMediaSection(
+                                title: '',
+                                items: playlistItems,
+                                cardWidth: isCompact ? 128 : 142,
+                              ),
+                            ),
+
+                          if (topArtists.isNotEmpty)
+                            SliverToBoxAdapter(
+                              child: const SectionHeader(
+                                title: 'Artists to explore',
+                              ),
+                            ),
+                          if (topArtists.isNotEmpty)
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                ),
+                                child: _ArtistPillsSection(artists: topArtists),
+                              ),
+                            ),
 
                           SliverToBoxAdapter(
                             child: SizedBox(height: isCompact ? 24 : 32),
@@ -496,64 +679,68 @@ class _QuickChip extends StatelessWidget {
   }
 }
 
-class _TrendingListSection extends StatelessWidget {
+class _CompactFeedSection extends StatelessWidget {
   final List<MediaItem> items;
-  const _TrendingListSection({required this.items});
+  const _CompactFeedSection({required this.items});
 
   @override
   Widget build(BuildContext context) {
-    return SliverList.separated(
+    if (items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: items.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
-      itemBuilder: (context, index) {
-        final item = items[index];
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _TrendingTile(item: item),
-        );
-      },
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 420,
+        mainAxisExtent: 88,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+      ),
+      itemBuilder: (context, index) => _CompactFeedTile(item: items[index]),
     );
   }
 }
 
-class _TrendingTile extends StatelessWidget {
+class _CompactFeedTile extends StatelessWidget {
   final MediaItem item;
-  const _TrendingTile({required this.item});
+  const _CompactFeedTile({required this.item});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = theme.colorScheme;
-
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       onTap: item.onTap,
       child: Ink(
-        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: theme.cardColor,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
         ),
+        padding: const EdgeInsets.all(8),
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
               child: SizedBox(
                 width: 64,
                 height: 64,
                 child: _TrendingImage(item: item),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     item.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleMedium?.copyWith(
+                    style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -562,32 +749,10 @@ class _TrendingTile extends StatelessWidget {
                     item.subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: color.onSurface.withValues(alpha: 0.72),
-                    ),
+                    style: theme.textTheme.bodySmall,
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              children: [
-                Icon(
-                  _typeIconFromLabel(item.mediaTypeLabel),
-                  size: 18,
-                  color: color.onSurface.withValues(alpha: 0.7),
-                ),
-                const SizedBox(height: 8),
-                Icon(
-                  item.isCached
-                      ? Icons.download_done_rounded
-                      : Icons.wifi_rounded,
-                  size: 18,
-                  color: item.isCached
-                      ? Colors.green.shade600
-                      : color.onSurface.withValues(alpha: 0.6),
-                ),
-              ],
             ),
           ],
         ),
@@ -622,17 +787,6 @@ class _TrendingImage extends StatelessWidget {
       alignment: Alignment.center,
       child: Icon(item.icon, size: 26, color: color.onPrimaryContainer),
     );
-  }
-}
-
-IconData _typeIconFromLabel(String label) {
-  switch (label.toLowerCase()) {
-    case 'album':
-      return Icons.album_rounded;
-    case 'playlist':
-      return Icons.queue_music_rounded;
-    default:
-      return Icons.music_note_rounded;
   }
 }
 
@@ -699,8 +853,8 @@ class _HorizontalSectionSkeleton extends StatelessWidget {
   }
 }
 
-class _TrendingListSkeleton extends StatelessWidget {
-  const _TrendingListSkeleton();
+class _CompactFeedSkeleton extends StatelessWidget {
+  const _CompactFeedSkeleton();
 
   @override
   Widget build(BuildContext context) {
@@ -709,56 +863,200 @@ class _TrendingListSkeleton extends StatelessWidget {
       alpha: 0.5,
     );
 
-    return Column(
-      children: List.generate(5, (index) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: index == 4 ? 0 : 12),
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: theme.cardColor,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: baseColor,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 6,
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 420,
+        mainAxisExtent: 88,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+      ),
+      itemBuilder: (_, _) {
+        return Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: theme.cardColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: baseColor,
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        height: 12,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: baseColor,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      height: 10,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: baseColor,
+                        borderRadius: BorderRadius.circular(6),
                       ),
-                      const SizedBox(height: 8),
-                      Container(
-                        height: 10,
-                        width: 140,
-                        decoration: BoxDecoration(
-                          color: baseColor,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 9,
+                      width: 120,
+                      decoration: BoxDecoration(
+                        color: baseColor,
+                        borderRadius: BorderRadius.circular(6),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
-      }),
+      },
+    );
+  }
+}
+
+class _ArtistPillsSection extends StatelessWidget {
+  final List<DashboardArtist> artists;
+  const _ArtistPillsSection({required this.artists});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: artists
+          .map(
+            (artist) => ActionChip(
+              avatar: const Icon(Icons.person, size: 16),
+              label: Text(artist.name),
+              onPressed: () => context.push('/artists/${artist.artistId}'),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _SuggestedTracksPage extends StatefulWidget {
+  final List<DashboardItem> initialTracks;
+  const _SuggestedTracksPage({required this.initialTracks});
+
+  @override
+  State<_SuggestedTracksPage> createState() => _SuggestedTracksPageState();
+}
+
+class _SuggestedTracksPageState extends State<_SuggestedTracksPage> {
+  late List<DashboardItem> _tracks;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tracks = widget.initialTracks;
+    _loadMore();
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    final more = await context.read<UserDashboardCubit>().fetchSuggestedTracks(
+      limit: 60,
+    );
+
+    final seen = <String>{};
+    final merged = <DashboardItem>[];
+    for (final item in [..._tracks, ...more]) {
+      final key = item.trackId ?? item.id;
+      if (seen.add(key)) {
+        merged.add(item);
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _tracks = merged;
+      _loading = false;
+    });
+  }
+
+  void _playTrack(DashboardItem item) {
+    showPlayerBottomSheet(
+      context,
+      trackId: item.trackId ?? item.id,
+      title: item.title,
+      artist: item.artists.map((artist) => artist.name).join(', '),
+      imageUrl: item.coverUrl,
+      localImagePath: item.localImagePath,
+      openSheet: false,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Suggested tracks'),
+        actions: [
+          IconButton(
+            onPressed: _loadMore,
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: 'Refresh suggestions',
+          ),
+        ],
+      ),
+      body: _tracks.isEmpty && _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView.separated(
+              itemCount: _tracks.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final item = _tracks[index];
+                final subtitle = item.artists.isNotEmpty
+                    ? item.artists.map((artist) => artist.name).join(', ')
+                    : 'Unknown artist';
+                return ListTile(
+                  leading: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: _TrendingImage(
+                        item: MediaItem(
+                          title: item.title,
+                          subtitle: subtitle,
+                          imageUrl: item.coverUrl,
+                          localImagePath: item.localImagePath,
+                          icon: Icons.music_note_rounded,
+                        ),
+                      ),
+                    ),
+                  ),
+                  title: Text(
+                    item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: IconButton(
+                    onPressed: () => _playTrack(item),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                  ),
+                  onTap: () => _playTrack(item),
+                );
+              },
+            ),
     );
   }
 }

@@ -7,12 +7,17 @@ class DashboardItem extends Equatable {
   final String title;
   final String? coverUrl;
   final int? duration;
+  final int? playCount;
+  final int? likesCount;
+  final double? popularityScore;
+  final int? totalTracks;
   final List<DashboardArtist> artists;
   final DashboardItemType type;
 
   // Track specific fields
   final String? trackId; // Explicit track ID helper
   final String? albumId; // Explicit album ID helper
+  final String? playlistId; // Explicit playlist ID helper
   final bool isCached;
   final String? localImagePath;
 
@@ -21,10 +26,15 @@ class DashboardItem extends Equatable {
     required this.title,
     required this.coverUrl,
     required this.duration,
+    this.playCount,
+    this.likesCount,
+    this.popularityScore,
+    this.totalTracks,
     required this.artists,
     required this.type,
     this.trackId,
     this.albumId,
+    this.playlistId,
     this.isCached = false,
     this.localImagePath,
   });
@@ -34,10 +44,15 @@ class DashboardItem extends Equatable {
     String? title,
     String? coverUrl,
     int? duration,
+    int? playCount,
+    int? likesCount,
+    double? popularityScore,
+    int? totalTracks,
     List<DashboardArtist>? artists,
     DashboardItemType? type,
     String? trackId,
     String? albumId,
+    String? playlistId,
     bool? isCached,
     String? localImagePath,
   }) {
@@ -46,10 +61,15 @@ class DashboardItem extends Equatable {
       title: title ?? this.title,
       coverUrl: coverUrl ?? this.coverUrl,
       duration: duration ?? this.duration,
+      playCount: playCount ?? this.playCount,
+      likesCount: likesCount ?? this.likesCount,
+      popularityScore: popularityScore ?? this.popularityScore,
+      totalTracks: totalTracks ?? this.totalTracks,
       artists: artists ?? this.artists,
       type: type ?? this.type,
       trackId: trackId ?? this.trackId,
       albumId: albumId ?? this.albumId,
+      playlistId: playlistId ?? this.playlistId,
       isCached: isCached ?? this.isCached,
       localImagePath: localImagePath ?? this.localImagePath,
     );
@@ -61,10 +81,15 @@ class DashboardItem extends Equatable {
     title,
     coverUrl,
     duration,
+    playCount,
+    likesCount,
+    popularityScore,
+    totalTracks,
     artists,
     type,
     trackId,
     albumId,
+    playlistId,
     isCached,
     localImagePath,
   ];

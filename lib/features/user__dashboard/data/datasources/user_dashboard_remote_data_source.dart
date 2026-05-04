@@ -9,10 +9,15 @@ class DashboardItemDTO extends DashboardItem {
     required super.title,
     super.coverUrl,
     super.duration,
+    super.playCount,
+    super.likesCount,
+    super.popularityScore,
+    super.totalTracks,
     required super.artists,
     required super.type,
     super.trackId,
     super.albumId,
+    super.playlistId,
   });
 
   factory DashboardItemDTO.fromJson(Map<String, dynamic> json) {
@@ -39,6 +44,10 @@ class DashboardItemDTO extends DashboardItem {
       title: json['title'] as String? ?? '',
       coverUrl: json['cover_url'] as String?,
       duration: (json['duration'] as num?)?.toInt(),
+      playCount: (json['play_count'] as num?)?.toInt(),
+      likesCount: (json['likes_count'] as num?)?.toInt(),
+      popularityScore: (json['popularity_score'] as num?)?.toDouble(),
+      totalTracks: (json['total_tracks'] as num?)?.toInt(),
       artists: (json['artists'] as List<dynamic>? ?? const [])
           .map(
             (e) => DashboardArtistDTO.fromJson(
@@ -49,6 +58,7 @@ class DashboardItemDTO extends DashboardItem {
       type: type,
       trackId: trackId,
       albumId: albumId,
+      playlistId: playlistId,
     );
   }
 }

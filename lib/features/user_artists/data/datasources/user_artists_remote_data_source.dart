@@ -59,9 +59,74 @@ class UserArtistAlbumDTO {
   }
 }
 
+class UserArtistTrackArtistDTO {
+  final String artistId;
+  final String? name;
+
+  UserArtistTrackArtistDTO({required this.artistId, this.name});
+
+  factory UserArtistTrackArtistDTO.fromJson(Map<String, dynamic> json) {
+    return UserArtistTrackArtistDTO(
+      artistId: (json['artist_id'] ?? json['id']).toString(),
+      name: json['name']?.toString(),
+    );
+  }
+}
+
+class UserArtistTrackDTO {
+  final String trackId;
+  final String title;
+  final int? duration;
+  final int? playCount;
+  final int? likesCount;
+  final String? albumId;
+  final String? coverUrl;
+  final List<UserArtistTrackArtistDTO> artists;
+
+  UserArtistTrackDTO({
+    required this.trackId,
+    required this.title,
+    this.duration,
+    this.playCount,
+    this.likesCount,
+    this.albumId,
+    this.coverUrl,
+    this.artists = const [],
+  });
+
+  factory UserArtistTrackDTO.fromJson(Map<String, dynamic> json) {
+    final artistsRaw = (json['artists'] as List?) ?? const [];
+    return UserArtistTrackDTO(
+      trackId: (json['track_id'] ?? json['id']).toString(),
+      title: json['title']?.toString() ?? '',
+      duration: (json['duration'] as num?)?.toInt(),
+      playCount: (json['play_count'] as num?)?.toInt(),
+      likesCount: (json['likes_count'] as num?)?.toInt(),
+      albumId: json['album_id']?.toString(),
+      coverUrl:
+          json['cover_url']?.toString() ??
+          json['album_cover_url']?.toString() ??
+          (json['album'] is Map
+              ? (json['album']['cover_url']?.toString())
+              : null),
+      artists: artistsRaw
+          .map(
+            (e) => UserArtistTrackArtistDTO.fromJson(
+              Map<String, dynamic>.from(e as Map),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
 abstract interface class UserArtistsRemoteDataSource {
   Future<UserArtistDTO> getArtist(String artistId);
   Future<List<UserArtistAlbumDTO>> getArtistAlbums(String artistId);
+  Future<List<UserArtistTrackDTO>> getArtistTracks({
+    required String artistId,
+    String? artistName,
+  });
 }
 
 class UserArtistsRemoteDataSourceImpl implements UserArtistsRemoteDataSource {
@@ -115,5 +180,61 @@ class UserArtistsRemoteDataSourceImpl implements UserArtistsRemoteDataSource {
     return items
         .map((e) => UserArtistAlbumDTO.fromJson(Map<String, dynamic>.from(e)))
         .toList();
+  }
+
+  @override
+  Future<List<UserArtistTrackDTO>> getArtistTracks({
+    required String artistId,
+    String? artistName,
+  }) async {
+    List<dynamic> items = const [];
+
+    // Preferred route if backend exposes artist tracks directly.
+    try {
+      final res = await _dio.get(
+        '$baseArtistsPath/$artistId/tracks',
+        options: dio.Options(headers: _authHeader()),
+      );
+      items = _extractList(res.data);
+    } catch (_) {
+      // Fallback: query user tracks by artist name and filter by artist_id.
+      final q = Uri.encodeQueryComponent(artistName ?? '');
+      final url =
+          '${AppSecrets.backendUrl}/api/user/tracks?page=0&limit=100&q=$q';
+      final res = await _dio.get(
+        url,
+        options: dio.Options(headers: _authHeader()),
+      );
+      items = _extractList(res.data);
+    }
+
+    final parsed = items
+        .map((e) => UserArtistTrackDTO.fromJson(Map<String, dynamic>.from(e)))
+        .where((track) => track.trackId.isNotEmpty)
+        .toList();
+
+    final filtered = parsed.where((track) {
+      if (track.artists.isEmpty) return true;
+      return track.artists.any((a) => a.artistId == artistId);
+    }).toList();
+
+    filtered.sort((a, b) {
+      final aPopularity = (a.playCount ?? 0) + (a.likesCount ?? 0);
+      final bPopularity = (b.playCount ?? 0) + (b.likesCount ?? 0);
+      return bPopularity.compareTo(aPopularity);
+    });
+
+    return filtered;
+  }
+
+  List<dynamic> _extractList(dynamic data) {
+    if (data is Map) {
+      final map = Map<String, dynamic>.from(data);
+      if (map['items'] is List) return (map['items'] as List).cast<dynamic>();
+      if (map['data'] is List) return (map['data'] as List).cast<dynamic>();
+      return const [];
+    }
+    if (data is List) return data;
+    return const [];
   }
 }

@@ -10,6 +10,16 @@ class UserArtistsRepositoryImpl implements UserArtistsRepository {
   Future<UserArtistDetail> getArtist(String artistId) async {
     final artist = await _remote.getArtist(artistId);
     final albums = await _remote.getArtistAlbums(artistId);
+    List<UserArtistTrackDTO> tracks = const [];
+    try {
+      tracks = await _remote.getArtistTracks(
+        artistId: artistId,
+        artistName: artist.name,
+      );
+    } catch (_) {
+      tracks = const [];
+    }
+
     return UserArtistDetail(
       artistId: artist.artistId,
       name: artist.name,
@@ -25,6 +35,27 @@ class UserArtistsRepositoryImpl implements UserArtistsRepository {
               title: a.title,
               coverUrl: a.coverUrl,
               releaseDate: a.releaseDate,
+            ),
+          )
+          .toList(),
+      tracks: tracks
+          .map(
+            (t) => UserArtistTrack(
+              trackId: t.trackId,
+              title: t.title,
+              duration: t.duration,
+              playCount: t.playCount,
+              likesCount: t.likesCount,
+              albumId: t.albumId,
+              coverUrl: t.coverUrl,
+              artists: t.artists
+                  .map(
+                    (a) => UserArtistTrackArtist(
+                      artistId: a.artistId,
+                      name: a.name,
+                    ),
+                  )
+                  .toList(),
             ),
           )
           .toList(),

@@ -131,12 +131,14 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
         limit: limit,
         ttl: _madeForYouCacheTtl,
       );
-    } else {
-    }
+    } else {}
 
     if (backendMadeForYou == null) {
       try {
-        final madeForYouResult = await _listMadeForYou(page: page, limit: limit);
+        final madeForYouResult = await _listMadeForYou(
+          page: page,
+          limit: limit,
+        );
         backendMadeForYou = madeForYouResult.items;
         await _dashboardCache?.cacheMadeForYou(
           page: page,
@@ -173,7 +175,8 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
     }
 
     final effectiveBackendMadeForYou =
-        backendMadeForYou ?? state.madeForYou.where((item) {
+        backendMadeForYou ??
+        state.madeForYou.where((item) {
           return item.type == DashboardItemType.track ||
               item.type == DashboardItemType.album ||
               item.type == DashboardItemType.playlist;
@@ -296,5 +299,48 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
         ),
       );
     } catch (_) {}
+  }
+
+  Future<List<DashboardItem>> fetchSuggestedTracks({
+    int page = 0,
+    int limit = 50,
+  }) async {
+    List<DashboardItem> madeForYouTracks = const [];
+    List<DashboardItem> trendingTracks = const [];
+
+    try {
+      final result = await _listMadeForYou(page: page, limit: limit);
+      madeForYouTracks = result.items
+          .where((item) => item.type == DashboardItemType.track)
+          .toList();
+    } catch (_) {}
+
+    try {
+      final result = await _listTrending(page: page, limit: limit);
+      trendingTracks = result.items
+          .where((item) => item.type == DashboardItemType.track)
+          .toList();
+    } catch (_) {}
+
+    final combined = <DashboardItem>[
+      ...state.recommendations.where(
+        (item) => item.type == DashboardItemType.track,
+      ),
+      ...state.trending.where((item) => item.type == DashboardItemType.track),
+      ...state.madeForYou.where((item) => item.type == DashboardItemType.track),
+      ...trendingTracks,
+      ...madeForYouTracks,
+    ];
+
+    final seen = <String>{};
+    final unique = <DashboardItem>[];
+    for (final item in combined) {
+      final key = item.trackId ?? item.id;
+      if (seen.add(key)) {
+        unique.add(item);
+      }
+    }
+
+    return _decorateWithCacheState(unique);
   }
 }

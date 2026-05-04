@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
+import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
+import 'package:musee/features/user_artists/domain/entities/user_artist.dart';
 import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.dart';
 
 class UserArtistPage extends StatefulWidget {
@@ -188,6 +190,52 @@ class _UserArtistView extends StatelessWidget {
                             avatarUrl: artist.avatarUrl,
                             monthlyListeners: artist.monthlyListeners,
                             genres: artist.genres,
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 2),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Popular',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const Spacer(),
+                              if (artist.tracks.isNotEmpty)
+                                TextButton.icon(
+                                  onPressed: () {
+                                    final first = artist.tracks.first;
+                                    showPlayerBottomSheet(
+                                      context,
+                                      trackId: first.trackId,
+                                      title: first.title,
+                                      artist:
+                                          artist.name ??
+                                          first.artists
+                                              .map((a) => a.name)
+                                              .whereType<String>()
+                                              .join(', '),
+                                      imageUrl: first.coverUrl,
+                                      openSheet: false,
+                                    );
+                                  },
+                                  icon: const Icon(Icons.play_arrow_rounded),
+                                  label: const Text('Play'),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: _PopularTracksSection(
+                            tracks: artist.tracks,
+                            fallbackArtistName: artist.name,
                           ),
                         ),
                       ),
@@ -420,6 +468,204 @@ class _HeaderChip extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PopularTracksSection extends StatelessWidget {
+  final List<UserArtistTrack> tracks;
+  final String? fallbackArtistName;
+
+  const _PopularTracksSection({required this.tracks, this.fallbackArtistName});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (tracks.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Text(
+          'No popular tracks yet.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    final visible = tracks.take(8).toList();
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: List.generate(visible.length, (index) {
+          final track = visible[index];
+          final names = track.artists
+              .map((a) => a.name)
+              .whereType<String>()
+              .where((s) => s.trim().isNotEmpty)
+              .toList();
+          final subtitle = names.isNotEmpty
+              ? names.join(', ')
+              : (fallbackArtistName ?? 'Unknown artist');
+
+          return _PopularTrackRow(
+            index: index + 1,
+            title: track.title,
+            subtitle: subtitle,
+            durationSeconds: track.duration,
+            playCount: track.playCount,
+            likesCount: track.likesCount,
+            imageUrl: track.coverUrl,
+            onPlay: () {
+              showPlayerBottomSheet(
+                context,
+                trackId: track.trackId,
+                title: track.title,
+                artist: subtitle,
+                imageUrl: track.coverUrl,
+                openSheet: false,
+              );
+            },
+          );
+        }),
+      ),
+    );
+  }
+}
+
+class _PopularTrackRow extends StatelessWidget {
+  final int index;
+  final String title;
+  final String subtitle;
+  final int? durationSeconds;
+  final int? playCount;
+  final int? likesCount;
+  final String? imageUrl;
+  final VoidCallback onPlay;
+
+  const _PopularTrackRow({
+    required this.index,
+    required this.title,
+    required this.subtitle,
+    required this.durationSeconds,
+    required this.playCount,
+    required this.likesCount,
+    required this.imageUrl,
+    required this.onPlay,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onPlay,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 22,
+              child: Text(
+                '$index',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 46,
+                height: 46,
+                child: imageUrl != null && imageUrl!.isNotEmpty
+                    ? Image.network(
+                        imageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => _trackFallback(theme),
+                      )
+                    : _trackFallback(theme),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _durationLabel(durationSeconds),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: onPlay,
+              icon: const Icon(Icons.play_circle_fill_rounded),
+              tooltip:
+                  '${_compactCount(playCount)} plays • ${_compactCount(likesCount)} likes',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _trackFallback(ThemeData theme) {
+    return Container(
+      color: theme.colorScheme.surfaceContainerHighest,
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.music_note_rounded,
+        size: 22,
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+String _durationLabel(int? seconds) {
+  if (seconds == null || seconds <= 0) return '-:--';
+  final m = seconds ~/ 60;
+  final s = seconds % 60;
+  return '$m:${s.toString().padLeft(2, '0')}';
+}
+
+String _compactCount(int? value) {
+  final n = value ?? 0;
+  if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+  if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
+  return '$n';
 }
 
 class _ArtistLoadingView extends StatelessWidget {

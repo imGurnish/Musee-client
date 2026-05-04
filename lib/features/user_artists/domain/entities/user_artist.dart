@@ -9,6 +9,7 @@ class UserArtistDetail extends Equatable {
   final List<String> genres;
   final int? monthlyListeners;
   final List<UserArtistAlbum> albums;
+  final List<UserArtistTrack> tracks;
 
   const UserArtistDetail({
     required this.artistId,
@@ -19,6 +20,7 @@ class UserArtistDetail extends Equatable {
     this.genres = const [],
     this.monthlyListeners,
     this.albums = const [],
+    this.tracks = const [],
   });
 
   @override
@@ -31,6 +33,7 @@ class UserArtistDetail extends Equatable {
     genres,
     monthlyListeners,
     albums,
+    tracks,
   ];
 }
 
@@ -49,4 +52,48 @@ class UserArtistAlbum extends Equatable {
 
   @override
   List<Object?> get props => [albumId, title, coverUrl, releaseDate];
+}
+
+class UserArtistTrack extends Equatable {
+  final String trackId;
+  final String title;
+  final int? duration;
+  final int? playCount;
+  final int? likesCount;
+  final String? albumId;
+  final String? coverUrl;
+  final List<UserArtistTrackArtist> artists;
+
+  const UserArtistTrack({
+    required this.trackId,
+    required this.title,
+    this.duration,
+    this.playCount,
+    this.likesCount,
+    this.albumId,
+    this.coverUrl,
+    this.artists = const [],
+  });
+
+  @override
+  List<Object?> get props => [
+    trackId,
+    title,
+    duration,
+    playCount,
+    likesCount,
+    albumId,
+    coverUrl,
+    artists,
+  ];
+}
+
+class UserArtistTrackArtist extends Equatable {
+  final String artistId;
+  final String? name;
+
+  const UserArtistTrackArtist({required this.artistId, this.name});
+
+  @override
+  List<Object?> get props => [artistId, name];
 }
