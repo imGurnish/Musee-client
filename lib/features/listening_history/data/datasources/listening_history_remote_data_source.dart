@@ -17,6 +17,9 @@ abstract class ListeningHistoryRemoteDataSource {
   
   /// Get the user's preference for a track (1=like, -1=dislike, 0=none)
   Future<int> getTrackPreference(String trackId);
+
+  /// Get all liked tracks (preference == 1) with track metadata
+  Future<List<Map<String, dynamic>>> getLikedTracks();
   
   // ==================== ALBUM PREFERENCES ====================
   
@@ -168,6 +171,23 @@ class ListeningHistoryRemoteDataSourceImpl implements ListeningHistoryRemoteData
   }
 
   // ==================== ALBUM PREFERENCES ====================
+
+  @override
+  Future<List<Map<String, dynamic>>> getLikedTracks() async {
+    try {
+      final res = await dio.get(
+        '$baseUrl/api/listening/liked-tracks',
+        options: Options(headers: _headers()),
+      );
+      final body = (res.data as Map<String, dynamic>);
+      final tracks = body['tracks'] as List<dynamic>? ?? [];
+      return tracks
+          .whereType<Map<String, dynamic>>()
+          .toList();
+    } on DioException catch (e) {
+      throw _handleDioException(e);
+    }
+  }
 
   @override
   Future<void> likeAlbum(String albumId) async {

@@ -16,6 +16,9 @@ abstract class ListeningHistoryRepository {
   Future<int> getTrackPreference(String trackId);
   Stream<int> watchTrackPreference(String trackId);
 
+  /// Fetch all liked tracks (preference == 1) for the current user.
+  Future<List<Map<String, dynamic>>> getLikedTracks();
+
   // Album preferences
   Future<void> likeAlbum(String albumId);
   Future<void> dislikeAlbum(String albumId);
@@ -226,6 +229,15 @@ class ListeningHistoryRepositoryImpl implements ListeningHistoryRepository {
       if (update.trackId == normalizedTrackId) {
         yield update.preference;
       }
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getLikedTracks() async {
+    try {
+      return await remoteDataSource.getLikedTracks();
+    } catch (_) {
+      return [];
     }
   }
 

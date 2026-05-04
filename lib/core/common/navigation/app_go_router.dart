@@ -45,6 +45,7 @@ import 'package:musee/features/user_artists/presentation/pages/user_artist_page.
 import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.dart';
 import 'package:musee/features/library/presentation/pages/user_library_page.dart';
 import 'package:musee/features/library/presentation/pages/downloads_page.dart';
+import 'package:musee/features/library/presentation/pages/liked_songs_page.dart';
 import 'package:musee/core/common/navigation/user_shell_page.dart';
 
 class AppGoRouter {
@@ -189,6 +190,11 @@ class AppGoRouter {
                       path: 'downloads',
                       name: 'downloads',
                       builder: (context, state) => const DownloadsPage(),
+                    ),
+                    GoRoute(
+                      path: 'liked-songs',
+                      name: 'liked_songs',
+                      builder: (context, state) => const LikedSongsPage(),
                     ),
                   ],
                 ),
