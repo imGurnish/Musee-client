@@ -464,13 +464,13 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
   /// When opened from a results page (canPop == true), we pop and return the
   /// query — the results page receives it and pushes a new results page on top.
   /// When we are the root of the search tab (canPop == false), we push results
-  /// directly on top of ourselves.
-  void _navigateToSearchResults(String query) {
+  /// directly on top of ourselves and reload recents when we return.
+  Future<void> _navigateToSearchResults(String query) async {
     final nav = Navigator.of(context);
     if (nav.canPop()) {
       nav.pop(query);
     } else {
-      nav.push(
+      await nav.push(
         MaterialPageRoute<void>(
           builder: (_) => BlocProvider(
             create: (_) => SearchBloc(serviceLocator(), serviceLocator()),
@@ -478,6 +478,9 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
           ),
         ),
       );
+      // Reload recents when returning from results — the user may have
+      // tapped tracks/albums/artists which added new recent entries.
+      _loadRecents();
     }
   }
 
@@ -517,13 +520,13 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
         );
         break;
       case SearchRecentType.album:
-        context.push('/albums/${item.id}');
+        await context.push('/albums/${item.id}');
         break;
       case SearchRecentType.artist:
-        context.push('/artists/${item.id}');
+        await context.push('/artists/${item.id}');
         break;
       case SearchRecentType.playlist:
-        context.push('/playlists/${item.id}');
+        await context.push('/playlists/${item.id}');
         break;
     }
 
