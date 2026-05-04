@@ -127,3 +127,46 @@ class SavingOnboardingPreferences extends ListeningHistoryState {
 class OnboardingPreferencesSaved extends ListeningHistoryState {
   const OnboardingPreferencesSaved();
 }
+
+// ==================== ADMIN ANALYTICS STATES ====================
+
+class FetchingEngagementMetrics extends ListeningHistoryState {
+  const FetchingEngagementMetrics();
+}
+
+class EngagementMetricsLoaded extends ListeningHistoryState {
+  final EngagementMetrics metrics;
+  const EngagementMetricsLoaded(this.metrics);
+
+  @override
+  List<Object?> get props => [metrics];
+}
+
+class EngagementMetricsError extends ListeningHistoryState {
+  final String message;
+  const EngagementMetricsError(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+
+class RefreshingTrending extends ListeningHistoryState {
+  const RefreshingTrending();
+}
+
+class TrendingRefreshed extends ListeningHistoryState {
+  final RefreshTrendingResult result;
+  const TrendingRefreshed(this.result);
+
+  @override
+  List<Object?> get props => [result];
+}
+
+class TrendingRefreshError extends ListeningHistoryState {
+  final String message;
+  const TrendingRefreshError(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}
+

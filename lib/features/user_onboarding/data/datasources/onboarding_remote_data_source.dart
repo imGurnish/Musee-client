@@ -89,10 +89,16 @@ class OnboardingRemoteDataSourceImpl implements OnboardingRemoteDataSource {
   @override
   Future<void> saveOnboardingPreferences(OnboardingUserDTO preferences) async {
     try {
+      final authUserId = supabaseClient.auth.currentUser?.id;
+      if (authUserId == null) {
+        throw Exception('No authenticated Supabase session found');
+      }
+
       await supabaseClient
           .from('user_onboarding_preferences')
           .upsert({
-            'user_id': preferences.userId,
+            // Under RLS, writes must target the authenticated user's row.
+            'user_id': authUserId,
             'preferred_language': preferences.preferredLanguage,
             'favorite_genres': preferences.favoriteGenres,
             'favorite_moods': preferences.favoriteMoods,
@@ -108,10 +114,12 @@ class OnboardingRemoteDataSourceImpl implements OnboardingRemoteDataSource {
   @override
   Future<OnboardingUserDTO> getUserOnboardingPreferences(String userId) async {
     try {
+      final resolvedUserId = supabaseClient.auth.currentUser?.id ?? userId;
+
       final data = await supabaseClient
           .from('user_onboarding_preferences')
           .select('user_id, preferred_language, favorite_genres, favorite_moods, favorite_artists, randomness_percentage')
-          .eq('user_id', userId)
+          .eq('user_id', resolvedUserId)
           .maybeSingle();
 
       if (data == null) {

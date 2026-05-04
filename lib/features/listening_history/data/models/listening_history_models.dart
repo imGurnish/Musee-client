@@ -271,3 +271,88 @@ class ListeningStats extends Equatable {
     lastPlayedAt,
   ];
 }
+
+/// Admin engagement metrics from /api/admin/metrics/engagement
+class EngagementMetrics extends Equatable {
+  final DateTime timestamp;
+  final int totalPlays24h;
+  final int uniqueListeners24h;
+  final double avgCompletionPct;
+  final double skipRatePct;
+  final int totalLikes;
+  final int totalDislikes;
+
+  const EngagementMetrics({
+    required this.timestamp,
+    required this.totalPlays24h,
+    required this.uniqueListeners24h,
+    required this.avgCompletionPct,
+    required this.skipRatePct,
+    required this.totalLikes,
+    required this.totalDislikes,
+  });
+
+  factory EngagementMetrics.fromJson(Map<String, dynamic> json) {
+    final engagement = json['engagement'] as Map<String, dynamic>? ?? json;
+    return EngagementMetrics(
+      timestamp: DateTime.tryParse(json['timestamp']?.toString() ?? '') ?? DateTime.now(),
+      totalPlays24h: engagement['total_plays_24h'] ?? 0,
+      uniqueListeners24h: engagement['unique_listeners_24h'] ?? 0,
+      avgCompletionPct: (engagement['avg_completion_pct'] ?? 0).toDouble(),
+      skipRatePct: (engagement['skip_rate_pct'] ?? 0).toDouble(),
+      totalLikes: engagement['total_likes'] ?? 0,
+      totalDislikes: engagement['total_dislikes'] ?? 0,
+    );
+  }
+
+  @override
+  List<Object?> get props => [
+    timestamp,
+    totalPlays24h,
+    uniqueListeners24h,
+    avgCompletionPct,
+    skipRatePct,
+    totalLikes,
+    totalDislikes,
+  ];
+}
+
+/// Result of POST /api/admin/metrics/refresh-trending
+class RefreshTrendingResult extends Equatable {
+  final DateTime timestamp;
+  final List<RefreshTrendingTask> results;
+
+  const RefreshTrendingResult({
+    required this.timestamp,
+    required this.results,
+  });
+
+  factory RefreshTrendingResult.fromJson(Map<String, dynamic> json) {
+    return RefreshTrendingResult(
+      timestamp: DateTime.tryParse(json['timestamp']?.toString() ?? '') ?? DateTime.now(),
+      results: (json['results'] as List<dynamic>? ?? [])
+          .map((e) => RefreshTrendingTask.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+    );
+  }
+
+  @override
+  List<Object?> get props => [timestamp, results];
+}
+
+class RefreshTrendingTask extends Equatable {
+  final String name; // view or task name
+  final String status;
+
+  const RefreshTrendingTask({required this.name, required this.status});
+
+  factory RefreshTrendingTask.fromJson(Map<String, dynamic> json) {
+    return RefreshTrendingTask(
+      name: json['view']?.toString() ?? json['task']?.toString() ?? 'unknown',
+      status: json['status']?.toString() ?? 'unknown',
+    );
+  }
+
+  @override
+  List<Object?> get props => [name, status];
+}

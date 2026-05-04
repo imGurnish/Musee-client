@@ -16,11 +16,19 @@ class ListeningHistoryBloc extends Bloc<ListeningHistoryEvent, ListeningHistoryS
     on<LikeTrackEvent>(_onLikeTrack);
     on<DislikeTrackEvent>(_onDislikeTrack);
     on<ClearTrackPreferenceEvent>(_onClearTrackPreference);
+    on<LikeAlbumEvent>(_onLikeAlbum);
+    on<DislikeAlbumEvent>(_onDislikeAlbum);
+    on<ClearAlbumPreferenceEvent>(_onClearAlbumPreference);
+    on<LikePlaylistEvent>(_onLikePlaylist);
+    on<DislikePlaylistEvent>(_onDislikePlaylist);
+    on<ClearPlaylistPreferenceEvent>(_onClearPlaylistPreference);
     on<FetchRecommendationsEvent>(_onFetchRecommendations);
     on<FetchListeningStatsEvent>(_onFetchListeningStats);
     on<SaveOnboardingPreferencesEvent>(_onSaveOnboardingPreferences);
     on<FetchOnboardingPreferencesEvent>(_onFetchOnboardingPreferences);
     on<RefreshRecommendationCacheEvent>(_onRefreshRecommendationCache);
+    on<FetchEngagementMetricsEvent>(_onFetchEngagementMetrics);
+    on<RefreshTrendingEvent>(_onRefreshTrending);
   }
 
   void setUserId(String userId) {
@@ -194,5 +202,107 @@ class ListeningHistoryBloc extends Bloc<ListeningHistoryEvent, ListeningHistoryS
       return msg;
     }
     return 'An unknown error occurred';
+  }
+
+  // ==================== ALBUM PREFERENCES ====================
+
+  Future<void> _onLikeAlbum(LikeAlbumEvent event, Emitter<ListeningHistoryState> emit) async {
+    emit(const UpdatingPreference());
+    try {
+      await repository.likeAlbum(event.albumId);
+      emit(const PreferenceUpdated());
+      add(const RefreshRecommendationCacheEvent());
+    } catch (e) {
+      emit(PreferenceUpdateError(_getErrorMessage(e)));
+    }
+  }
+
+  Future<void> _onDislikeAlbum(DislikeAlbumEvent event, Emitter<ListeningHistoryState> emit) async {
+    emit(const UpdatingPreference());
+    try {
+      await repository.dislikeAlbum(event.albumId);
+      emit(const PreferenceUpdated());
+      add(const RefreshRecommendationCacheEvent());
+    } catch (e) {
+      emit(PreferenceUpdateError(_getErrorMessage(e)));
+    }
+  }
+
+  Future<void> _onClearAlbumPreference(
+    ClearAlbumPreferenceEvent event,
+    Emitter<ListeningHistoryState> emit,
+  ) async {
+    emit(const UpdatingPreference());
+    try {
+      await repository.clearAlbumPreference(event.albumId);
+      emit(const PreferenceUpdated());
+    } catch (e) {
+      emit(PreferenceUpdateError(_getErrorMessage(e)));
+    }
+  }
+
+  // ==================== PLAYLIST PREFERENCES ====================
+
+  Future<void> _onLikePlaylist(LikePlaylistEvent event, Emitter<ListeningHistoryState> emit) async {
+    emit(const UpdatingPreference());
+    try {
+      await repository.likePlaylist(event.playlistId);
+      emit(const PreferenceUpdated());
+      add(const RefreshRecommendationCacheEvent());
+    } catch (e) {
+      emit(PreferenceUpdateError(_getErrorMessage(e)));
+    }
+  }
+
+  Future<void> _onDislikePlaylist(DislikePlaylistEvent event, Emitter<ListeningHistoryState> emit) async {
+    emit(const UpdatingPreference());
+    try {
+      await repository.dislikePlaylist(event.playlistId);
+      emit(const PreferenceUpdated());
+      add(const RefreshRecommendationCacheEvent());
+    } catch (e) {
+      emit(PreferenceUpdateError(_getErrorMessage(e)));
+    }
+  }
+
+  Future<void> _onClearPlaylistPreference(
+    ClearPlaylistPreferenceEvent event,
+    Emitter<ListeningHistoryState> emit,
+  ) async {
+    emit(const UpdatingPreference());
+    try {
+      await repository.clearPlaylistPreference(event.playlistId);
+      emit(const PreferenceUpdated());
+    } catch (e) {
+      emit(PreferenceUpdateError(_getErrorMessage(e)));
+    }
+  }
+
+  // ==================== ADMIN ANALYTICS ====================
+
+  Future<void> _onFetchEngagementMetrics(
+    FetchEngagementMetricsEvent event,
+    Emitter<ListeningHistoryState> emit,
+  ) async {
+    emit(const FetchingEngagementMetrics());
+    try {
+      final metrics = await repository.getEngagementMetrics();
+      emit(EngagementMetricsLoaded(metrics));
+    } catch (e) {
+      emit(EngagementMetricsError(_getErrorMessage(e)));
+    }
+  }
+
+  Future<void> _onRefreshTrending(
+    RefreshTrendingEvent event,
+    Emitter<ListeningHistoryState> emit,
+  ) async {
+    emit(const RefreshingTrending());
+    try {
+      final result = await repository.refreshTrending();
+      emit(TrendingRefreshed(result));
+    } catch (e) {
+      emit(TrendingRefreshError(_getErrorMessage(e)));
+    }
   }
 }

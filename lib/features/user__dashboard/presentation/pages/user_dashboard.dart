@@ -57,8 +57,8 @@ class _UserDashboardState extends State<UserDashboard> {
       return;
     }
 
-    final userId = appUserState.user.id;
     final supabase = serviceLocator<SupabaseClient>();
+    final userId = supabase.auth.currentUser?.id ?? appUserState.user.id;
 
     try {
       final result = await supabase

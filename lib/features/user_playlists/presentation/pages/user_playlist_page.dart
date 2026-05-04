@@ -7,6 +7,7 @@ import 'package:musee/features/user_playlists/presentation/bloc/user_playlist_bl
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/core/download/download_manager.dart';
+import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 
 class UserPlaylistPage extends StatefulWidget {
   final String playlistId;
@@ -42,8 +43,57 @@ class _UserPlaylistPageState extends State<UserPlaylistPage> {
   }
 }
 
-class _UserPlaylistView extends StatelessWidget {
+class _UserPlaylistView extends StatefulWidget {
   const _UserPlaylistView();
+
+  @override
+  State<_UserPlaylistView> createState() => _UserPlaylistViewState();
+}
+
+class _UserPlaylistViewState extends State<_UserPlaylistView>
+    with SingleTickerProviderStateMixin {
+  bool _isLiked = false;
+  late final AnimationController _likeAnimController;
+  String? _loadedPlaylistId;
+
+  @override
+  void initState() {
+    super.initState();
+    _likeAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+  }
+
+  @override
+  void dispose() {
+    _likeAnimController.dispose();
+    super.dispose();
+  }
+
+  void _loadPreference(String playlistId) {
+    if (_loadedPlaylistId == playlistId) return;
+    _loadedPlaylistId = playlistId;
+    final repo = GetIt.I<ListeningHistoryRepository>();
+    repo.getPlaylistPreference(playlistId).then((pref) {
+      if (mounted && pref == 1 && !_isLiked) {
+        setState(() => _isLiked = true);
+      }
+    });
+  }
+
+  void _toggleLike(String playlistId) {
+    final repo = GetIt.I<ListeningHistoryRepository>();
+    setState(() {
+      _isLiked = !_isLiked;
+    });
+    if (_isLiked) {
+      _likeAnimController.forward(from: 0);
+      repo.likePlaylist(playlistId);
+    } else {
+      repo.clearPlaylistPreference(playlistId);
+    }
+  }
 
   String _fmtDuration(int seconds) {
     final m = seconds ~/ 60;
@@ -83,6 +133,7 @@ class _UserPlaylistView extends StatelessWidget {
                 child: Text('Playlist is not available right now'),
               );
             }
+            _loadPreference(playlist.playlistId);
             final creatorName = playlist.artists.isNotEmpty
                 ? (playlist.artists.first.name ?? 'Unknown Creator')
                 : 'Unknown Creator';
@@ -204,6 +255,39 @@ class _UserPlaylistView extends StatelessWidget {
                                 icon: const Icon(
                                   Icons.play_arrow_rounded,
                                   size: 26,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // Like button
+                            ScaleTransition(
+                              scale: Tween<double>(begin: 1.0, end: 1.3)
+                                  .chain(CurveTween(curve: Curves.elasticOut))
+                                  .animate(_likeAnimController),
+                              child: SizedBox(
+                                width: 44,
+                                height: 44,
+                                child: IconButton(
+                                  onPressed: () => _toggleLike(playlist.playlistId),
+                                  icon: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 250),
+                                    transitionBuilder: (child, animation) =>
+                                        FadeTransition(
+                                      opacity: animation,
+                                      child: child,
+                                    ),
+                                    child: Icon(
+                                      _isLiked
+                                          ? Icons.favorite_rounded
+                                          : Icons.favorite_border_rounded,
+                                      key: ValueKey(_isLiked),
+                                      color: _isLiked
+                                          ? Colors.redAccent
+                                          : theme.colorScheme.onSurfaceVariant,
+                                      size: 24,
+                                    ),
+                                  ),
+                                  tooltip: _isLiked ? 'Unlike' : 'Like',
                                 ),
                               ),
                             ),

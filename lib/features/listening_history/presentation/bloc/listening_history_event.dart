@@ -113,3 +113,74 @@ class FetchOnboardingPreferencesEvent extends ListeningHistoryEvent {
 class RefreshRecommendationCacheEvent extends ListeningHistoryEvent {
   const RefreshRecommendationCacheEvent();
 }
+
+// ==================== ALBUM PREFERENCES ====================
+
+/// Like an album
+class LikeAlbumEvent extends ListeningHistoryEvent {
+  final String albumId;
+  const LikeAlbumEvent(this.albumId);
+
+  @override
+  List<Object?> get props => [albumId];
+}
+
+/// Dislike an album
+class DislikeAlbumEvent extends ListeningHistoryEvent {
+  final String albumId;
+  const DislikeAlbumEvent(this.albumId);
+
+  @override
+  List<Object?> get props => [albumId];
+}
+
+/// Clear album preference
+class ClearAlbumPreferenceEvent extends ListeningHistoryEvent {
+  final String albumId;
+  const ClearAlbumPreferenceEvent(this.albumId);
+
+  @override
+  List<Object?> get props => [albumId];
+}
+
+// ==================== PLAYLIST PREFERENCES ====================
+
+/// Like a playlist
+class LikePlaylistEvent extends ListeningHistoryEvent {
+  final String playlistId;
+  const LikePlaylistEvent(this.playlistId);
+
+  @override
+  List<Object?> get props => [playlistId];
+}
+
+/// Dislike a playlist
+class DislikePlaylistEvent extends ListeningHistoryEvent {
+  final String playlistId;
+  const DislikePlaylistEvent(this.playlistId);
+
+  @override
+  List<Object?> get props => [playlistId];
+}
+
+/// Clear playlist preference
+class ClearPlaylistPreferenceEvent extends ListeningHistoryEvent {
+  final String playlistId;
+  const ClearPlaylistPreferenceEvent(this.playlistId);
+
+  @override
+  List<Object?> get props => [playlistId];
+}
+
+// ==================== ADMIN ANALYTICS ====================
+
+/// Fetch admin engagement metrics
+class FetchEngagementMetricsEvent extends ListeningHistoryEvent {
+  const FetchEngagementMetricsEvent();
+}
+
+/// Trigger refresh of trending data & popularity scores
+class RefreshTrendingEvent extends ListeningHistoryEvent {
+  const RefreshTrendingEvent();
+}
+

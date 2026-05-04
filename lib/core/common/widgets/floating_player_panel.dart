@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -5,6 +6,7 @@ import 'package:get_it/get_it.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
+import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 
 class FloatingPlayerPanel extends StatefulWidget {
   const FloatingPlayerPanel({super.key});
@@ -25,6 +27,10 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
   static const double _swipeThreshold = 40;
   static const Duration _slideDuration = Duration(milliseconds: 280);
 
+  bool _isTrackLiked = false;
+  String? _likedTrackId;
+  StreamSubscription<int>? _trackPreferenceSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -36,8 +42,29 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
 
   @override
   void dispose() {
+    _trackPreferenceSubscription?.cancel();
     _slideController.dispose();
     super.dispose();
+  }
+
+  void _subscribeTrackPreference(String? trackId) {
+    if (trackId == null || trackId.isEmpty || trackId == _likedTrackId) {
+      return;
+    }
+
+    _trackPreferenceSubscription?.cancel();
+    _likedTrackId = trackId;
+    _isTrackLiked = false;
+
+    final repo = GetIt.I<ListeningHistoryRepository>();
+    _trackPreferenceSubscription = repo.watchTrackPreference(trackId).listen((pref) {
+      final liked = pref == 1;
+      if (mounted && _likedTrackId == trackId && liked != _isTrackLiked) {
+        setState(() => _isTrackLiked = liked);
+      }
+    });
+
+    unawaited(repo.getTrackPreference(trackId));
   }
 
   void _onHorizontalDragUpdate(DragUpdateDetails d) {
@@ -95,6 +122,19 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
 
     final cubit = GetIt.I<PlayerCubit>();
 
+    void toggleTrackLike() {
+      final trackId = _likedTrackId;
+      if (trackId == null) return;
+      final repo = GetIt.I<ListeningHistoryRepository>();
+      final nextLiked = !_isTrackLiked;
+      setState(() => _isTrackLiked = nextLiked);
+      if (nextLiked) {
+        unawaited(repo.likeTrack(trackId));
+      } else {
+        unawaited(repo.clearTrackPreference(trackId));
+      }
+    }
+
     return BlocBuilder<PlayerCubit, PlayerViewState>(
       bloc: cubit,
       builder: (context, state) {
@@ -107,6 +147,9 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
         final artist = track?.artist ?? 'Tap to choose something';
         final subtitleText = artist;
         final subtitleColor = theme.textTheme.bodySmall?.color?.withValues(alpha: 0.8);
+
+        // Keep this panel in sync with shared like preference state.
+        _subscribeTrackPreference(track?.trackId);
 
         final pos = state.position;
         final dur = state.duration;
@@ -220,6 +263,32 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        // Like button (compact)
+                        if (hasTrack && track.trackId != null)
+                          SizedBox(
+                            width: 36,
+                            height: 36,
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              tooltip: _isTrackLiked ? 'Unlike' : 'Like',
+                              onPressed: toggleTrackLike,
+                              icon: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 200),
+                                transitionBuilder: (child, anim) =>
+                                    FadeTransition(opacity: anim, child: child),
+                                child: Icon(
+                                  _isTrackLiked
+                                      ? Icons.favorite_rounded
+                                      : Icons.favorite_border_rounded,
+                                  key: ValueKey(_isTrackLiked),
+                                  color: _isTrackLiked
+                                      ? Colors.redAccent
+                                      : theme.colorScheme.onSurfaceVariant,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                          ),
                         IconButton(
                             onPressed: canControlPlayback
                               ? () => cubit.previous()

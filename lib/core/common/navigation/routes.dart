@@ -24,6 +24,7 @@ class Routes {
   static const String adminPlaylistImport = '/admin/playlists/import/external';
   static const String adminCountries = '/admin/countries';
   static const String adminRegions = '/admin/regions';
+  static const String adminEngagement = '/admin/engagement';
 
   // Authentication
   static const String signIn = '/sign-in';

@@ -69,7 +69,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       crossAxisSpacing: 16,
                       mainAxisExtent: 188,
                     ),
-                    itemCount: 9,
+                    itemCount: 11,
                     itemBuilder: (context, index) {
                       final cards = [
                         (
@@ -134,6 +134,20 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           Icons.map,
                           Colors.purple,
                           Routes.adminRegions,
+                        ),
+                        (
+                          'Engagement',
+                          'Plays, likes & analytics',
+                          Icons.insights_rounded,
+                          Colors.amber.shade700,
+                          Routes.adminEngagement,
+                        ),
+                        (
+                          'Trending',
+                          'Refresh popularity data',
+                          Icons.trending_up_rounded,
+                          Colors.lightBlue,
+                          Routes.adminEngagement,
                         ),
                       ];
 

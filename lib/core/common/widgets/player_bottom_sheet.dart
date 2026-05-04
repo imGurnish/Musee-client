@@ -8,6 +8,7 @@ import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
+import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 
 bool _isPlayerSheetOpen = false;
 DateTime? _lastPlayerSheetOpenAt;
@@ -161,6 +162,9 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
   late final AnimationController _slideController;
   double _dragDx = 0;
   bool _swiping = false;
+  bool _isTrackLiked = false;
+  String? _likedTrackId;
+  StreamSubscription<int>? _trackPreferenceSubscription;
 
   /// Direction the content is sliding out: -1 = left (next), 1 = right (prev)
   int _slideDirection = 0;
@@ -179,6 +183,7 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
 
   @override
   void dispose() {
+    _trackPreferenceSubscription?.cancel();
     _slideController.dispose();
     super.dispose();
   }
@@ -238,6 +243,39 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
     return "$m:$sec";
   }
 
+  void _subscribeTrackPreference(String? trackId) {
+    if (trackId == null || trackId.isEmpty || trackId == _likedTrackId) {
+      return;
+    }
+
+    _trackPreferenceSubscription?.cancel();
+    _likedTrackId = trackId;
+    _isTrackLiked = false; // reset until first stream value lands
+
+    final repo = GetIt.I<ListeningHistoryRepository>();
+    _trackPreferenceSubscription = repo.watchTrackPreference(trackId).listen((pref) {
+      final liked = pref == 1;
+      if (mounted && _likedTrackId == trackId && liked != _isTrackLiked) {
+        setState(() => _isTrackLiked = liked);
+      }
+    });
+
+    unawaited(repo.getTrackPreference(trackId));
+  }
+
+  void _toggleTrackLike() {
+    final trackId = _likedTrackId;
+    if (trackId == null) return;
+    final repo = GetIt.I<ListeningHistoryRepository>();
+    final nextLiked = !_isTrackLiked;
+    setState(() => _isTrackLiked = nextLiked);
+    if (nextLiked) {
+      unawaited(repo.likeTrack(trackId));
+    } else {
+      unawaited(repo.clearTrackPreference(trackId));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).viewPadding.top;
@@ -277,6 +315,9 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
           };
           final controlColor = theme.colorScheme.onSurfaceVariant;
           final activeControlColor = theme.colorScheme.primary;
+
+          // Keep sheet preference in sync with shared repository state.
+          _subscribeTrackPreference(state.track?.trackId);
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -416,12 +457,27 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                           const SizedBox(width: 8),
                           if (state.track?.trackId != null)
                             _DownloadButton(trackId: state.track!.trackId!),
-                          const SizedBox(width: 8),
-                          IconButton.filledTonal(
-                            tooltip: 'Add to library',
-                            onPressed: () {},
-                            icon: const Icon(Icons.add_rounded),
-                          ),
+                          const SizedBox(width: 4),
+                          // Track like button
+                          if (state.track?.trackId != null)
+                            IconButton(
+                              tooltip: _isTrackLiked ? 'Unlike' : 'Like',
+                              onPressed: _toggleTrackLike,
+                              icon: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 250),
+                                transitionBuilder: (child, anim) =>
+                                    FadeTransition(opacity: anim, child: child),
+                                child: Icon(
+                                  _isTrackLiked
+                                      ? Icons.favorite_rounded
+                                      : Icons.favorite_border_rounded,
+                                  key: ValueKey(_isTrackLiked),
+                                  color: _isTrackLiked
+                                      ? Colors.redAccent
+                                      : theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ],

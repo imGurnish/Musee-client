@@ -30,6 +30,7 @@ import 'package:musee/features/admin_playlists/presentation/pages/admin_playlist
 import 'package:musee/features/admin_playlists/presentation/bloc/admin_playlist_detail_bloc.dart';
 import 'package:musee/features/admin_countries/presentation/pages/admin_countries_page.dart';
 import 'package:musee/features/admin_regions/presentation/pages/admin_regions_page.dart';
+import 'package:musee/features/admin__dashboard/presentation/pages/admin_engagement_page.dart';
 import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -375,6 +376,12 @@ class AppGoRouter {
           path: Routes.adminPlaylistImport,
           name: 'admin_playlist_import',
           builder: (context, state) => const AdminExternalImportPage(),
+        ),
+
+        GoRoute(
+          path: Routes.adminEngagement,
+          name: 'admin_engagement',
+          builder: (context, state) => const AdminEngagementPage(),
         ),
 
         GoRoute(

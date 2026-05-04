@@ -7,6 +7,7 @@ import 'package:musee/features/user_albums/presentation/bloc/user_album_bloc.dar
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/core/download/download_manager.dart';
+import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 
 class UserAlbumPage extends StatefulWidget {
   final String albumId;
@@ -41,8 +42,57 @@ class _UserAlbumPageState extends State<UserAlbumPage> {
   }
 }
 
-class _UserAlbumView extends StatelessWidget {
+class _UserAlbumView extends StatefulWidget {
   const _UserAlbumView();
+
+  @override
+  State<_UserAlbumView> createState() => _UserAlbumViewState();
+}
+
+class _UserAlbumViewState extends State<_UserAlbumView>
+    with SingleTickerProviderStateMixin {
+  bool _isLiked = false;
+  late final AnimationController _likeAnimController;
+  String? _loadedAlbumId;
+
+  @override
+  void initState() {
+    super.initState();
+    _likeAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+  }
+
+  @override
+  void dispose() {
+    _likeAnimController.dispose();
+    super.dispose();
+  }
+
+  void _loadPreference(String albumId) {
+    if (_loadedAlbumId == albumId) return;
+    _loadedAlbumId = albumId;
+    final repo = GetIt.I<ListeningHistoryRepository>();
+    repo.getAlbumPreference(albumId).then((pref) {
+      if (mounted && pref == 1 && !_isLiked) {
+        setState(() => _isLiked = true);
+      }
+    });
+  }
+
+  void _toggleLike(String albumId) {
+    final repo = GetIt.I<ListeningHistoryRepository>();
+    setState(() {
+      _isLiked = !_isLiked;
+    });
+    if (_isLiked) {
+      _likeAnimController.forward(from: 0);
+      repo.likeAlbum(albumId);
+    } else {
+      repo.clearAlbumPreference(albumId);
+    }
+  }
 
   String _fmtDuration(int seconds) {
     final m = seconds ~/ 60;
@@ -84,6 +134,7 @@ class _UserAlbumView extends StatelessWidget {
               );
             }
             final album = state.album!;
+            _loadPreference(album.albumId);
             final primaryArtist = album.artists.isNotEmpty
                 ? (album.artists.first.name ?? 'Unknown Artist')
                 : 'Unknown Artist';
@@ -190,6 +241,39 @@ class _UserAlbumView extends StatelessWidget {
                                 icon: const Icon(
                                   Icons.play_arrow_rounded,
                                   size: 26,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // Like button
+                            ScaleTransition(
+                              scale: Tween<double>(begin: 1.0, end: 1.3)
+                                  .chain(CurveTween(curve: Curves.elasticOut))
+                                  .animate(_likeAnimController),
+                              child: SizedBox(
+                                width: 44,
+                                height: 44,
+                                child: IconButton(
+                                  onPressed: () => _toggleLike(album.albumId),
+                                  icon: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 250),
+                                    transitionBuilder: (child, animation) =>
+                                        FadeTransition(
+                                      opacity: animation,
+                                      child: child,
+                                    ),
+                                    child: Icon(
+                                      _isLiked
+                                          ? Icons.favorite_rounded
+                                          : Icons.favorite_border_rounded,
+                                      key: ValueKey(_isLiked),
+                                      color: _isLiked
+                                          ? Colors.redAccent
+                                          : theme.colorScheme.onSurfaceVariant,
+                                      size: 24,
+                                    ),
+                                  ),
+                                  tooltip: _isLiked ? 'Unlike' : 'Like',
                                 ),
                               ),
                             ),
@@ -321,6 +405,7 @@ class _UserAlbumView extends StatelessWidget {
                     ),
                   ),
                 ),
+
 
                 SliverToBoxAdapter(
                   child: Padding(
