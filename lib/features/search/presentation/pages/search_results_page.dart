@@ -33,7 +33,19 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
   void initState() {
     super.initState();
     _searchController = TextEditingController(text: widget.query);
-    _triggerSearch();
+    _triggerSearch(widget.query);
+  }
+
+  @override
+  void didUpdateWidget(SearchResultsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // GoRouter reuses this widget when navigating to /search?q=newQuery inside
+    // a StatefulShellBranch — initState doesn't run again, so we detect the
+    // query change here and fire a new search.
+    if (oldWidget.query != widget.query) {
+      _searchController.text = widget.query;
+      _triggerSearch(widget.query);
+    }
   }
 
   @override
@@ -42,10 +54,12 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
     super.dispose();
   }
 
-  /// Triggers search when page loads
-  void _triggerSearch() {
+  /// Triggers search when page loads or query changes
+  void _triggerSearch(String query) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<SearchBloc>().add(SearchQuery(query: widget.query));
+      if (mounted) {
+        context.read<SearchBloc>().add(SearchQuery(query: query));
+      }
     });
   }
 
@@ -332,7 +346,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
             ),
           ),
           const SizedBox(height: 16),
-          ElevatedButton(onPressed: _triggerSearch, child: const Text('Retry')),
+          ElevatedButton(onPressed: () => _triggerSearch(widget.query), child: const Text('Retry')),
         ],
       ),
     );

@@ -251,15 +251,12 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        switch (type) {
-          SearchRecentType.track => 'Song',
-          SearchRecentType.album => 'Album',
-          SearchRecentType.artist => 'Artist',
-          SearchRecentType.playlist => 'Playlist',
-        },
-        style: Theme.of(context).textTheme.labelSmall,
-      ),
+      child: Text(switch (type) {
+        SearchRecentType.track => 'Song',
+        SearchRecentType.album => 'Album',
+        SearchRecentType.artist => 'Artist',
+        SearchRecentType.playlist => 'Playlist',
+      }, style: Theme.of(context).textTheme.labelSmall),
     );
   }
 
@@ -463,6 +460,13 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
 
   /// Navigates to search results page
   void _navigateToSearchResults(String query) {
+    final nav = Navigator.of(context);
+    // If we were opened via Navigator.push (e.g. from the results page),
+    // we must pop this modal first; otherwise context.go updates GoRouter's
+    // state but the suggestions screen stays on top and nothing appears to change.
+    if (nav.canPop()) {
+      nav.pop();
+    }
     context.go("/search?q=${Uri.encodeComponent(query)}");
   }
 
