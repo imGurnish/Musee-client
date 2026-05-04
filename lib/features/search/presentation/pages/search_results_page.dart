@@ -58,23 +58,68 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
 
   /// Builds app bar with search field
   PreferredSizeWidget _buildAppBar() {
+    final colorScheme = Theme.of(context).colorScheme;
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      title: _buildSearchField(),
+      titleSpacing: 0,
+      title: Row(
+        children: [
+          Expanded(child: _buildSearchField()),
+          const SizedBox(width: 8),
+          Container(
+            height: 40,
+            width: 40,
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withAlpha(128),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: colorScheme.outlineVariant.withAlpha(128),
+                width: 1,
+              ),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.mic, size: 20),
+              color: colorScheme.onSurfaceVariant,
+              tooltip: 'Voice Search',
+              padding: EdgeInsets.zero,
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Coming Soon'),
+                    content: const Text(
+                      'Voice search will be available in a future update!',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+      actions: const [SizedBox(width: 16)],
     );
   }
 
   /// Builds search input field
   Widget _buildSearchField() {
-    return Container(
+    return SizedBox(
       height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: TextField(
         controller: _searchController,
         maxLines: 1,
         readOnly: true,
-        style: const TextStyle(fontSize: 16),
+        style: TextStyle(
+          fontSize: 16,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
         decoration: _buildSearchInputDecoration(),
         onTap: () => _navigateToSearchSuggestions(_searchController.text),
       ),
@@ -83,7 +128,6 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
 
   /// Creates search field decoration
   InputDecoration _buildSearchInputDecoration() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
     return InputDecoration(
@@ -92,29 +136,38 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
         horizontal: 16.0,
       ),
       filled: true,
-      fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
-      hintText: 'Search for videos...',
-      hintStyle: TextStyle(
-        color: isDark ? Colors.grey[400] : Colors.grey[600],
-        fontSize: 16,
+      fillColor: colorScheme.surfaceContainerHighest.withAlpha(128),
+      hintText: 'Search songs, albums, artists, playlists',
+      hintStyle: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 16),
+      border: _buildOutlineInputBorder(
+        borderColor: colorScheme.outlineVariant.withAlpha(128),
+        width: 1,
       ),
-      border: _buildOutlineInputBorder(),
-      enabledBorder: _buildOutlineInputBorder(),
-      focusedBorder: _buildOutlineInputBorder(borderColor: colorScheme.primary),
+      enabledBorder: _buildOutlineInputBorder(
+        borderColor: colorScheme.outlineVariant.withAlpha(128),
+        width: 1,
+      ),
+      focusedBorder: _buildOutlineInputBorder(
+        borderColor: colorScheme.primary,
+        width: 2,
+      ),
       prefixIcon: Icon(
         Icons.search,
         size: 20,
-        color: isDark ? Colors.grey[400] : Colors.grey[600],
+        color: colorScheme.onSurfaceVariant,
       ),
     );
   }
 
   /// Creates consistent outline input border
-  OutlineInputBorder _buildOutlineInputBorder({Color? borderColor}) {
+  OutlineInputBorder _buildOutlineInputBorder({
+    Color? borderColor,
+    double width = 1,
+  }) {
     return OutlineInputBorder(
       borderRadius: BorderRadius.circular(24.0),
       borderSide: borderColor != null
-          ? BorderSide(color: borderColor, width: 2)
+          ? BorderSide(color: borderColor, width: width)
           : BorderSide.none,
     );
   }

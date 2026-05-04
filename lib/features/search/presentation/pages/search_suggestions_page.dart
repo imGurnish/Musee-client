@@ -62,12 +62,51 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
 
   /// Builds app bar with search field
   PreferredSizeWidget _buildAppBar() {
+    final colorScheme = Theme.of(context).colorScheme;
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      title: _buildSearchField(),
-      actions: [IconButton(icon: const Icon(Icons.mic), onPressed: () => {})],
-      actionsPadding: const EdgeInsets.symmetric(horizontal: 4),
+      titleSpacing: 16,
+      title: Row(
+        children: [
+          Expanded(child: _buildSearchField()),
+          const SizedBox(width: 8),
+          Container(
+            height: 40,
+            width: 40,
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withAlpha(128),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: colorScheme.outlineVariant.withAlpha(128),
+                width: 1,
+              ),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.mic, size: 20),
+              color: colorScheme.onSurfaceVariant,
+              tooltip: 'Voice Search',
+              padding: EdgeInsets.zero,
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Coming Soon'),
+                    content: const Text('Voice search will be available in a future update!'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+      // actions: const [SizedBox(width: 8)],
     );
   }
 
@@ -79,7 +118,10 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
         controller: _searchController,
         maxLines: 1,
         autofocus: true,
-        style: const TextStyle(fontSize: 16),
+        style: TextStyle(
+          fontSize: 16,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
         decoration: _buildSearchInputDecoration(),
         onChanged: _handleSearchTextChanged,
         onSubmitted: _handleSearchSubmitted,
@@ -89,7 +131,6 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
 
   /// Creates search field decoration with clear button
   InputDecoration _buildSearchInputDecoration() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
     return InputDecoration(
@@ -98,30 +139,39 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
         horizontal: 16.0,
       ),
       filled: true,
-      fillColor: isDark ? Colors.grey[800] : Colors.grey[100],
+      fillColor: colorScheme.surfaceContainerHighest.withAlpha(128),
       hintText: 'Search songs, albums, artists, playlists',
-      hintStyle: TextStyle(
-        color: isDark ? Colors.grey[400] : Colors.grey[600],
-        fontSize: 16,
+      hintStyle: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 16),
+      border: _buildOutlineInputBorder(
+        borderColor: colorScheme.outlineVariant.withAlpha(128),
+        width: 1,
       ),
-      border: _buildOutlineInputBorder(),
-      enabledBorder: _buildOutlineInputBorder(),
-      focusedBorder: _buildOutlineInputBorder(borderColor: colorScheme.primary),
+      enabledBorder: _buildOutlineInputBorder(
+        borderColor: colorScheme.outlineVariant.withAlpha(128),
+        width: 1,
+      ),
+      focusedBorder: _buildOutlineInputBorder(
+        borderColor: colorScheme.primary,
+        width: 2,
+      ),
       prefixIcon: Icon(
         Icons.search,
         size: 20,
-        color: isDark ? Colors.grey[400] : Colors.grey[600],
+        color: colorScheme.onSurfaceVariant,
       ),
       suffixIcon: _buildClearButton(),
     );
   }
 
   /// Creates consistent outline input border
-  OutlineInputBorder _buildOutlineInputBorder({Color? borderColor}) {
+  OutlineInputBorder _buildOutlineInputBorder({
+    Color? borderColor,
+    double width = 1,
+  }) {
     return OutlineInputBorder(
       borderRadius: BorderRadius.circular(24.0),
       borderSide: borderColor != null
-          ? BorderSide(color: borderColor, width: 2)
+          ? BorderSide(color: borderColor, width: width)
           : BorderSide.none,
     );
   }
@@ -179,46 +229,102 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
       return _buildEmptyState();
     }
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: _buildSuggestionsContainerDecoration(),
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ListTile(
-            title: Text(
-              'Recent searches',
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            trailing: TextButton(
-              onPressed: _clearRecents,
-              child: const Text('Clear'),
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Recent searches',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              TextButton(
+                onPressed: _clearRecents,
+                style: TextButton.styleFrom(
+                  foregroundColor: theme.colorScheme.primary,
+                ),
+                child: const Text('Clear all'),
+              ),
+            ],
           ),
-          const Divider(height: 1),
+          const SizedBox(height: 8),
           Expanded(
-            child: ListView.separated(
+            child: ListView.builder(
               itemCount: _recents.length,
-              separatorBuilder: _buildSuggestionSeparator,
               itemBuilder: (context, index) {
                 final item = _recents[index];
-                return ListTile(
-                  leading: _buildRecentLeading(item),
-                  title: Text(
-                    item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: item.subtitle == null
-                      ? null
-                      : Text(
-                          item.subtitle!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _openRecent(item),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.surfaceContainerHighest
+                            .withAlpha(50),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: theme.colorScheme.outlineVariant.withAlpha(50),
                         ),
-                  trailing: _buildTypeBadge(item.type),
-                  onTap: () => _openRecent(item),
+                      ),
+                      child: Row(
+                        children: [
+                          _buildRecentLeading(item),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyLarge?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    _buildTypeBadge(item.type),
+                                    if (item.subtitle != null) ...[
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          item.subtitle!,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: theme
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: theme.colorScheme.onSurfaceVariant,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 );
               },
             ),
@@ -229,35 +335,61 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
   }
 
   Widget _buildRecentLeading(SearchRecentItem item) {
+    final isArtist = item.type == SearchRecentType.artist;
+    final borderRadius = isArtist ? 24.0 : 8.0;
+
     if (item.imageUrl != null && item.imageUrl!.isNotEmpty) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(borderRadius),
         child: Image.network(
           item.imageUrl!,
-          width: 40,
-          height: 40,
+          width: 48,
+          height: 48,
           fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => Icon(_iconForType(item.type)),
+          errorBuilder: (_, _, _) =>
+              _buildFallbackIcon(item.type, borderRadius),
         ),
       );
     }
 
-    return Icon(_iconForType(item.type));
+    return _buildFallbackIcon(item.type, borderRadius);
+  }
+
+  Widget _buildFallbackIcon(SearchRecentType type, double borderRadius) {
+    final theme = Theme.of(context);
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(borderRadius),
+      ),
+      child: Icon(
+        _iconForType(type),
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
   }
 
   Widget _buildTypeBadge(SearchRecentType type) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
+        color: Theme.of(context).colorScheme.primaryContainer.withAlpha(100),
+        borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(switch (type) {
-        SearchRecentType.track => 'Song',
-        SearchRecentType.album => 'Album',
-        SearchRecentType.artist => 'Artist',
-        SearchRecentType.playlist => 'Playlist',
-      }, style: Theme.of(context).textTheme.labelSmall),
+      child: Text(
+        switch (type) {
+          SearchRecentType.track => 'Song',
+          SearchRecentType.album => 'Album',
+          SearchRecentType.artist => 'Artist',
+          SearchRecentType.playlist => 'Playlist',
+        },
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Theme.of(context).colorScheme.onPrimaryContainer,
+          fontSize: 10,
+        ),
+      ),
     );
   }
 
