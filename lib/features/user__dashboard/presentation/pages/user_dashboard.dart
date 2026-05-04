@@ -215,6 +215,8 @@ class _UserDashboardState extends State<UserDashboard> {
     ];
 
     for (final item in items) {
+      if (item.type == DashboardItemType.playlist) continue;
+
       for (final artist in item.artists) {
         artistById[artist.artistId] = artist;
         scoreByArtist.update(
