@@ -68,8 +68,8 @@ class _BottomNavBarState extends State<BottomNavBar> {
         bloc: cubit,
         builder: (context, state) {
           final hasTrack = state.track != null;
-          final barHeight = hasTrack ? 180.0 : 68.0;
-          final boxHeight = hasTrack ? 200.0 : 60.0;
+          final barHeight = hasTrack ? 136.0 : 68.0;
+          final boxHeight = hasTrack ? 128.0 : 60.0;
 
           return BottomAppBar(
             shape: const CircularNotchedRectangle(),
