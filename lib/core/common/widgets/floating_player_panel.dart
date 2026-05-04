@@ -25,11 +25,14 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
   int _slideDirection = 0;
 
   static const double _swipeThreshold = 40;
-  static const Duration _slideDuration = Duration(milliseconds: 280);
+  static const Duration _slideDuration = Duration(milliseconds: 250);
 
   bool _isTrackLiked = false;
   String? _likedTrackId;
   StreamSubscription<int>? _trackPreferenceSubscription;
+
+  /// Track ID whose adjacent images we've already precached.
+  String? _lastPrecachedForTrackId;
 
   @override
   void initState() {
@@ -65,6 +68,33 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
     });
 
     unawaited(repo.getTrackPreference(trackId));
+  }
+
+  /// Precache artwork images for the next and previous queue items so that
+  /// they are instantly available when the user swipes.
+  void _preloadAdjacentImages(BuildContext context, PlayerViewState state) {
+    final currentTrackId = state.track?.trackId;
+    if (currentTrackId == null || currentTrackId == _lastPrecachedForTrackId) {
+      return;
+    }
+    _lastPrecachedForTrackId = currentTrackId;
+
+    final queue = state.queue;
+    final idx = state.currentIndex;
+    if (queue.isEmpty || idx < 0) return;
+
+    void precacheAt(int queueIndex) {
+      if (queueIndex < 0 || queueIndex >= queue.length) return;
+      final item = queue[queueIndex];
+      if (item.localImagePath != null) {
+        precacheImage(FileImage(File(item.localImagePath!)), context);
+      } else if (item.imageUrl != null && item.imageUrl!.isNotEmpty) {
+        precacheImage(NetworkImage(item.imageUrl!), context);
+      }
+    }
+
+    precacheAt(idx - 1);
+    precacheAt(idx + 1);
   }
 
   void _onHorizontalDragUpdate(DragUpdateDetails d) {
@@ -103,6 +133,13 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
       cubit.next(userInitiated: true);
     } else {
       cubit.previous();
+    }
+
+    // Wait for BlocBuilder to pick up the new track metadata so the
+    // slide-in animation shows the correct (new) content.
+    await Future<void>.delayed(Duration.zero);
+    if (mounted) {
+      await WidgetsBinding.instance.endOfFrame;
     }
 
     // Phase 2: slide new content in from opposite side
@@ -147,6 +184,9 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
         final artist = track?.artist ?? 'Tap to choose something';
         final subtitleText = artist;
         final subtitleColor = theme.textTheme.bodySmall?.color?.withValues(alpha: 0.8);
+
+        // Precache adjacent track images for smooth swipe transitions.
+        _preloadAdjacentImages(context, state);
 
         // Keep this panel in sync with shared like preference state.
         _subscribeTrackPreference(track?.trackId);

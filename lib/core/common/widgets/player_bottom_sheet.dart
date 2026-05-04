@@ -169,8 +169,11 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
   /// Direction the content is sliding out: -1 = left (next), 1 = right (prev)
   int _slideDirection = 0;
 
+  /// Track ID whose adjacent images we've already precached.
+  String? _lastPrecachedForTrackId;
+
   static const double _swipeThreshold = 50;
-  static const Duration _slideDuration = Duration(milliseconds: 300);
+  static const Duration _slideDuration = Duration(milliseconds: 250);
 
   @override
   void initState() {
@@ -186,6 +189,41 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
     _trackPreferenceSubscription?.cancel();
     _slideController.dispose();
     super.dispose();
+  }
+
+  /// Precache artwork images for the next and previous queue items so that
+  /// they are instantly available when the user swipes and the slide-in
+  /// animation begins.  Runs only once per current-track change.
+  void _preloadAdjacentImages(BuildContext context, PlayerViewState state) {
+    final currentTrackId = state.track?.trackId;
+    if (currentTrackId == null || currentTrackId == _lastPrecachedForTrackId) {
+      return;
+    }
+    _lastPrecachedForTrackId = currentTrackId;
+
+    final queue = state.queue;
+    final idx = state.currentIndex;
+    if (queue.isEmpty || idx < 0) return;
+
+    void precacheAt(int queueIndex) {
+      if (queueIndex < 0 || queueIndex >= queue.length) return;
+      final item = queue[queueIndex];
+      // Prefer local path (already on disk); fall back to network URL.
+      if (item.localImagePath != null) {
+        precacheImage(
+          FileImage(File(item.localImagePath!)),
+          context,
+        );
+      } else if (item.imageUrl != null && item.imageUrl!.isNotEmpty) {
+        precacheImage(
+          NetworkImage(item.imageUrl!),
+          context,
+        );
+      }
+    }
+
+    precacheAt(idx - 1); // previous
+    precacheAt(idx + 1); // next
   }
 
   void _onHorizontalDragUpdate(DragUpdateDetails d) {
@@ -219,14 +257,27 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
     _slideController.value = 0;
     await _slideController.forward();
 
-    // Fire track change
+    // Fire track change.  The cubit emits the provisional state
+    // synchronously inside next()/previous(), so after the call
+    // the BlocBuilder tree already has the new metadata.  However,
+    // Flutter hasn't laid out yet — we yield a microtask + frame so
+    // the widget tree rebuilds with the new track info *before* the
+    // slide-in animation starts.  This prevents the old artwork
+    // from briefly re-appearing during Phase 2.
     if (direction < 0) {
       cubit.next(userInitiated: true);
     } else {
       cubit.previous();
     }
 
-    // Phase 2: reset & slide new content in from opposite side
+    // Wait for the cubit state to propagate through BlocBuilder.
+    await Future<void>.delayed(Duration.zero);
+    // Yield one more frame so the widget tree lays out with new data.
+    if (mounted) {
+      await WidgetsBinding.instance.endOfFrame;
+    }
+
+    // Phase 2: slide new content in from the opposite side
     _slideDirection = -direction;
     _slideController.value = 1;
     await _slideController.reverse();
@@ -292,6 +343,11 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
               state.buffering || state.resolvingUrl || state.isTransitioning;
           final canControlPlayback = state.track != null || state.playing;
           final title = state.track?.title ?? 'Unknown Title';
+
+          // Kick off adjacent image precaching whenever the playing
+          // track changes.  The images are warmed into Flutter's image
+          // cache so the next swipe animation shows artwork instantly.
+          _preloadAdjacentImages(context, state);
           final artist = state.track?.artist ?? 'Unknown Artist';
             final subtitleText = artist;
             final subtitleColor =
