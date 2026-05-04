@@ -57,9 +57,7 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Scaffold(appBar: _buildAppBar(), body: _buildBody()),
-    );
+    return Scaffold(appBar: _buildAppBar(), body: _buildBody());
   }
 
   /// Builds app bar with search field
