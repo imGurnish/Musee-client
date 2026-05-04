@@ -838,32 +838,91 @@ class _QueueSheet extends StatelessWidget {
   }
 }
 
-class _SheetPlayButtonLoader extends StatelessWidget {
+class _SheetPlayButtonLoader extends StatefulWidget {
   final bool resolving;
   const _SheetPlayButtonLoader({super.key, required this.resolving});
 
   @override
+  State<_SheetPlayButtonLoader> createState() => _SheetPlayButtonLoaderState();
+}
+
+class _SheetPlayButtonLoaderState extends State<_SheetPlayButtonLoader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final color = Theme.of(context).colorScheme.onPrimary;
     return SizedBox(
       width: 42,
       height: 42,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          CircularProgressIndicator(
-            strokeWidth: 3,
-            color: theme.colorScheme.onPrimary,
-          ),
-          Icon(
-            resolving ? Icons.cloud_sync_rounded : Icons.graphic_eq_rounded,
-            size: 20,
-            color: theme.colorScheme.onPrimary,
-          ),
-        ],
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final scale = 0.85 + 0.15 * ((math.sin(_controller.value * 2 * math.pi) + 1) / 2);
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              // Thin rotating arc
+              Transform.rotate(
+                angle: _controller.value * 2 * math.pi,
+                child: CustomPaint(
+                  size: const Size.square(42),
+                  painter: _ArcPainter(color: color, strokeWidth: 2.4),
+                ),
+              ),
+              // Pulsing play icon
+              Transform.scale(
+                scale: scale,
+                child: Icon(
+                  Icons.play_arrow_rounded,
+                  size: 28,
+                  color: color,
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
+}
+
+/// Draws a 90° arc for the rotating loader indicator.
+class _ArcPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+  const _ArcPainter({required this.color, required this.strokeWidth});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..color = color.withValues(alpha: 0.55);
+    final rect = Offset.zero & size;
+    canvas.drawArc(rect.deflate(strokeWidth / 2), 0, math.pi / 2, false, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ArcPainter old) =>
+      old.color != color || old.strokeWidth != strokeWidth;
 }
 
 Widget _buildSmallArtwork(String? url, String? localPath, ThemeData theme) {

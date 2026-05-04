@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
@@ -431,7 +432,7 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
   }
 }
 
-class _PlayButtonLoader extends StatelessWidget {
+class _PlayButtonLoader extends StatefulWidget {
   final bool compact;
   final bool resolving;
 
@@ -442,28 +443,85 @@ class _PlayButtonLoader extends StatelessWidget {
   });
 
   @override
+  State<_PlayButtonLoader> createState() => _PlayButtonLoaderState();
+}
+
+class _PlayButtonLoaderState extends State<_PlayButtonLoader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final spinnerSize = compact ? 22.0 : 42.0;
-    final iconSize = compact ? 12.0 : 20.0;
+    final color = Theme.of(context).colorScheme.onPrimary;
+    final spinnerSize = widget.compact ? 22.0 : 42.0;
+    final iconSize = widget.compact ? 16.0 : 28.0;
+    final stroke = widget.compact ? 1.8 : 2.4;
     return SizedBox(
       width: spinnerSize,
       height: spinnerSize,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          CircularProgressIndicator(
-            strokeWidth: compact ? 2.4 : 3.0,
-            color: theme.colorScheme.onPrimary,
-          ),
-          Icon(
-            resolving ? Icons.cloud_sync_rounded : Icons.graphic_eq_rounded,
-            size: iconSize,
-            color: theme.colorScheme.onPrimary,
-          ),
-        ],
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final scale = 0.85 + 0.15 * ((math.sin(_controller.value * 2 * math.pi) + 1) / 2);
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              Transform.rotate(
+                angle: _controller.value * 2 * math.pi,
+                child: CustomPaint(
+                  size: Size.square(spinnerSize),
+                  painter: _FloatingArcPainter(color: color, strokeWidth: stroke),
+                ),
+              ),
+              Transform.scale(
+                scale: scale,
+                child: Icon(
+                  Icons.play_arrow_rounded,
+                  size: iconSize,
+                  color: color,
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
+}
+
+class _FloatingArcPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+  const _FloatingArcPainter({required this.color, required this.strokeWidth});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..color = color.withValues(alpha: 0.55);
+    final rect = Offset.zero & size;
+    canvas.drawArc(rect.deflate(strokeWidth / 2), 0, math.pi / 2, false, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _FloatingArcPainter old) =>
+      old.color != color || old.strokeWidth != strokeWidth;
 }
 
