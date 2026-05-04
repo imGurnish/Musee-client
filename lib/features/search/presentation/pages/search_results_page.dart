@@ -33,19 +33,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
   void initState() {
     super.initState();
     _searchController = TextEditingController(text: widget.query);
-    _triggerSearch(widget.query);
-  }
-
-  @override
-  void didUpdateWidget(SearchResultsPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // GoRouter reuses this widget when navigating to /search?q=newQuery inside
-    // a StatefulShellBranch — initState doesn't run again, so we detect the
-    // query change here and fire a new search.
-    if (oldWidget.query != widget.query) {
-      _searchController.text = widget.query;
-      _triggerSearch(widget.query);
-    }
+    _triggerSearch();
   }
 
   @override
@@ -54,11 +42,11 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
     super.dispose();
   }
 
-  /// Triggers search when page loads or query changes
-  void _triggerSearch(String query) {
+  /// Triggers search when page loads
+  void _triggerSearch() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        context.read<SearchBloc>().add(SearchQuery(query: query));
+        context.read<SearchBloc>().add(SearchQuery(query: widget.query));
       }
     });
   }
@@ -346,7 +334,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
             ),
           ),
           const SizedBox(height: 16),
-          ElevatedButton(onPressed: () => _triggerSearch(widget.query), child: const Text('Retry')),
+          ElevatedButton(onPressed: _triggerSearch, child: const Text('Retry')),
         ],
       ),
     );
@@ -357,13 +345,27 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
     return const Center(child: Loader());
   }
 
-  /// Navigates to search suggestions page
-  void _navigateToSearchSuggestions(String currentQuery) {
+  /// Opens the suggestions overlay. When the user submits a new query the
+  /// overlay pops and returns the query string; we then push a fresh results
+  /// page on top so results stack cleanly without suggestions in between.
+  Future<void> _navigateToSearchSuggestions(String currentQuery) async {
+    final newQuery = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        builder: (_) => BlocProvider(
+          create: (_) => SearchBloc(serviceLocator(), serviceLocator()),
+          child: SearchSuggestionsPage(query: currentQuery),
+        ),
+      ),
+    );
+
+    if (!mounted || newQuery == null || newQuery.trim().isEmpty) return;
+
+    // Push a new results page on top — back button returns to this page.
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => BlocProvider(
-          create: (context) => SearchBloc(serviceLocator(), serviceLocator()),
-          child: SearchSuggestionsPage(query: currentQuery),
+        builder: (_) => BlocProvider(
+          create: (_) => SearchBloc(serviceLocator(), serviceLocator()),
+          child: SearchResultsPage(query: newQuery.trim()),
         ),
       ),
     );

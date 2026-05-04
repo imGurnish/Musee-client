@@ -38,7 +38,6 @@ import 'dart:async';
 import 'package:musee/features/user_albums/presentation/pages/user_album_page.dart';
 import 'package:musee/features/user_playlists/presentation/pages/user_playlist_page.dart';
 import 'package:musee/features/search/presentation/pages/search_suggestions_page.dart';
-import 'package:musee/features/search/presentation/pages/search_results_page.dart';
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
 import 'package:musee/core/common/pages/coming_soon_page.dart';
 import 'package:musee/features/user_artists/presentation/pages/user_artist_page.dart';
@@ -162,14 +161,6 @@ class AppGoRouter {
                   path: '/search',
                   name: 'search',
                   builder: (context, state) {
-                    final q = state.uri.queryParameters['q'];
-                    if (q != null && q.trim().isNotEmpty) {
-                      return BlocProvider(
-                        create: (_) =>
-                            SearchBloc(serviceLocator(), serviceLocator()),
-                        child: SearchResultsPage(query: q),
-                      );
-                    }
                     return BlocProvider(
                       create: (_) =>
                           SearchBloc(serviceLocator(), serviceLocator()),

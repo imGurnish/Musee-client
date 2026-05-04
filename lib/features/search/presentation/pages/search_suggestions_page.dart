@@ -1,6 +1,7 @@
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
 import 'package:musee/features/search/data/services/search_recents_service.dart';
 import 'package:musee/features/search/domain/entities/search_recent_item.dart';
+import 'package:musee/features/search/presentation/pages/search_results_page.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
@@ -458,16 +459,26 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
     }
   }
 
-  /// Navigates to search results page
+  /// Navigates to search results.
+  ///
+  /// When opened from a results page (canPop == true), we pop and return the
+  /// query — the results page receives it and pushes a new results page on top.
+  /// When we are the root of the search tab (canPop == false), we push results
+  /// directly on top of ourselves.
   void _navigateToSearchResults(String query) {
     final nav = Navigator.of(context);
-    // If we were opened via Navigator.push (e.g. from the results page),
-    // we must pop this modal first; otherwise context.go updates GoRouter's
-    // state but the suggestions screen stays on top and nothing appears to change.
     if (nav.canPop()) {
-      nav.pop();
+      nav.pop(query);
+    } else {
+      nav.push(
+        MaterialPageRoute<void>(
+          builder: (_) => BlocProvider(
+            create: (_) => SearchBloc(serviceLocator(), serviceLocator()),
+            child: SearchResultsPage(query: query),
+          ),
+        ),
+      );
     }
-    context.go("/search?q=${Uri.encodeComponent(query)}");
   }
 
   Future<void> _loadRecents() async {
