@@ -36,6 +36,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   StreamSubscription<Duration?>? _durationSub;
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<PlayerViewState>? _viewStateSub;
+  StreamSubscription<AudioInterruptionEvent>? _audioInterruptionSub;
+  StreamSubscription<void>? _becomingNoisySub;
   Timer? _snapshotLogTimer;
   Timer? _playbackReassertTimer;
   Timer? _switchFailSafeTimer;
@@ -130,13 +132,43 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (_platformAudioInitialized) return;
     _platformAudioInitialized = true;
     _player = AudioPlayer(
-      handleAudioSessionActivation: false,
+      // Let just_audio activate/deactivate the AudioSession on play/stop.
+      handleAudioSessionActivation: true,
       handleInterruptions: false,
     );
     _setupPlayerStreams();
     try {
       final session = await AudioSession.instance;
-      await session.configure(const AudioSessionConfiguration.music());
+
+      // On Android, other apps may request focus with ducking
+      // (LOSS_TRANSIENT_CAN_DUCK). We want that to behave like a pause.
+      await session.configure(
+        const AudioSessionConfiguration.music().copyWith(
+          androidWillPauseWhenDucked: true,
+        ),
+      );
+
+      await _audioInterruptionSub?.cancel();
+      _audioInterruptionSub = session.interruptionEventStream.listen((event) {
+        if (!_platformAudioInitialized) return;
+
+        if (event.begin) {
+          // Treat interruptions as a pause intent so app-side auto-play
+          // (reassertion/timers) can't restart playback.
+          _userPaused = true;
+          _playbackReassertTimer?.cancel();
+          unawaited(_player.pause());
+        }
+        // On end: intentionally do not auto-resume.
+      });
+
+      await _becomingNoisySub?.cancel();
+      _becomingNoisySub = session.becomingNoisyEventStream.listen((_) {
+        if (!_platformAudioInitialized) return;
+        _userPaused = true;
+        _playbackReassertTimer?.cancel();
+        unawaited(_player.pause());
+      });
     } catch (_) {}
     await MediaControlsService.instance.initialize();
     _publishNowPlaying(state);
@@ -1746,6 +1778,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     await _durationSub?.cancel();
     await _playerStateSub?.cancel();
     await _viewStateSub?.cancel();
+    await _audioInterruptionSub?.cancel();
+    await _becomingNoisySub?.cancel();
     if (_platformAudioInitialized) await _player.dispose();
     return super.close();
   }
