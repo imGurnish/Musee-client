@@ -13,3 +13,18 @@ class UserArtistLoadRequested extends UserArtistEvent {
   @override
   List<Object?> get props => [artistId];
 }
+
+class UserArtistAlbumsLoadRequested extends UserArtistEvent {
+  final String artistId;
+  final int page;
+  final int limit;
+
+  const UserArtistAlbumsLoadRequested({
+    required this.artistId,
+    required this.page,
+    required this.limit,
+  });
+
+  @override
+  List<Object?> get props => [artistId, page, limit];
+}
