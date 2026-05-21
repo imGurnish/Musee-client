@@ -104,6 +104,7 @@ import 'package:musee/features/user_artists/data/datasources/user_artists_remote
 import 'package:musee/features/user_artists/data/repositories/user_artists_repository_impl.dart';
 import 'package:musee/features/user_artists/domain/repository/user_artists_repository.dart';
 import 'package:musee/features/user_artists/domain/usecases/get_user_artist.dart';
+import 'package:musee/features/user_artists/domain/usecases/get_user_artist_albums.dart';
 import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.dart';
 import 'package:musee/features/player/data/datasources/player_remote_data_source.dart';
 import 'package:musee/features/player/data/repositories/player_repository_impl.dart';
@@ -335,7 +336,6 @@ void _initAdminArtists() {
     )
     // use cases
     ..registerFactory(() => ListArtists(serviceLocator()))
-    ..registerFactory(() => GetArtist(serviceLocator()))
     ..registerFactory(() => CreateArtist(serviceLocator()))
     ..registerFactory(() => UpdateArtist(serviceLocator()))
     ..registerFactory(() => DeleteArtist(serviceLocator()))
@@ -555,8 +555,14 @@ void _initUserArtists() {
     )
     // use case
     ..registerFactory(() => GetUserArtist(serviceLocator()))
+    ..registerFactory(() => GetUserArtistAlbums(serviceLocator()))
     // bloc
-    ..registerFactory(() => UserArtistBloc(serviceLocator<GetUserArtist>()));
+    ..registerFactory(
+      () => UserArtistBloc(
+        serviceLocator<GetUserArtist>(),
+        serviceLocator<GetUserArtistAlbums>(),
+      ),
+    );
 }
 
 void _initUserDashboard() {

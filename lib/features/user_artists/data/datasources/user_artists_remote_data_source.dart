@@ -122,7 +122,12 @@ class UserArtistTrackDTO {
 
 abstract interface class UserArtistsRemoteDataSource {
   Future<UserArtistDTO> getArtist(String artistId);
-  Future<List<UserArtistAlbumDTO>> getArtistAlbums(String artistId);
+  Future<(List<UserArtistAlbumDTO> items, int total, int page, int limit)>
+  getArtistAlbums({
+    required String artistId,
+    required int page,
+    required int limit,
+  });
   Future<List<UserArtistTrackDTO>> getArtistTracks({
     required String artistId,
     String? artistName,
@@ -155,14 +160,21 @@ class UserArtistsRemoteDataSourceImpl implements UserArtistsRemoteDataSource {
   }
 
   @override
-  Future<List<UserArtistAlbumDTO>> getArtistAlbums(String artistId) async {
-    // Assumption: backend exposes this route; falls back to filtering albums list by artist_id if needed in future.
+  Future<(List<UserArtistAlbumDTO> items, int total, int page, int limit)>
+  getArtistAlbums({
+    required String artistId,
+    required int page,
+    required int limit,
+  }) async {
     final res = await _dio.get(
-      '$baseArtistsPath/$artistId/albums',
+      '$baseArtistsPath/$artistId/albums?page=$page&limit=$limit',
       options: dio.Options(headers: _authHeader()),
     );
     final data = res.data;
     List<dynamic> items;
+    int total = 0;
+    int pageNum = page;
+    int pageLimit = limit;
     if (data is Map) {
       final map = Map<String, dynamic>.from(data);
       if (map['items'] is List) {
@@ -172,14 +184,19 @@ class UserArtistsRemoteDataSourceImpl implements UserArtistsRemoteDataSource {
       } else {
         items = const [];
       }
+      total = (map['total'] as num?)?.toInt() ?? items.length;
+      pageNum = (map['page'] as num?)?.toInt() ?? page;
+      pageLimit = (map['limit'] as num?)?.toInt() ?? limit;
     } else if (data is List) {
       items = data;
+      total = items.length;
     } else {
       items = const [];
     }
-    return items
+    final parsed = items
         .map((e) => UserArtistAlbumDTO.fromJson(Map<String, dynamic>.from(e)))
         .toList();
+    return (parsed, total, pageNum, pageLimit);
   }
 
   @override

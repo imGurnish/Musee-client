@@ -9,7 +9,11 @@ class UserArtistsRepositoryImpl implements UserArtistsRepository {
   @override
   Future<UserArtistDetail> getArtist(String artistId) async {
     final artist = await _remote.getArtist(artistId);
-    final albums = await _remote.getArtistAlbums(artistId);
+    final albumsPage = await _remote.getArtistAlbums(
+      artistId: artistId,
+      page: 0,
+      limit: 20,
+    );
     List<UserArtistTrackDTO> tracks = const [];
     try {
       tracks = await _remote.getArtistTracks(
@@ -28,7 +32,7 @@ class UserArtistsRepositoryImpl implements UserArtistsRepository {
       bio: artist.bio,
       genres: artist.genres,
       monthlyListeners: artist.monthlyListeners,
-      albums: albums
+      albums: albumsPage.$1
           .map(
             (a) => UserArtistAlbum(
               albumId: a.albumId,
@@ -59,6 +63,35 @@ class UserArtistsRepositoryImpl implements UserArtistsRepository {
             ),
           )
           .toList(),
+    );
+  }
+
+  @override
+  Future<(List<UserArtistAlbum> items, int total, int page, int limit)>
+  getArtistAlbums({
+    required String artistId,
+    required int page,
+    required int limit,
+  }) async {
+    final pageData = await _remote.getArtistAlbums(
+      artistId: artistId,
+      page: page,
+      limit: limit,
+    );
+    return (
+      pageData.$1
+          .map(
+            (a) => UserArtistAlbum(
+              albumId: a.albumId,
+              title: a.title,
+              coverUrl: a.coverUrl,
+              releaseDate: a.releaseDate,
+            ),
+          )
+          .toList(),
+      pageData.$2,
+      pageData.$3,
+      pageData.$4,
     );
   }
 }

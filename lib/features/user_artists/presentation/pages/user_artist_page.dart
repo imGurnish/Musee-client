@@ -39,9 +39,49 @@ class _UserArtistPageState extends State<UserArtistPage> {
   }
 }
 
-class _UserArtistView extends StatelessWidget {
+class _UserArtistView extends StatefulWidget {
   final String artistId;
   const _UserArtistView({required this.artistId});
+
+  @override
+  State<_UserArtistView> createState() => _UserArtistViewState();
+}
+
+class _UserArtistViewState extends State<_UserArtistView> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+
+    final bloc = context.read<UserArtistBloc>();
+    final state = bloc.state;
+    if (state.isLoading || state.isLoadingMore || state.hasReachedAlbumEnd) {
+      return;
+    }
+
+    final threshold = _scrollController.position.maxScrollExtent - 300;
+    if (_scrollController.position.pixels >= threshold) {
+      bloc.add(
+        UserArtistAlbumsLoadRequested(
+          artistId: widget.artistId,
+          page: state.albumPage + 1,
+          limit: state.albumLimit,
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +125,7 @@ class _UserArtistView extends StatelessWidget {
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: () => context.read<UserArtistBloc>().add(
-                          UserArtistLoadRequested(artistId),
+                          UserArtistLoadRequested(widget.artistId),
                         ),
                         icon: const Icon(Icons.refresh_rounded),
                         label: const Text('Try again'),
@@ -104,7 +144,7 @@ class _UserArtistView extends StatelessWidget {
             return RefreshIndicator.adaptive(
               onRefresh: () async {
                 context.read<UserArtistBloc>().add(
-                  UserArtistLoadRequested(artistId),
+                  UserArtistLoadRequested(widget.artistId),
                 );
               },
               child: LayoutBuilder(
@@ -114,57 +154,57 @@ class _UserArtistView extends StatelessWidget {
                       ? 2
                       : (width < 760 ? 3 : 4);
 
-                  late final Widget albumsSection;
-                  if (artist.albums.isEmpty) {
-                    albumsSection = SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.album_outlined,
-                                size: 44,
-                                color: theme.colorScheme.onSurfaceVariant,
+                  final albums = artist.albums;
+                  final albumsSection = albums.isEmpty
+                      ? SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.album_outlined,
+                                    size: 44,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    'No albums available',
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 10),
-                              Text(
-                                'No albums available',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
-                    );
-                  } else {
-                    albumsSection = SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
-                      sliver: SliverGrid(
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          final album = artist.albums[index];
-                          return _AlbumCard(
-                            title: album.title,
-                            coverUrl: album.coverUrl,
-                            onTap: () =>
-                                context.push('/albums/${album.albumId}'),
-                          );
-                        }, childCount: artist.albums.length),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: crossAxisCount,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: 0.66,
-                        ),
-                      ),
-                    );
-                  }
+                        )
+                      : SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                          sliver: SliverGrid(
+                            delegate: SliverChildBuilderDelegate((context, index) {
+                              final album = albums[index];
+                              return _AlbumCard(
+                                title: album.title,
+                                coverUrl: album.coverUrl,
+                                onTap: () =>
+                                    context.push('/albums/${album.albumId}'),
+                              );
+                            }, childCount: albums.length),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
+                                  mainAxisSpacing: 12,
+                                  crossAxisSpacing: 12,
+                                  childAspectRatio: 0.66,
+                                ),
+                          ),
+                        );
 
                   return CustomScrollView(
+                    controller: _scrollController,
                     physics: const AlwaysScrollableScrollPhysics(),
                     slivers: [
                       SliverAppBar(
@@ -251,6 +291,19 @@ class _UserArtistView extends StatelessWidget {
                         ),
                       ),
                       albumsSection,
+                      if (state.isLoadingMore)
+                        const SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
+                            child: Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   );
                 },
