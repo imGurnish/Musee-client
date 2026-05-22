@@ -2,7 +2,6 @@ import 'package:bloc/bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/user_media_detail_cache_service.dart';
-import 'package:musee/core/common/services/connectivity_service.dart';
 import 'package:musee/features/search/domain/entities/suggestion.dart';
 import 'package:musee/features/search/domain/entities/catalog_search.dart';
 import 'package:musee/features/search/domain/usecases/get_suggestions.dart';
@@ -18,14 +17,12 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   final GetSearchResults getSearchResults;
   final TrackCacheService? _trackCache;
   final UserMediaDetailCacheService? _detailCache;
-  final ConnectivityService? _connectivity;
 
   SearchBloc(
     this.getSuggestions,
     this.getSearchResults, {
     TrackCacheService? trackCache,
     UserMediaDetailCacheService? detailCache,
-    ConnectivityService? connectivity,
   }) : _trackCache =
            trackCache ??
            (GetIt.I.isRegistered<TrackCacheService>()
@@ -36,11 +33,6 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
            (GetIt.I.isRegistered<UserMediaDetailCacheService>()
                ? GetIt.I<UserMediaDetailCacheService>()
                : null),
-       _connectivity =
-           connectivity ??
-           (GetIt.I.isRegistered<ConnectivityService>()
-               ? GetIt.I<ConnectivityService>()
-             : null),
          super(SearchInitial()) {
     on<FetchSuggestions>((event, emit) async {
       emit(SuggestionLoading());
@@ -60,68 +52,166 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     });
 
     on<SearchQuery>((event, emit) async {
-      emit(SearchQueryLoading());
-      try {
-        final isOnline = await (_connectivity?.checkConnectivity() ??
-            Future<bool>.value(true));
+      final isLoadMore = event.isLoadMore;
+      final currentState = state;
 
-        if (kDebugMode && !isOnline) {
-          print(
-            '[SearchBloc] Connectivity reported offline; attempting backend search before cache fallback.',
+      if (isLoadMore && currentState is SearchResultsLoaded) {
+        if (currentState.hasReachedMax || currentState.isFetchingMore) return;
+
+        emit(currentState.copyWith(isFetchingMore: true));
+
+        final nextPage = event.page ?? (currentState.page + 1);
+        final limit = 20;
+
+        try {
+          final results = await getSearchResults(
+            event.query,
+            type: event.type,
+            limit: limit,
+            page: nextPage,
           );
-        }
 
-        final results = await getSearchResults(event.query);
-        await results.fold(
-          (failure) async {
-            final offline = await _searchCached(event.query);
-            if (!offline.isEmpty) {
-              final enrichedOffline = await _enrichCacheStatus(offline);
+          await results.fold(
+            (failure) async {
+              emit(currentState.copyWith(isFetchingMore: false));
+            },
+            (newResults) async {
+              final enriched = await _enrichCacheStatus(newResults);
+
+              final mergedTracks = [...currentState.results.tracks, ...newResults.tracks];
+              final mergedAlbums = [...currentState.results.albums, ...newResults.albums];
+              final mergedArtists = [...currentState.results.artists, ...newResults.artists];
+              final mergedPlaylists = [...currentState.results.playlists, ...newResults.playlists];
+
+              final mergedResults = CatalogSearchResults(
+                tracks: mergedTracks,
+                albums: mergedAlbums,
+                artists: mergedArtists,
+                playlists: mergedPlaylists,
+              );
+
+              // Check if we reached the end of results
+              bool reachedMax = false;
+              if (event.type == 'track' || event.type == 'song') {
+                reachedMax = newResults.tracks.length < limit;
+              } else if (event.type == 'album') {
+                reachedMax = newResults.albums.length < limit;
+              } else if (event.type == 'artist') {
+                reachedMax = newResults.artists.length < limit;
+              } else if (event.type == 'playlist') {
+                reachedMax = newResults.playlists.length < limit;
+              } else {
+                reachedMax = newResults.isEmpty;
+              }
+
+              emit(SearchResultsLoaded(
+                mergedResults,
+                cachedTrackIds: currentState.cachedTrackIds.union(enriched.cachedTrackIds),
+                cachedAlbumIds: currentState.cachedAlbumIds.union(enriched.cachedAlbumIds),
+                cachedPlaylistIds: currentState.cachedPlaylistIds.union(enriched.cachedPlaylistIds),
+                fromOfflineCache: false,
+                hasReachedMax: reachedMax,
+                page: nextPage,
+                type: event.type,
+                query: event.query,
+                isFetchingMore: false,
+              ));
+            },
+          );
+        } catch (e) {
+          emit(currentState.copyWith(isFetchingMore: false));
+        }
+      } else {
+        emit(SearchQueryLoading());
+        final limit = event.type != null ? 20 : 5;
+        final page = event.page ?? 1;
+
+        try {
+          final results = await getSearchResults(
+            event.query,
+            type: event.type,
+            limit: limit,
+            page: page,
+          );
+
+          await results.fold(
+            (failure) async {
+              final offline = await _searchCached(event.query);
+              if (!offline.isEmpty) {
+                final enrichedOffline = await _enrichCacheStatus(offline);
+                emit(
+                  SearchResultsLoaded(
+                    offline,
+                    cachedTrackIds: enrichedOffline.cachedTrackIds,
+                    cachedAlbumIds: enrichedOffline.cachedAlbumIds,
+                    cachedPlaylistIds: enrichedOffline.cachedPlaylistIds,
+                    fromOfflineCache: true,
+                    hasReachedMax: true,
+                    page: 1,
+                    type: event.type,
+                    query: event.query,
+                  ),
+                );
+                return;
+              }
+              emit(VideosError(failure.message));
+            },
+            (data) async {
+              final enriched = await _enrichCacheStatus(data);
+
+              bool reachedMax = false;
+              if (event.type == 'track' || event.type == 'song') {
+                reachedMax = data.tracks.length < limit;
+              } else if (event.type == 'album') {
+                reachedMax = data.albums.length < limit;
+              } else if (event.type == 'artist') {
+                reachedMax = data.artists.length < limit;
+              } else if (event.type == 'playlist') {
+                reachedMax = data.playlists.length < limit;
+              } else {
+                reachedMax = false;
+              }
+
               emit(
                 SearchResultsLoaded(
-                  offline,
-                  cachedTrackIds: enrichedOffline.cachedTrackIds,
-                  cachedAlbumIds: enrichedOffline.cachedAlbumIds,
-                  cachedPlaylistIds: enrichedOffline.cachedPlaylistIds,
-                  fromOfflineCache: true,
+                  data,
+                  cachedTrackIds: enriched.cachedTrackIds,
+                  cachedAlbumIds: enriched.cachedAlbumIds,
+                  cachedPlaylistIds: enriched.cachedPlaylistIds,
+                  fromOfflineCache: false,
+                  hasReachedMax: reachedMax,
+                  page: page,
+                  type: event.type,
+                  query: event.query,
+                  isFetchingMore: false,
                 ),
               );
-              return;
-            }
-            emit(VideosError(failure.message));
-          },
-          (data) async {
-            final enriched = await _enrichCacheStatus(data);
+            },
+          );
+        } catch (e) {
+          final offline = await _searchCached(event.query);
+          if (!offline.isEmpty) {
+            final enrichedOffline = await _enrichCacheStatus(offline);
             emit(
               SearchResultsLoaded(
-                data,
-                cachedTrackIds: enriched.cachedTrackIds,
-                cachedAlbumIds: enriched.cachedAlbumIds,
-                cachedPlaylistIds: enriched.cachedPlaylistIds,
-                fromOfflineCache: false,
+                offline,
+                cachedTrackIds: enrichedOffline.cachedTrackIds,
+                cachedAlbumIds: enrichedOffline.cachedAlbumIds,
+                cachedPlaylistIds: enrichedOffline.cachedPlaylistIds,
+                fromOfflineCache: true,
+                hasReachedMax: true,
+                page: 1,
+                type: event.type,
+                query: event.query,
               ),
             );
-          },
-        );
-      } catch (e) {
-        final offline = await _searchCached(event.query);
-        if (!offline.isEmpty) {
-          final enrichedOffline = await _enrichCacheStatus(offline);
-          emit(
-            SearchResultsLoaded(
-              offline,
-              cachedTrackIds: enrichedOffline.cachedTrackIds,
-              cachedAlbumIds: enrichedOffline.cachedAlbumIds,
-              cachedPlaylistIds: enrichedOffline.cachedPlaylistIds,
-              fromOfflineCache: true,
-            ),
-          );
-        } else {
-          emit(
-            VideosError(
-              'Failed to fetch videos. Please check your internet connection.',
-            ),
-          );
+          } else {
+            emit(
+              VideosError(
+                'Failed to fetch results. Please check your internet connection.',
+              ),
+            );
+          }
         }
       }
     });

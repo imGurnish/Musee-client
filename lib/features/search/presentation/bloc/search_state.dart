@@ -18,33 +18,81 @@ final class SearchResultsLoaded extends SearchState {
   final Set<String> cachedPlaylistIds;
   final bool fromOfflineCache;
 
+  // Pagination metadata
+  final bool hasReachedMax;
+  final int page;
+  final String? type;
+  final String query;
+  final bool isFetchingMore;
+
   const SearchResultsLoaded(
     this.results, {
     this.cachedTrackIds = const <String>{},
     this.cachedAlbumIds = const <String>{},
     this.cachedPlaylistIds = const <String>{},
     this.fromOfflineCache = false,
+    this.hasReachedMax = false,
+    this.page = 1,
+    this.type,
+    this.query = '',
+    this.isFetchingMore = false,
   });
+
+  SearchResultsLoaded copyWith({
+    CatalogSearchResults? results,
+    Set<String>? cachedTrackIds,
+    Set<String>? cachedAlbumIds,
+    Set<String>? cachedPlaylistIds,
+    bool? fromOfflineCache,
+    bool? hasReachedMax,
+    int? page,
+    String? type,
+    String? query,
+    bool? isFetchingMore,
+  }) {
+    return SearchResultsLoaded(
+      results ?? this.results,
+      cachedTrackIds: cachedTrackIds ?? this.cachedTrackIds,
+      cachedAlbumIds: cachedAlbumIds ?? this.cachedAlbumIds,
+      cachedPlaylistIds: cachedPlaylistIds ?? this.cachedPlaylistIds,
+      fromOfflineCache: fromOfflineCache ?? this.fromOfflineCache,
+      hasReachedMax: hasReachedMax ?? this.hasReachedMax,
+      page: page ?? this.page,
+      type: type ?? this.type,
+      query: query ?? this.query,
+      isFetchingMore: isFetchingMore ?? this.isFetchingMore,
+    );
+  }
 
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     return other is SearchResultsLoaded &&
         other.results == results &&
-      setEquals(other.cachedTrackIds, cachedTrackIds) &&
-      setEquals(other.cachedAlbumIds, cachedAlbumIds) &&
-      setEquals(other.cachedPlaylistIds, cachedPlaylistIds) &&
-        other.fromOfflineCache == fromOfflineCache;
+        setEquals(other.cachedTrackIds, cachedTrackIds) &&
+        setEquals(other.cachedAlbumIds, cachedAlbumIds) &&
+        setEquals(other.cachedPlaylistIds, cachedPlaylistIds) &&
+        other.fromOfflineCache == fromOfflineCache &&
+        other.hasReachedMax == hasReachedMax &&
+        other.page == page &&
+        other.type == type &&
+        other.query == query &&
+        other.isFetchingMore == isFetchingMore;
   }
 
   @override
   int get hashCode => Object.hash(
-    results,
-    cachedTrackIds.length,
-    cachedAlbumIds.length,
-    cachedPlaylistIds.length,
-    fromOfflineCache,
-  );
+        results,
+        cachedTrackIds.length,
+        cachedAlbumIds.length,
+        cachedPlaylistIds.length,
+        fromOfflineCache,
+        hasReachedMax,
+        page,
+        type,
+        query,
+        isFetchingMore,
+      );
 }
 
 class VideosError extends SearchState {

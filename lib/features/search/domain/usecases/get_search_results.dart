@@ -8,7 +8,17 @@ class GetSearchResults {
 
   GetSearchResults(this.repository);
 
-  Future<Either<Failure, CatalogSearchResults>> call(String query) {
-    return repository.searchCatalog(query);
+  Future<Either<Failure, CatalogSearchResults>> call(
+    String query, {
+    String? type,
+    int? limit,
+    int? page,
+  }) {
+    return repository.searchCatalog(
+      query,
+      type: type,
+      limit: limit,
+      page: page,
+    );
   }
 }

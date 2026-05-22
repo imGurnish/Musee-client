@@ -12,7 +12,9 @@ abstract interface class SearchRemoteDataSource {
   Future<List<SuggestionModel>> getSuggestions(String query);
   Future<CatalogSearchResults> searchCatalog(
     String query, {
-    int perSectionLimit = 5,
+    String? type,
+    int? limit,
+    int? page,
   });
 }
 
@@ -144,67 +146,51 @@ class SearchRemoteDataSourceImpl implements SearchRemoteDataSource {
   @override
   Future<CatalogSearchResults> searchCatalog(
     String query, {
-    int perSectionLimit = 5,
-  }) async {
-    return _searchCatalogBackend(query, perSectionLimit: perSectionLimit);
-  }
-
-  /// Search the backend catalog API.
-  Future<CatalogSearchResults> _searchCatalogBackend(
-    String query, {
-    int perSectionLimit = 5,
+    String? type,
+    int? limit,
+    int? page,
   }) async {
     try {
       final token = currentSession?.accessToken;
       final Map<String, String> headers = token != null
-          ? {'Authorization': 'Bearer $token'}
-          : {};
+          ? {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            }
+          : {'Content-Type': 'application/json'};
+
       final q = Uri.encodeQueryComponent(query);
-      final limit = perSectionLimit.clamp(1, 20);
 
-      final tracksUri = Uri.parse(
-        '${AppSecrets.backendUrl}/api/user/tracks?page=0&limit=$limit&q=$q',
-      );
-      final albumsUri = Uri.parse(
-        '${AppSecrets.backendUrl}/api/user/albums?page=0&limit=$limit&q=$q',
-      );
-      final artistsUri = Uri.parse(
-        '${AppSecrets.backendUrl}/api/user/artists?page=0&limit=$limit&q=$q',
-      );
-      final playlistsUri = Uri.parse(
-        '${AppSecrets.backendUrl}/api/playlists?page=0&limit=$limit&q=$q',
+      // Build unified query URL
+      final typeParam = type != null ? '&type=$type' : '';
+      final limitParam = limit != null ? '&limit=$limit' : '';
+      final pageParam = page != null ? '&page=$page' : '';
+
+      final url = Uri.parse(
+        '${AppSecrets.backendUrl}/api/user/search?q=$q$typeParam$limitParam$pageParam',
       );
 
-      final responses = await Future.wait(
-        [
-          http.get(tracksUri, headers: headers),
-          http.get(albumsUri, headers: headers),
-          http.get(artistsUri, headers: headers),
-          http.get(playlistsUri, headers: headers),
-        ].map((f) => f.timeout(const Duration(seconds: 30))),
-      );
+      if (kDebugMode) {
+        print('Searching catalog with unified URL: $url');
+      }
 
-      List<dynamic> tracks = const [];
-      List<dynamic> albums = const [];
-      List<dynamic> artists = const [];
-      List<dynamic> playlists = const [];
+      final response = await http
+          .get(url, headers: headers)
+          .timeout(const Duration(seconds: 15));
 
-      if (responses[0].statusCode == 200) {
-        final obj = json.decode(responses[0].body);
-        tracks = _extractItems(obj);
+      if (response.statusCode != 200) {
+        if (kDebugMode) {
+          print('SearchCatalog status code error: ${response.statusCode} - ${response.body}');
+        }
+        return const CatalogSearchResults();
       }
-      if (responses[1].statusCode == 200) {
-        final obj = json.decode(responses[1].body);
-        albums = _extractItems(obj);
-      }
-      if (responses[2].statusCode == 200) {
-        final obj = json.decode(responses[2].body);
-        artists = _extractItems(obj);
-      }
-      if (responses[3].statusCode == 200) {
-        final obj = json.decode(responses[3].body);
-        playlists = _extractItems(obj);
-      }
+
+      final Map<String, dynamic> data = json.decode(response.body);
+
+      final List<dynamic> tracks = data['tracks'] is List ? data['tracks'] : const [];
+      final List<dynamic> albums = data['albums'] is List ? data['albums'] : const [];
+      final List<dynamic> artists = data['artists'] is List ? data['artists'] : const [];
+      final List<dynamic> playlists = data['playlists'] is List ? data['playlists'] : const [];
 
       return CatalogSearchResultsModel.fromThreeLists(
         tracks: tracks,

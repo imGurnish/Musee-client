@@ -12,8 +12,16 @@ final class FetchSuggestions extends SearchEvent {
 
 class SearchQuery extends SearchEvent {
   final String query;
-  SearchQuery({required this.query})
-    : assert(query.isNotEmpty, 'Query cannot be empty');
+  final String? type;
+  final int? page;
+  final bool isLoadMore;
+
+  SearchQuery({
+    required this.query,
+    this.type,
+    this.page,
+    this.isLoadMore = false,
+  }) : assert(query.isNotEmpty, 'Query cannot be empty');
 }
 
 class RunTest extends SearchEvent {
