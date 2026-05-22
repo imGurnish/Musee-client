@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:hive/hive.dart';
+import 'package:musee/features/admin__dashboard/data/models/admin_system_status_models.dart';
 
 import '../models/listening_history_models.dart';
 import '../datasources/listening_history_remote_data_source.dart';
@@ -34,6 +35,7 @@ abstract class ListeningHistoryRepository {
   // Admin analytics
   Future<EngagementMetrics> getEngagementMetrics();
   Future<RefreshTrendingResult> refreshTrending();
+  Future<SystemStatusResponse> getSystemStatus();
 
   Future<Recommendation> getRecommendations({
     int limit = 50,
@@ -332,6 +334,15 @@ class ListeningHistoryRepositoryImpl implements ListeningHistoryRepository {
   Future<RefreshTrendingResult> refreshTrending() async {
     try {
       return await remoteDataSource.refreshTrending();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  @override
+  Future<SystemStatusResponse> getSystemStatus() async {
+    try {
+      return await remoteDataSource.getSystemStatus();
     } catch (e) {
       rethrow;
     }

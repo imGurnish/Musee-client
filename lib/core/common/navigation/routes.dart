@@ -25,6 +25,7 @@ class Routes {
   static const String adminCountries = '/admin/countries';
   static const String adminRegions = '/admin/regions';
   static const String adminEngagement = '/admin/engagement';
+  static const String adminStatus = '/admin/status';
 
   // Authentication
   static const String signIn = '/sign-in';
