@@ -436,11 +436,11 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                       ],
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'More',
-                    onPressed: () {},
-                    icon: const Icon(Icons.more_vert_rounded),
-                  ),
+                  // IconButton(
+                  //   tooltip: 'More',
+                  //   onPressed: () {},
+                  //   icon: const Icon(Icons.more_vert_rounded),
+                  // ),
                 ],
               ),
 
@@ -692,11 +692,11 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
               // Footer actions
               Row(
                 children: [
-                  IconButton(
-                    tooltip: 'Devices',
-                    onPressed: () {},
-                    icon: const Icon(Icons.cast_rounded),
-                  ),
+                  // IconButton(
+                  //   tooltip: 'Devices',
+                  //   onPressed: () {},
+                  //   icon: const Icon(Icons.cast_rounded),
+                  // ),
                   const Spacer(),
                   IconButton(
                     tooltip: 'Share',
