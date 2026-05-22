@@ -260,6 +260,7 @@ class _UserArtistViewState extends State<_UserArtistView> {
                                               .whereType<String>()
                                               .join(', '),
                                       imageUrl: first.coverUrl,
+                                      artistId: widget.artistId,
                                       openSheet: false,
                                     );
                                   },
@@ -582,6 +583,9 @@ class _PopularTracksSection extends StatelessWidget {
                 title: track.title,
                 artist: subtitle,
                 imageUrl: track.coverUrl,
+                artistId: track.artists.isNotEmpty
+                    ? track.artists.first.artistId
+                    : null,
                 openSheet: false,
               );
             },

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
+import 'package:go_router/go_router.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
 import 'package:musee/core/download/download_manager.dart';
@@ -24,6 +25,9 @@ Future<void> showPlayerBottomSheet(
   String? localImagePath,
   Map<String, String>? headers,
   String? trackId,
+  String? artistId,
+  String? albumId,
+  String? playlistId,
   bool openSheet = true,
 }) async {
   final cubit = GetIt.I<PlayerCubit>();
@@ -45,6 +49,9 @@ Future<void> showPlayerBottomSheet(
           artist: artist,
           album: album,
           imageUrl: imageUrl,
+          artistId: artistId,
+          albumId: albumId,
+          playlistId: playlistId,
         );
         return;
       }
@@ -393,7 +400,11 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Text(
-                          album.isEmpty ? 'NOW PLAYING' : 'PLAYING FROM ALBUM',
+                          state.track?.playlistId != null
+                              ? 'PLAYING FROM PLAYLIST'
+                              : album.isEmpty
+                                  ? 'NOW PLAYING'
+                                  : 'PLAYING FROM ALBUM',
                           style: theme.textTheme.labelSmall?.copyWith(
                             letterSpacing: 1.1,
                             fontWeight: FontWeight.w600,
@@ -402,11 +413,25 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          album.isEmpty ? 'Musee' : album,
+                        _buildTappableHeader(
+                          context: context,
+                          text: album.isEmpty ? 'Musee' : album,
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
+                          onTap: () {
+                            final playlistId = state.track?.playlistId;
+                            final albumId = state.track?.albumId;
+                            if (playlistId != null) {
+                              Navigator.of(context, rootNavigator: true).maybePop();
+                              context.push('/playlists/$playlistId');
+                            } else if (albumId != null) {
+                              Navigator.of(context, rootNavigator: true).maybePop();
+                              context.push('/albums/$albumId');
+                            }
+                          },
+                          enabled: state.track?.playlistId != null ||
+                              state.track?.albumId != null,
                         ),
                       ],
                     ),
@@ -499,13 +524,23 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 4),
-                                Text(
-                                  subtitleText,
+                                _buildTappableHeader(
+                                  context: context,
+                                  text: subtitleText,
                                   style: theme.textTheme.bodyLarge?.copyWith(
                                     color: subtitleColor,
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                  onTap: () {
+                                    final artistId = state.track?.artistId;
+                                    if (artistId != null) {
+                                      Navigator.of(
+                                        context,
+                                        rootNavigator: true,
+                                      ).maybePop();
+                                      context.push('/artists/$artistId');
+                                    }
+                                  },
+                                  enabled: state.track?.artistId != null,
                                 ),
                               ],
                             ),
@@ -695,6 +730,43 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
       ),
     );
   }
+}
+
+/// Builds a tappable text header that optionally acts as a navigation link.
+/// When [enabled] is true it renders with an underline and a click cursor.
+Widget _buildTappableHeader({
+  required BuildContext context,
+  required String text,
+  required VoidCallback onTap,
+  required bool enabled,
+  TextStyle? style,
+}) {
+  if (!enabled) {
+    return Text(
+      text,
+      style: style,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
+    );
+  }
+  return MouseRegion(
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(
+      onTap: onTap,
+      child: Text(
+        text,
+        style: style?.copyWith(
+          decoration: TextDecoration.underline,
+          decorationColor: style.color?.withValues(alpha: 0.55),
+          decorationThickness: 1.0,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+      ),
+    ),
+  );
 }
 
 class _QueueSheet extends StatelessWidget {

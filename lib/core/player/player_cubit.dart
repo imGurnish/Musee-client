@@ -676,6 +676,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     String? artist,
     String? album,
     String? imageUrl,
+    String? artistId,
+    String? albumId,
+    String? playlistId,
   }) async {
     _userPaused = false;
     if (state.track?.trackId != null && state.track?.trackId != trackId) {
@@ -701,6 +704,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       album: album,
       imageUrl: imageUrl,
       localImagePath: localImagePath,
+      artistId: artistId,
+      albumId: albumId,
+      playlistId: playlistId,
     );
 
     emit(
@@ -740,14 +746,31 @@ class PlayerCubit extends Cubit<PlayerViewState> {
               album: album,
               imageUrl: imageUrl,
               uid: const Uuid().v4(),
+              artistId: artistId,
+              albumId: albumId,
+              playlistId: playlistId,
             );
             items.insert(0, fallback);
             newIndex = 0;
           }
+          // Patch the live track with IDs resolved from the expanded API data.
+          // This handles the case where artistId/albumId/playlistId were not
+          // available when the provisional track was first emitted (e.g. played
+          // from search or mini-player without full context).
+          final matchedItem = newIndex >= 0 ? items[newIndex] : null;
+          final patchedTrack = state.track?.trackId == trackId
+              ? state.track?.copyWith(
+                  artistId: matchedItem?.artistId ?? artistId ?? state.track?.artistId,
+                  albumId: matchedItem?.albumId ?? albumId ?? state.track?.albumId,
+                  playlistId: matchedItem?.playlistId ?? playlistId ?? state.track?.playlistId,
+                )
+              : state.track;
+
           emit(
             state.copyWith(
               queue: items,
               currentIndex: _sanitizeIndex(newIndex, items.length),
+              track: patchedTrack,
             ),
           );
         } catch (e) {
@@ -777,6 +800,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       album: album,
       imageUrl: imageUrl,
       localImagePath: localImagePath,
+      artistId: artistId,
+      albumId: albumId,
+      playlistId: playlistId,
     );
 
     await playTrack(track);
@@ -1178,6 +1204,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       album: item.album,
       imageUrl: item.imageUrl,
       localImagePath: item.localImagePath,
+      artistId: item.artistId,
+      albumId: item.albumId,
+      playlistId: item.playlistId,
     );
     emit(
       state.copyWith(
@@ -1221,6 +1250,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       album: item.album,
       imageUrl: item.imageUrl,
       localImagePath: item.localImagePath,
+      artistId: item.artistId,
+      albumId: item.albumId,
+      playlistId: item.playlistId,
     );
 
     try {
