@@ -129,6 +129,7 @@ import 'package:musee/core/providers/providers.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
 import 'package:musee/core/equalizer/equalizer_controller.dart';
 import 'package:musee/core/equalizer/headphone_service.dart';
 
@@ -244,21 +245,27 @@ Future<void> initDependencies() async {
   // Initialise headphone detection (graceful no-op on Windows/Web)
   await HeadphoneService.instance.initialize();
 
-  // Bridge: when EQ settings change → push immediately to the player.
-  serviceLocator<SettingsCubit>().stream.listen((s) {
+  // Helper to apply or bypass equalizer settings
+  void applyEqualizerSettings(SettingsState s) {
     final player = serviceLocator<PlayerCubit>();
-    player
-      ..applyEqBands(s.equalizerBands)
-      ..applyBass(s.bassLevel)
-      ..applySurround(s.surroundLevel);
-  });
+    if (s.equalizerEnabled) {
+      player
+        ..applyEqBands(s.equalizerBands)
+        ..applyBass(s.bassLevel)
+        ..applySurround(s.surroundLevel);
+    } else {
+      player
+        ..applyEqBands(const [0.0, 0.0, 0.0, 0.0, 0.0])
+        ..applyBass(0)
+        ..applySurround(0);
+    }
+  }
+
+  // Bridge: when EQ settings change → push immediately to the player.
+  serviceLocator<SettingsCubit>().stream.listen(applyEqualizerSettings);
 
   // Apply persisted EQ settings immediately on startup.
-  final savedSettings = serviceLocator<SettingsCubit>().state;
-  serviceLocator<PlayerCubit>()
-    ..applyEqBands(savedSettings.equalizerBands)
-    ..applyBass(savedSettings.bassLevel)
-    ..applySurround(savedSettings.surroundLevel);
+  applyEqualizerSettings(serviceLocator<SettingsCubit>().state);
 
   //auth
   _initAuth();

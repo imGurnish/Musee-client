@@ -44,22 +44,195 @@ class _EqualizerPageState extends State<EqualizerPage>
       backgroundColor: cs.surface,
       body: FadeTransition(
         opacity: _fadeAnim,
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(child: _EqHeader()),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  const SizedBox(height: 20),
-                  _buildPresetsSection(context, cs),
-                  const SizedBox(height: 24),
-                  _buildBassSection(context, cs),
-                  const SizedBox(height: 24),
-                  _buildSurroundSection(context, cs),
-                  const SizedBox(height: 24),
-                  _buildPlatformNote(context, cs),
-                ]),
+        child: BlocBuilder<SettingsCubit, SettingsState>(
+          builder: (context, settings) {
+            final eqEnabled = settings.equalizerEnabled;
+
+            return CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(child: _EqHeader()),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      const SizedBox(height: 16),
+                      _buildMasterToggle(context, cs, settings),
+                      const SizedBox(height: 24),
+                      IgnorePointer(
+                        ignoring: !eqEnabled,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 250),
+                          opacity: eqEnabled ? 1.0 : 0.4,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _buildPresetsSection(context, cs, settings),
+                              const SizedBox(height: 24),
+                              _buildBassSection(context, cs, settings),
+                              const SizedBox(height: 24),
+                              _buildSurroundSection(context, cs, settings),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // ─── Master Toggle Card ────────────────────────────────────────────────────
+
+  Widget _buildMasterToggle(
+      BuildContext context, ColorScheme cs, SettingsState settings) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: settings.equalizerEnabled
+                  ? cs.primary.withValues(alpha: 0.15)
+                  : cs.onSurface.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.power_settings_new_rounded,
+              color: settings.equalizerEnabled ? cs.primary : cs.onSurfaceVariant,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Equalizer & Sound Effects',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface,
+                      ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  settings.equalizerEnabled ? 'Active' : 'Bypassed',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: settings.equalizerEnabled ? cs.primary : cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: settings.equalizerEnabled,
+            activeThumbColor: cs.primary,
+            onChanged: (val) {
+              context.read<SettingsCubit>().setEqualizerEnabled(val);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Preset Chips Section ───────────────────────────────────────────────────
+
+  Widget _buildPresetsSection(
+      BuildContext context, ColorScheme cs, SettingsState settings) {
+    return _SoundSection(
+      title: 'EQ Preset',
+      icon: Icons.graphic_eq_rounded,
+      iconColor: cs.primary,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Graphical Equalizer Board
+            _EqBoard(
+              bands: settings.equalizerBands,
+              color: cs.primary,
+              onChanged: (newBands) {
+                context.read<SettingsCubit>().setEqualizerBands(newBands);
+              },
+            ),
+            const SizedBox(height: 16),
+            // Preset chips
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ...kEqPresetOrder.map((key) {
+                  final isActive = settings.equalizerPreset == key;
+                  return _PresetChip(
+                    label: kEqPresetLabels[key]!,
+                    isActive: isActive,
+                    onTap: () =>
+                        context.read<SettingsCubit>().setEqualizerPreset(key),
+                  );
+                }),
+                if (settings.equalizerPreset == 'custom')
+                  const _PresetChip(
+                    label: 'Custom',
+                    isActive: true,
+                    onTap: _noop,
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Bass Section ───────────────────────────────────────────────────────────
+
+  Widget _buildBassSection(
+      BuildContext context, ColorScheme cs, SettingsState settings) {
+    return _SoundSection(
+      title: 'Bass Enhancement',
+      icon: Icons.speaker_rounded,
+      iconColor: cs.secondary,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SliderRow(
+              icon: Icons.volume_up_rounded,
+              iconColor: cs.secondary,
+              label: 'Bass',
+              value: settings.bassLevel.toDouble(),
+              min: 0,
+              max: 100,
+              divisions: 100,
+              activeColor: cs.secondary,
+              displayValue: '${settings.bassLevel}%',
+              onChanged: (v) =>
+                  context.read<SettingsCubit>().setBassLevel(v.round()),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Boosts low frequencies for a punchier sound.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
               ),
             ),
           ],
@@ -68,106 +241,10 @@ class _EqualizerPageState extends State<EqualizerPage>
     );
   }
 
-  // ─── Preset Chips Section ───────────────────────────────────────────────────
-
-  Widget _buildPresetsSection(BuildContext context, ColorScheme cs) {
-    return BlocBuilder<SettingsCubit, SettingsState>(
-      builder: (context, settings) {
-        return _SoundSection(
-          title: 'EQ Preset',
-          icon: Icons.graphic_eq_rounded,
-          iconColor: cs.primary,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Graphical Equalizer Board
-                _EqBoard(
-                  bands: settings.equalizerBands,
-                  color: cs.primary,
-                  onChanged: (newBands) {
-                    context.read<SettingsCubit>().setEqualizerBands(newBands);
-                  },
-                ),
-                const SizedBox(height: 16),
-                // Preset chips
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ...kEqPresetOrder.map((key) {
-                      final isActive = settings.equalizerPreset == key;
-                      return _PresetChip(
-                        label: kEqPresetLabels[key]!,
-                        isActive: isActive,
-                        onTap: () =>
-                            context.read<SettingsCubit>().setEqualizerPreset(key),
-                      );
-                    }),
-                    if (settings.equalizerPreset == 'custom')
-                      const _PresetChip(
-                        label: 'Custom',
-                        isActive: true,
-                        onTap: _noop,
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // ─── Bass Section ───────────────────────────────────────────────────────────
-
-  Widget _buildBassSection(BuildContext context, ColorScheme cs) {
-    return BlocBuilder<SettingsCubit, SettingsState>(
-      builder: (context, settings) {
-        return _SoundSection(
-          title: 'Bass Enhancement',
-          icon: Icons.speaker_rounded,
-          iconColor: cs.secondary,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _SliderRow(
-                  icon: Icons.volume_up_rounded,
-                  iconColor: cs.secondary,
-                  label: 'Bass',
-                  value: settings.bassLevel.toDouble(),
-                  min: 0,
-                  max: 100,
-                  divisions: 100,
-                  activeColor: cs.secondary,
-                  displayValue: '${settings.bassLevel}%',
-                  onChanged: (v) =>
-                      context.read<SettingsCubit>().setBassLevel(v.round()),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    'Boosts low frequencies for a punchier sound.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: cs.onSurfaceVariant,
-                        ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   // ─── Surround Section ───────────────────────────────────────────────────────
 
-  Widget _buildSurroundSection(BuildContext context, ColorScheme cs) {
+  Widget _buildSurroundSection(
+      BuildContext context, ColorScheme cs, SettingsState settings) {
     return StreamBuilder<bool>(
       stream: HeadphoneService.instance.isConnectedStream,
       initialData: HeadphoneService.instance.isConnected,
@@ -178,88 +255,79 @@ class _EqualizerPageState extends State<EqualizerPage>
           title: 'Surround Sound',
           icon: Icons.surround_sound_rounded,
           iconColor: cs.tertiary,
+          trailing: headphonesConnected ? _buildActiveBadge(cs) : null,
           child: headphonesConnected
-              ? _buildSurroundActive(context, cs)
+              ? _buildSurroundActive(context, cs, settings)
               : _buildSurroundInactive(context, cs),
         );
       },
     );
   }
 
-  Widget _buildSurroundActive(BuildContext context, ColorScheme cs) {
-    return BlocBuilder<SettingsCubit, SettingsState>(
-      builder: (context, settings) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ACTIVE badge
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: cs.tertiary.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: cs.tertiary.withValues(alpha: 0.4),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: BoxDecoration(
-                            color: cs.tertiary,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'EARPHONES ACTIVE',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: cs.tertiary,
-                            letterSpacing: 0.6,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              _SliderRow(
-                icon: Icons.spatial_audio_rounded,
-                iconColor: cs.tertiary,
-                label: 'Stereo Widening',
-                value: settings.surroundLevel.toDouble(),
-                min: 0,
-                max: 100,
-                divisions: 100,
-                activeColor: cs.tertiary,
-                displayValue: '${settings.surroundLevel}%',
-                onChanged: (v) =>
-                    context.read<SettingsCubit>().setSurroundLevel(v.round()),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  'Widens the stereo field for a more immersive listening experience.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: cs.onSurfaceVariant,
-                      ),
-                ),
-              ),
-            ],
+  Widget _buildActiveBadge(ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: cs.tertiary.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: cs.tertiary.withValues(alpha: 0.4),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.headphones_rounded,
+            color: cs.tertiary,
+            size: 11,
           ),
-        );
-      },
+          const SizedBox(width: 5),
+          Text(
+            'ACTIVE',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              color: cs.tertiary,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSurroundActive(
+      BuildContext context, ColorScheme cs, SettingsState settings) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SliderRow(
+            icon: Icons.spatial_audio_rounded,
+            iconColor: cs.tertiary,
+            label: 'Stereo Widening',
+            value: settings.surroundLevel.toDouble(),
+            min: 0,
+            max: 100,
+            divisions: 100,
+            activeColor: cs.tertiary,
+            displayValue: '${settings.surroundLevel}%',
+            onChanged: (v) =>
+                context.read<SettingsCubit>().setSurroundLevel(v.round()),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Widens the stereo field for a more immersive listening experience.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -309,40 +377,6 @@ class _EqualizerPageState extends State<EqualizerPage>
       ),
     );
   }
-
-  // ─── Platform note ──────────────────────────────────────────────────────────
-
-  Widget _buildPlatformNote(BuildContext context, ColorScheme cs) {
-    // Only show on non-Android
-    final isAndroid = Theme.of(context).platform == TargetPlatform.android;
-    if (isAndroid) return const SizedBox.shrink();
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 2),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.info_outline_rounded,
-              color: cs.onSurfaceVariant.withValues(alpha: 0.6), size: 18),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Audio effects are applied on Android devices. '
-              'Settings are saved and will take effect when you use the Android app.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: cs.onSurfaceVariant.withValues(alpha: 0.8),
-                  ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // ─── Section Container ────────────────────────────────────────────────────────
@@ -351,12 +385,14 @@ class _SoundSection extends StatelessWidget {
   final String title;
   final IconData icon;
   final Color iconColor;
+  final Widget? trailing;
   final Widget child;
 
   const _SoundSection({
     required this.title,
     required this.icon,
     required this.iconColor,
+    this.trailing,
     required this.child,
   });
 
@@ -387,13 +423,21 @@ class _SoundSection extends StatelessWidget {
                   child: Icon(icon, color: iconColor, size: 18),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: cs.onSurface,
-                      ),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface,
+                        ),
+                  ),
                 ),
+                if (trailing != null) ...[
+                  const SizedBox(width: 8),
+                  trailing!,
+                ],
               ],
             ),
           ),

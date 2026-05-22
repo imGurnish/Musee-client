@@ -34,6 +34,7 @@ import 'package:musee/features/admin__dashboard/presentation/pages/admin_engagem
 import 'package:musee/features/admin__dashboard/presentation/pages/admin_system_status_page.dart';
 import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:async';
 import 'package:musee/features/user_albums/presentation/pages/user_album_page.dart';
@@ -431,6 +432,13 @@ class AppGoRouter {
         GoRoute(
           path: Routes.equalizer,
           name: 'equalizer',
+          redirect: (context, state) {
+            final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+            if (!isAndroid) {
+              return Routes.forbidden;
+            }
+            return null;
+          },
           builder: (context, state) => BlocProvider.value(
             value: serviceLocator<SettingsCubit>(),
             child: const EqualizerPage(),

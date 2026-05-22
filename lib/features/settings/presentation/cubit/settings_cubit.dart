@@ -40,6 +40,11 @@ class SettingsCubit extends HydratedCubit<SettingsState> {
 
   // ─── Equalizer & Sound ────────────────────────────────────────────────────────
 
+  /// Enable or disable the equalizer globally.
+  void setEqualizerEnabled(bool value) {
+    emit(state.copyWith(equalizerEnabled: value));
+  }
+
   /// Switch to a named preset — updates both the preset key and the band gains.
   void setEqualizerPreset(String preset) {
     final bands = kEqPresets[preset] ?? List<double>.filled(5, 0.0);

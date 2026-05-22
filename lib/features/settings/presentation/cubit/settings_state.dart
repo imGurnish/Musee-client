@@ -17,6 +17,8 @@ class SettingsState extends Equatable {
   final bool normalizeVolume;
 
   // ─── Equalizer & Sound ───────────────────────────────────────────────────
+  /// Whether the equalizer is globally enabled or bypassed.
+  final bool equalizerEnabled;
   /// Active preset key — one of [kEqPresets] keys or 'custom'.
   final String equalizerPreset;
   /// Per-band dB gains (5 bands). Range: −12.0 to +12.0 per band.
@@ -35,6 +37,7 @@ class SettingsState extends Equatable {
     this.crossfadeEnabled = false,
     this.showExplicitContent = true,
     this.normalizeVolume = false,
+    this.equalizerEnabled = true,
     this.equalizerPreset = 'normal',
     this.equalizerBands = const [0.0, 0.0, 0.0, 0.0, 0.0],
     this.bassLevel = 0,
@@ -50,6 +53,7 @@ class SettingsState extends Equatable {
     bool? crossfadeEnabled,
     bool? showExplicitContent,
     bool? normalizeVolume,
+    bool? equalizerEnabled,
     String? equalizerPreset,
     List<double>? equalizerBands,
     int? bassLevel,
@@ -64,6 +68,7 @@ class SettingsState extends Equatable {
       crossfadeEnabled: crossfadeEnabled ?? this.crossfadeEnabled,
       showExplicitContent: showExplicitContent ?? this.showExplicitContent,
       normalizeVolume: normalizeVolume ?? this.normalizeVolume,
+      equalizerEnabled: equalizerEnabled ?? this.equalizerEnabled,
       equalizerPreset: equalizerPreset ?? this.equalizerPreset,
       equalizerBands: equalizerBands ?? this.equalizerBands,
       bassLevel: bassLevel ?? this.bassLevel,
@@ -81,6 +86,7 @@ class SettingsState extends Equatable {
       'crossfadeEnabled': crossfadeEnabled,
       'showExplicitContent': showExplicitContent,
       'normalizeVolume': normalizeVolume,
+      'equalizerEnabled': equalizerEnabled,
       'equalizerPreset': equalizerPreset,
       'equalizerBands': equalizerBands,
       'bassLevel': bassLevel,
@@ -107,6 +113,7 @@ class SettingsState extends Equatable {
       crossfadeEnabled: json['crossfadeEnabled'] as bool? ?? false,
       showExplicitContent: json['showExplicitContent'] as bool? ?? true,
       normalizeVolume: json['normalizeVolume'] as bool? ?? false,
+      equalizerEnabled: json['equalizerEnabled'] as bool? ?? true,
       equalizerPreset: preset,
       equalizerBands: parseBands(json['equalizerBands']) ,
       bassLevel: (json['bassLevel'] as int?) ?? 0,
@@ -124,6 +131,7 @@ class SettingsState extends Equatable {
     crossfadeEnabled,
     showExplicitContent,
     normalizeVolume,
+    equalizerEnabled,
     equalizerPreset,
     equalizerBands,
     bassLevel,

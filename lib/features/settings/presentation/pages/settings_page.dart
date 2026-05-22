@@ -337,13 +337,14 @@ class _SettingsPageState extends State<SettingsPage> {
                           .read<SettingsCubit>()
                           .setShowExplicitContent(v),
                 ),
-                SettingsNavTile(
-                  icon: Icons.equalizer_rounded,
-                  iconColor: colorScheme.primary,
-                  title: 'Equalizer & Sound',
-                  subtitle: 'EQ presets, bass & surround enhancement',
-                  onTap: () => context.push(Routes.equalizer),
-                ),
+                if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+                  SettingsNavTile(
+                    icon: Icons.equalizer_rounded,
+                    iconColor: colorScheme.primary,
+                    title: 'Equalizer & Sound',
+                    subtitle: 'EQ presets, bass & surround enhancement',
+                    onTap: () => context.push(Routes.equalizer),
+                  ),
               ],
             );
           },
