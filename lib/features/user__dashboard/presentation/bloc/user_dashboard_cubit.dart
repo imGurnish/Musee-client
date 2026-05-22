@@ -6,6 +6,7 @@ import 'package:musee/features/user__dashboard/domain/usecases/list_made_for_you
 import 'package:musee/features/user__dashboard/domain/usecases/list_trending.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
+import 'dart:math';
 
 class UserDashboardState extends Equatable {
   final bool loadingMadeForYou;
@@ -87,7 +88,7 @@ class UserDashboardState extends Equatable {
 }
 
 class UserDashboardCubit extends Cubit<UserDashboardState> {
-  static const Duration _madeForYouCacheTtl = Duration(hours: 6);
+  static const Duration _madeForYouCacheTtl = Duration(minutes: 30);
 
   final ListMadeForYou _listMadeForYou;
   final ListTrending _listTrending;
@@ -268,6 +269,7 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
       if (i < backendMadeForYou.length) addUnique(backendMadeForYou[i]);
     }
 
+    mixedMadeForYou.shuffle(Random());
     return mixedMadeForYou;
   }
 
