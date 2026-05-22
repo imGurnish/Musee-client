@@ -268,11 +268,7 @@ class _UserDashboardState extends State<UserDashboard> {
   }
 
   void _openAlbumsForYou(BuildContext context, UserDashboardState state) {
-    final albums = _collectUniqueItems(
-      state,
-      type: DashboardItemType.album,
-      limit: 24,
-    );
+    final albums = state.albumsForYou;
 
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -289,10 +285,8 @@ class _UserDashboardState extends State<UserDashboard> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => _TrendingPicksPage(
-          items: trending,
-          onItemTap: _handleItemTap,
-        ),
+        builder: (_) =>
+            _TrendingPicksPage(items: trending, onItemTap: _handleItemTap),
       ),
     );
   }
@@ -325,11 +319,9 @@ class _UserDashboardState extends State<UserDashboard> {
                       limit: 12,
                     ).map((item) => _toMediaItem(context, item)).toList();
 
-                    final albumItems = _collectUniqueItems(
-                      state,
-                      type: DashboardItemType.album,
-                      limit: 12,
-                    ).map((item) => _toMediaItem(context, item)).toList();
+                    final albumsForYouItems = state.albumsForYou
+                        .map((item) => _toMediaItem(context, item))
+                        .toList();
 
                     final playlistItems = _collectUniqueItems(
                       state,
@@ -481,17 +473,39 @@ class _UserDashboardState extends State<UserDashboard> {
                           SliverToBoxAdapter(
                             child: SectionHeader(
                               title: 'Albums for you',
-                              onSeeAll: () =>
-                                  _openAlbumsForYou(context, state),
+                              onSeeAll: () => _openAlbumsForYou(context, state),
                             ),
                           ),
-                          SliverToBoxAdapter(
-                            child: HorizontalMediaSection(
-                              title: '',
-                              items: albumItems,
-                              cardWidth: isCompact ? 128 : 142,
+                          if (state.loadingAlbumsForYou &&
+                              albumsForYouItems.isEmpty)
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0,
+                                ),
+                                child: _HorizontalSectionSkeleton(
+                                  cardWidth: isCompact ? 128 : 142,
+                                ),
+                              ),
+                            )
+                          else if (state.errorAlbumsForYou != null &&
+                              albumsForYouItems.isEmpty)
+                            SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Text(
+                                  'Failed to load: ${state.errorAlbumsForYou}',
+                                ),
+                              ),
+                            )
+                          else
+                            SliverToBoxAdapter(
+                              child: HorizontalMediaSection(
+                                title: '',
+                                items: albumsForYouItems,
+                                cardWidth: isCompact ? 128 : 142,
+                              ),
                             ),
-                          ),
 
                           if (playlistItems.isNotEmpty)
                             SliverToBoxAdapter(
@@ -1040,8 +1054,7 @@ class _SuggestedTracksPageState extends State<_SuggestedTracksPage> {
     if (!mounted) return;
     setState(() {
       _loading = false;
-      _reachedEnd =
-          _tracks.length == before || _tracks.length >= _maxItems;
+      _reachedEnd = _tracks.length == before || _tracks.length >= _maxItems;
     });
   }
 
@@ -1183,7 +1196,7 @@ class _SuggestedAlbumsPageState extends State<_SuggestedAlbumsPage> {
     setState(() => _loading = true);
 
     final before = _albums.length;
-    final more = await context.read<UserDashboardCubit>().fetchSuggestedAlbums(
+    final more = await context.read<UserDashboardCubit>().fetchAlbumsForYou(
       page: _page,
       limit: _pageSize,
     );
@@ -1193,8 +1206,7 @@ class _SuggestedAlbumsPageState extends State<_SuggestedAlbumsPage> {
     if (!mounted) return;
     setState(() {
       _loading = false;
-      _reachedEnd =
-          _albums.length == before || _albums.length >= _maxItems;
+      _reachedEnd = _albums.length == before || _albums.length >= _maxItems;
     });
   }
 
@@ -1223,57 +1235,52 @@ class _SuggestedAlbumsPageState extends State<_SuggestedAlbumsPage> {
                 SliverPadding(
                   padding: const EdgeInsets.all(16),
                   sliver: SliverGrid(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final item = _albums[index];
-                        final artistNames = item.artists.isNotEmpty
-                            ? item.artists.map((a) => a.name).join(', ')
-                            : 'Unknown artist';
-                        return InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () => context
-                              .push('/albums/${item.albumId ?? item.id}'),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: SizedBox.expand(
-                                    child: _AlbumGridImage(item: item),
-                                  ),
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final item = _albums[index];
+                      final artistNames = item.artists.isNotEmpty
+                          ? item.artists.map((a) => a.name).join(', ')
+                          : 'Unknown artist';
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () =>
+                            context.push('/albums/${item.albumId ?? item.id}'),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: SizedBox.expand(
+                                  child: _AlbumGridImage(item: item),
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                item.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                artistNames,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      childCount: _albums.length,
-                    ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              item.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              artistNames,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      );
+                    }, childCount: _albums.length),
                     gridDelegate:
                         const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 200,
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      childAspectRatio: 0.75,
-                    ),
+                          maxCrossAxisExtent: 200,
+                          mainAxisSpacing: 16,
+                          crossAxisSpacing: 16,
+                          childAspectRatio: 0.75,
+                        ),
                   ),
                 ),
                 if (!_reachedEnd)
@@ -1313,8 +1320,11 @@ class _AlbumGridImage extends StatelessWidget {
     return Container(
       color: color.primaryContainer.withValues(alpha: 0.35),
       alignment: Alignment.center,
-      child:
-          Icon(Icons.album_rounded, size: 48, color: color.onPrimaryContainer),
+      child: Icon(
+        Icons.album_rounded,
+        size: 48,
+        color: color.onPrimaryContainer,
+      ),
     );
   }
 }
@@ -1356,8 +1366,7 @@ class _TrendingPicksPage extends StatelessWidget {
                           imageUrl: item.coverUrl,
                           localImagePath: item.localImagePath,
                           icon: switch (item.type) {
-                            DashboardItemType.track =>
-                              Icons.music_note_rounded,
+                            DashboardItemType.track => Icons.music_note_rounded,
                             DashboardItemType.album => Icons.album_rounded,
                             DashboardItemType.playlist =>
                               Icons.queue_music_rounded,
@@ -1383,4 +1392,3 @@ class _TrendingPicksPage extends StatelessWidget {
     );
   }
 }
-

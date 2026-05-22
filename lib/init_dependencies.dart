@@ -29,7 +29,6 @@ import 'package:musee/features/admin_artists/data/datasources/admin_artists_remo
 import 'package:musee/features/admin_artists/data/repositories/admin_artists_repository_impl.dart';
 import 'package:musee/features/admin_artists/domain/repository/admin_artists_repository.dart';
 import 'package:musee/features/admin_artists/domain/usecases/list_artists.dart';
-import 'package:musee/features/admin_artists/domain/usecases/get_artist.dart';
 import 'package:musee/features/admin_artists/domain/usecases/create_artist.dart';
 import 'package:musee/features/admin_artists/domain/usecases/update_artist.dart';
 import 'package:musee/features/admin_artists/domain/usecases/delete_artist.dart';
@@ -91,6 +90,7 @@ import 'package:musee/features/user__dashboard/data/datasources/user_dashboard_r
 import 'package:musee/features/user__dashboard/data/repositories/user_dashboard_repository_impl.dart';
 import 'package:musee/features/user__dashboard/data/services/user_dashboard_cache_service.dart';
 import 'package:musee/features/user__dashboard/domain/repository/user_dashboard_repository.dart';
+import 'package:musee/features/user__dashboard/domain/usecases/list_albums_for_you.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_made_for_you.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_trending.dart';
 import 'package:musee/features/user__dashboard/presentation/bloc/user_dashboard_cubit.dart';
@@ -156,7 +156,8 @@ Future<void> initDependencies() async {
   // Music provider registry for multi-source music
   serviceLocator.registerLazySingleton<MusicProviderRegistry>(
     () => MusicProviderRegistry([
-      MuseeServerProvider(serviceLocator<SupabaseClient>())]),
+      MuseeServerProvider(serviceLocator<SupabaseClient>()),
+    ]),
   );
 
   // Initialize cache services
@@ -222,7 +223,8 @@ Future<void> initDependencies() async {
         audioCache: serviceLocator<AudioCacheService>(),
         imageCache: serviceLocator<ImageCacheService>(),
         musicProviderRegistry: serviceLocator<MusicProviderRegistry>(),
-        listeningHistoryRepository: serviceLocator<ListeningHistoryRepository>(),
+        listeningHistoryRepository:
+            serviceLocator<ListeningHistoryRepository>(),
         supabaseClient: serviceLocator<SupabaseClient>(),
       ),
     );
@@ -242,7 +244,9 @@ Future<void> initDependencies() async {
   // admin playlists
   _initAdminPlaylists();
 
-  serviceLocator.registerLazySingleton<JioSaavnApiClient>(() => JioSaavnApiClient());
+  serviceLocator.registerLazySingleton<JioSaavnApiClient>(
+    () => JioSaavnApiClient(),
+  );
   serviceLocator.registerLazySingleton<AdminImportQueueClient>(
     () => AdminImportQueueClient(
       dioClient: serviceLocator<Dio>(),
@@ -467,9 +471,7 @@ void _initAdminPlaylists() {
     )
     // repository
     ..registerLazySingleton<AdminPlaylistsRepository>(
-      () => AdminPlaylistsRepositoryImpl(
-        remoteDataSource: serviceLocator(),
-      ),
+      () => AdminPlaylistsRepositoryImpl(remoteDataSource: serviceLocator()),
     )
     // use cases
     ..registerFactory(() => GetPlaylistDetails(serviceLocator()))
@@ -537,7 +539,9 @@ void _initUserPlaylists() {
       () => GetUserPlaylist(serviceLocator<UserPlaylistsRepository>()),
     )
     // bloc
-    ..registerFactory(() => UserPlaylistBloc(serviceLocator<GetUserPlaylist>()));
+    ..registerFactory(
+      () => UserPlaylistBloc(serviceLocator<GetUserPlaylist>()),
+    );
 }
 
 void _initUserArtists() {
@@ -585,12 +589,16 @@ void _initUserDashboard() {
       () => ListMadeForYou(serviceLocator<UserDashboardRepository>()),
     )
     ..registerFactory(
+      () => ListAlbumsForYou(serviceLocator<UserDashboardRepository>()),
+    )
+    ..registerFactory(
       () => ListTrending(serviceLocator<UserDashboardRepository>()),
     )
     // cubit
     ..registerFactory(
       () => UserDashboardCubit(
         serviceLocator<ListMadeForYou>(),
+        serviceLocator<ListAlbumsForYou>(),
         serviceLocator<ListTrending>(),
         trackCache: serviceLocator<TrackCacheService>(),
         dashboardCache: serviceLocator<UserDashboardCacheService>(),
@@ -648,7 +656,8 @@ void _initUserOnboarding() {
     )
     // use cases
     ..registerFactory(
-      () => GetAvailableLanguagesUseCase(serviceLocator<OnboardingRepository>()),
+      () =>
+          GetAvailableLanguagesUseCase(serviceLocator<OnboardingRepository>()),
     )
     ..registerFactory(
       () => GetAvailableGenresUseCase(serviceLocator<OnboardingRepository>()),
@@ -660,20 +669,27 @@ void _initUserOnboarding() {
       () => SearchArtistsUseCase(serviceLocator<OnboardingRepository>()),
     )
     ..registerFactory(
-      () => SaveOnboardingPreferencesUseCase(serviceLocator<OnboardingRepository>()),
+      () => SaveOnboardingPreferencesUseCase(
+        serviceLocator<OnboardingRepository>(),
+      ),
     )
     ..registerFactory(
-      () => GetUserOnboardingPreferencesUseCase(serviceLocator<OnboardingRepository>()),
+      () => GetUserOnboardingPreferencesUseCase(
+        serviceLocator<OnboardingRepository>(),
+      ),
     )
     // bloc
     ..registerFactory(
       () => OnboardingBloc(
-        getAvailableLanguagesUseCase: serviceLocator<GetAvailableLanguagesUseCase>(),
+        getAvailableLanguagesUseCase:
+            serviceLocator<GetAvailableLanguagesUseCase>(),
         getAvailableGenresUseCase: serviceLocator<GetAvailableGenresUseCase>(),
         getAvailableMoodsUseCase: serviceLocator<GetAvailableMoodsUseCase>(),
         searchArtistsUseCase: serviceLocator<SearchArtistsUseCase>(),
-        saveOnboardingPreferencesUseCase: serviceLocator<SaveOnboardingPreferencesUseCase>(),
-        getUserOnboardingPreferencesUseCase: serviceLocator<GetUserOnboardingPreferencesUseCase>(),
+        saveOnboardingPreferencesUseCase:
+            serviceLocator<SaveOnboardingPreferencesUseCase>(),
+        getUserOnboardingPreferencesUseCase:
+            serviceLocator<GetUserOnboardingPreferencesUseCase>(),
       ),
     );
 }

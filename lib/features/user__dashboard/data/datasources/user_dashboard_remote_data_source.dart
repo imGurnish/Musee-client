@@ -111,6 +111,10 @@ class PagedDashboardItemsDTO extends PagedDashboardItems {
 
 abstract interface class UserDashboardRemoteDataSource {
   Future<PagedDashboardItemsDTO> getMadeForYou({int page = 0, int limit = 20});
+  Future<PagedDashboardItemsDTO> getAlbumsForYou({
+    int page = 0,
+    int limit = 20,
+  });
   Future<PagedDashboardItemsDTO> getTrending({int page = 0, int limit = 20});
 }
 
@@ -138,6 +142,21 @@ class UserDashboardRemoteDataSourceImpl
   }) async {
     final res = await _dio.get(
       '$basePath/made-for-you',
+      queryParameters: {'page': page, 'limit': limit},
+      options: dio.Options(headers: _authHeader()),
+    );
+    return PagedDashboardItemsDTO.fromJson(
+      Map<String, dynamic>.from(res.data as Map),
+    );
+  }
+
+  @override
+  Future<PagedDashboardItemsDTO> getAlbumsForYou({
+    int page = 0,
+    int limit = 20,
+  }) async {
+    final res = await _dio.get(
+      '$basePath/albums-for-you',
       queryParameters: {'page': page, 'limit': limit},
       options: dio.Options(headers: _authHeader()),
     );

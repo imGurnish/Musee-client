@@ -289,7 +289,7 @@ class MuseeServerProvider implements MusicProvider {
   Future<List<ProviderAlbum>> getNewReleases({int limit = 20}) async {
     try {
       final uri = Uri.parse(
-        '$_baseUrl/api/user/dashboard/made-for-you?page=0&limit=$limit',
+        '$_baseUrl/api/user/dashboard/albums-for-you?page=0&limit=$limit',
       );
       final response = await http.get(uri, headers: _headers).timeout(_timeout);
 

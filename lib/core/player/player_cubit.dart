@@ -25,6 +25,9 @@ import 'package:musee/core/platform/windows_platform_config.dart';
 import 'player_state.dart';
 
 class PlayerCubit extends Cubit<PlayerViewState> {
+  static const int _queuePrefetchTarget = 20;
+  static const int _queueMaxSize = 60;
+
   late final AudioPlayer _player;
   final PlayerRepository? _repo; // optional to allow previous initialization
   final TrackCacheService? _trackCache;
@@ -1622,13 +1625,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
 
     final refreshedRemaining = state.queue.length - (state.currentIndex + 1);
-    final refreshedNeeded = 10 - refreshedRemaining;
+    final refreshedNeeded = _queuePrefetchTarget - refreshedRemaining;
 
     // 2. Recommendation-based smart fill to always keep next 10 ready
-    if (state.recommendationAutoFillEnabled &&
-      refreshedNeeded > 0 &&
-      state.queue.isNotEmpty &&
-      _repo != null) {
+    if (refreshedNeeded > 0 && state.queue.isNotEmpty && _repo != null) {
       final existingIds = state.queue.map((q) => q.trackId).toSet();
       int remainingNeeded = refreshedNeeded;
 
@@ -1715,9 +1715,18 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (state.track?.trackId != null) {
         newIndex = items.indexWhere((q) => q.trackId == state.track!.trackId);
       }
-      final safeIndex = newIndex >= 0
+      var safeIndex = newIndex >= 0
           ? newIndex
           : _sanitizeIndex(state.currentIndex, items.length);
+
+      if (items.length > _queueMaxSize && safeIndex > 0) {
+        final trimCount = math.min(items.length - _queueMaxSize, safeIndex);
+        if (trimCount > 0) {
+          items.removeRange(0, trimCount);
+          safeIndex -= trimCount;
+        }
+      }
+
       emit(state.copyWith(queue: items, currentIndex: safeIndex));
     } catch (_) {}
   }

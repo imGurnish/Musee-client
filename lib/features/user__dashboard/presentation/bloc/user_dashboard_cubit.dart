@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:musee/features/user__dashboard/domain/entities/dashboard_album.dart';
 import 'package:musee/features/user__dashboard/data/services/user_dashboard_cache_service.dart';
+import 'package:musee/features/user__dashboard/domain/usecases/list_albums_for_you.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_made_for_you.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_trending.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
@@ -11,10 +12,13 @@ import 'dart:math';
 class UserDashboardState extends Equatable {
   final bool loadingMadeForYou;
   final bool loadingTrending;
+  final bool loadingAlbumsForYou;
   final List<DashboardItem> madeForYou;
   final List<DashboardItem> trending;
+  final List<DashboardItem> albumsForYou;
   final String? errorMadeForYou;
   final String? errorTrending;
+  final String? errorAlbumsForYou;
 
   /// Recently played tracks from local cache
   final List<CachedTrack> recentlyPlayed;
@@ -32,10 +36,13 @@ class UserDashboardState extends Equatable {
   const UserDashboardState({
     this.loadingMadeForYou = false,
     this.loadingTrending = false,
+    this.loadingAlbumsForYou = false,
     this.madeForYou = const [],
     this.trending = const [],
+    this.albumsForYou = const [],
     this.errorMadeForYou,
     this.errorTrending,
+    this.errorAlbumsForYou,
     this.recentlyPlayed = const [],
     this.mostPlayed = const [],
     this.lastUpdated,
@@ -46,10 +53,13 @@ class UserDashboardState extends Equatable {
   UserDashboardState copyWith({
     bool? loadingMadeForYou,
     bool? loadingTrending,
+    bool? loadingAlbumsForYou,
     List<DashboardItem>? madeForYou,
     List<DashboardItem>? trending,
+    List<DashboardItem>? albumsForYou,
     String? errorMadeForYou,
     String? errorTrending,
+    String? errorAlbumsForYou,
     List<CachedTrack>? recentlyPlayed,
     List<CachedTrack>? mostPlayed,
     DateTime? lastUpdated,
@@ -59,10 +69,13 @@ class UserDashboardState extends Equatable {
     return UserDashboardState(
       loadingMadeForYou: loadingMadeForYou ?? this.loadingMadeForYou,
       loadingTrending: loadingTrending ?? this.loadingTrending,
+      loadingAlbumsForYou: loadingAlbumsForYou ?? this.loadingAlbumsForYou,
       madeForYou: madeForYou ?? this.madeForYou,
       trending: trending ?? this.trending,
+      albumsForYou: albumsForYou ?? this.albumsForYou,
       errorMadeForYou: errorMadeForYou,
       errorTrending: errorTrending,
+      errorAlbumsForYou: errorAlbumsForYou,
       recentlyPlayed: recentlyPlayed ?? this.recentlyPlayed,
       mostPlayed: mostPlayed ?? this.mostPlayed,
       lastUpdated: lastUpdated ?? this.lastUpdated,
@@ -75,10 +88,13 @@ class UserDashboardState extends Equatable {
   List<Object?> get props => [
     loadingMadeForYou,
     loadingTrending,
+    loadingAlbumsForYou,
     madeForYou,
     trending,
+    albumsForYou,
     errorMadeForYou,
     errorTrending,
+    errorAlbumsForYou,
     recentlyPlayed,
     mostPlayed,
     lastUpdated,
@@ -91,12 +107,14 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
   static const Duration _madeForYouCacheTtl = Duration(minutes: 30);
 
   final ListMadeForYou _listMadeForYou;
+  final ListAlbumsForYou _listAlbumsForYou;
   final ListTrending _listTrending;
   final TrackCacheService? _trackCache;
   final UserDashboardCacheService? _dashboardCache;
 
   UserDashboardCubit(
     this._listMadeForYou,
+    this._listAlbumsForYou,
     this._listTrending, {
     TrackCacheService? trackCache,
     UserDashboardCacheService? dashboardCache,
@@ -115,8 +133,10 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
       state.copyWith(
         loadingMadeForYou: !usePersistentCache,
         loadingTrending: !usePersistentCache,
+        loadingAlbumsForYou: true,
         errorMadeForYou: null,
         errorTrending: null,
+        errorAlbumsForYou: null,
       ),
     );
 
@@ -175,6 +195,17 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
       }
     }
 
+    List<DashboardItem>? albumsForYou;
+    String? albumsForYouError;
+    try {
+      final albumsResult = await _listAlbumsForYou(page: page, limit: limit);
+      albumsForYou = albumsResult.items
+          .where((item) => item.type == DashboardItemType.album)
+          .toList();
+    } catch (e) {
+      albumsForYouError = e.toString();
+    }
+
     final effectiveBackendMadeForYou =
         backendMadeForYou ??
         state.madeForYou.where((item) {
@@ -199,12 +230,17 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
       state.copyWith(
         loadingMadeForYou: false,
         loadingTrending: false,
+        loadingAlbumsForYou: false,
         madeForYou: mixedMadeForYou.isNotEmpty
             ? mixedMadeForYou
             : decoratedMadeForYou,
         trending: decoratedTrending,
+        albumsForYou: await _decorateWithCacheState(
+          albumsForYou ?? state.albumsForYou,
+        ),
         errorMadeForYou: madeForYouError,
         errorTrending: trendingError,
+        errorAlbumsForYou: albumsForYouError,
       ),
     );
   }
@@ -346,46 +382,30 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
     return _decorateWithCacheState(unique);
   }
 
-  Future<List<DashboardItem>> fetchSuggestedAlbums({
+  Future<List<DashboardItem>> fetchAlbumsForYou({
     int page = 0,
     int limit = 50,
   }) async {
-    List<DashboardItem> madeForYouAlbums = const [];
-    List<DashboardItem> trendingAlbums = const [];
-
     try {
-      final result = await _listMadeForYou(page: page, limit: limit);
-      madeForYouAlbums = result.items
+      final result = await _listAlbumsForYou(page: page, limit: limit);
+      final albums = result.items
           .where((item) => item.type == DashboardItemType.album)
           .toList();
-    } catch (_) {}
 
-    try {
-      final result = await _listTrending(page: page, limit: limit);
-      trendingAlbums = result.items
-          .where((item) => item.type == DashboardItemType.album)
-          .toList();
-    } catch (_) {}
+      final combined = <DashboardItem>[...state.albumsForYou, ...albums];
 
-    final combined = <DashboardItem>[
-      ...state.recommendations.where(
-        (item) => item.type == DashboardItemType.album,
-      ),
-      ...state.trending.where((item) => item.type == DashboardItemType.album),
-      ...state.madeForYou.where((item) => item.type == DashboardItemType.album),
-      ...trendingAlbums,
-      ...madeForYouAlbums,
-    ];
-
-    final seen = <String>{};
-    final unique = <DashboardItem>[];
-    for (final item in combined) {
-      final key = item.albumId ?? item.id;
-      if (seen.add(key)) {
-        unique.add(item);
+      final seen = <String>{};
+      final unique = <DashboardItem>[];
+      for (final item in combined) {
+        final key = item.albumId ?? item.id;
+        if (seen.add(key)) {
+          unique.add(item);
+        }
       }
-    }
 
-    return _decorateWithCacheState(unique);
+      return _decorateWithCacheState(unique);
+    } catch (_) {
+      return _decorateWithCacheState(state.albumsForYou);
+    }
   }
 }

@@ -2,5 +2,6 @@ import 'package:musee/features/user__dashboard/domain/entities/dashboard_album.d
 
 abstract interface class UserDashboardRepository {
   Future<PagedDashboardItems> getMadeForYou({int page, int limit});
+  Future<PagedDashboardItems> getAlbumsForYou({int page, int limit});
   Future<PagedDashboardItems> getTrending({int page, int limit});
 }

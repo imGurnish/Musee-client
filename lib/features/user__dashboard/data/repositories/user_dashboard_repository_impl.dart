@@ -15,6 +15,14 @@ class UserDashboardRepositoryImpl implements UserDashboardRepository {
   }
 
   @override
+  Future<PagedDashboardItems> getAlbumsForYou({
+    int page = 0,
+    int limit = 20,
+  }) async {
+    return _remote.getAlbumsForYou(page: page, limit: limit);
+  }
+
+  @override
   Future<PagedDashboardItems> getTrending({
     int page = 0,
     int limit = 20,
