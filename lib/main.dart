@@ -13,7 +13,7 @@ import 'package:musee/init_dependencies.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/download/download_manager.dart';
-import 'package:musee/core/player/media_controls_service.dart';
+import 'package:musee/core/platform/windows_platform_config.dart';
 
 // Conditional import for web-specific plugins
 import 'web_url_strategy.dart'
@@ -21,6 +21,15 @@ import 'web_url_strategy.dart'
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Windows-specific initialization to prevent audio threading issues
+  if (defaultTargetPlatform == TargetPlatform.windows) {
+    try {
+      await initializeWindowsPlatformConfig();
+    } catch (_) {
+      // Non-fatal, continue with app initialization
+    }
+  }
 
   //Configure URL strategy for web
   configureUrlStrategy();

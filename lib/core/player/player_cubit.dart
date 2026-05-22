@@ -134,11 +134,24 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       handleInterruptions: false,
     );
     _setupPlayerStreams();
+
     try {
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
-    } catch (_) {}
-    await MediaControlsService.instance.initialize();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] AudioSession config error (non-fatal): $e');
+      }
+    }
+
+    try {
+      await MediaControlsService.instance.initialize();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] MediaControls init error (non-fatal): $e');
+      }
+    }
+
     _publishNowPlaying(state);
   }
 
