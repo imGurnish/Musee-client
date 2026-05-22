@@ -1182,6 +1182,16 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     emit(state.copyWith(repeatMode: nextMode));
   }
 
+  /// Directly set the repeat mode (used from settings page).
+  void setRepeatMode(PlayerRepeatMode mode) {
+    emit(state.copyWith(repeatMode: mode));
+  }
+
+  /// Enable or disable recommendation auto-fill (used from settings page).
+  void setRecommendationAutoFill(bool enabled) {
+    emit(state.copyWith(recommendationAutoFillEnabled: enabled));
+  }
+
   Future<void> _playAtIndex(int index) async {
     _userPaused = false;
     if (index < 0 || index >= state.queue.length) return;

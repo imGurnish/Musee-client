@@ -2,6 +2,9 @@ class Routes {
   // Primary user-facing dashboard
   static const String dashboard = '/dashboard';
 
+  // Settings
+  static const String settings = '/settings';
+
   // Admin dashboard
   static const String adminDashboard = '/admin';
   static const String adminUsers = '/admin/users';

@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:musee/core/common/cubit/app_user_cubit.dart';
-import 'package:musee/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:musee/features/user__dashboard/presentation/widgets/horizontal_media_section.dart';
 import 'package:musee/features/user__dashboard/presentation/widgets/section_header.dart';
 import 'package:go_router/go_router.dart';
@@ -617,24 +616,34 @@ class _HeaderBar extends StatelessWidget {
         const SizedBox(width: 8),
         BlocBuilder<AppUserCubit, AppUserState>(
           builder: (context, state) {
-            return PopupMenuButton<String>(
-              icon: const CircleAvatar(child: Icon(Icons.person)),
-              onSelected: (value) {
-                switch (value) {
-                  case 'admin':
-                    context.push(Routes.adminDashboard);
-                    break;
-                  case 'logout':
-                    context.read<AuthBloc>().add(AuthLogout());
-                    context.read<AppUserCubit>().updateUser(null);
-                    break;
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(value: 'profile', child: Text('Profile')),
-                const PopupMenuItem(value: 'settings', child: Text('Settings')),
-                const PopupMenuItem(value: 'logout', child: Text('Logout')),
-              ],
+            final name = state is AppUserLoggedIn ? state.user.name : '';
+            final avatarUrl =
+                state is AppUserLoggedIn ? state.user.avatarUrl : '';
+            return Tooltip(
+              message: 'Settings',
+              child: InkWell(
+                onTap: () => context.push(Routes.settings),
+                borderRadius: BorderRadius.circular(20),
+                child: CircleAvatar(
+                  radius: 18,
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primaryContainer,
+                  backgroundImage:
+                      avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                  child: avatarUrl.isEmpty
+                      ? Text(
+                          name.isNotEmpty ? name[0].toUpperCase() : '?',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimaryContainer,
+                          ),
+                        )
+                      : null,
+                ),
+              ),
             );
           },
         ),

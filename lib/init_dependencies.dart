@@ -128,6 +128,7 @@ import 'package:musee/features/user_onboarding/presentation/bloc/onboarding_bloc
 import 'package:musee/core/providers/providers.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';
 import 'package:musee/core/download/download_manager.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 
 final serviceLocator = GetIt.instance;
 
@@ -147,6 +148,9 @@ Future<void> initDependencies() async {
 
   //core
   serviceLocator.registerLazySingleton(() => AppUserCubit());
+
+  // Settings — must be registered before UI builds
+  serviceLocator.registerLazySingleton(() => SettingsCubit());
 
   // Connectivity service for network monitoring
   serviceLocator.registerLazySingleton<ConnectivityService>(

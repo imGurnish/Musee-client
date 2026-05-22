@@ -11,11 +11,14 @@ import '../widgets/onboarding_randomness_screen.dart';
 class OnboardingPage extends StatefulWidget {
   final String userId;
   final Function(BuildContext)? onCompleted;
+  /// When true, existing preferences are loaded so the user sees current selections.
+  final bool isEditing;
 
   const OnboardingPage({
     super.key,
     required this.userId,
     this.onCompleted,
+    this.isEditing = false,
   });
 
   @override
@@ -25,6 +28,7 @@ class OnboardingPage extends StatefulWidget {
 class _OnboardingPageState extends State<OnboardingPage> {
   int _currentStep = 0;
   late PageController _pageController;
+  bool _preferencesFetched = false;
 
   @override
   void initState() {
@@ -66,6 +70,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
   Widget build(BuildContext context) {
     return BlocListener<OnboardingBloc, OnboardingState>(
       listener: (context, state) {
+        // Once genres/moods are loaded (init done) and editing, fetch prefs once
+        if (widget.isEditing &&
+            !_preferencesFetched &&
+            !state.isLoading &&
+            state.genres.isNotEmpty) {
+          _preferencesFetched = true;
+          context
+              .read<OnboardingBloc>()
+              .add(FetchUserPreferencesEvent(widget.userId));
+        }
         if (state.isCompleted) {
           widget.onCompleted?.call(context);
           // Navigate away from onboarding
