@@ -40,9 +40,12 @@ class WindowsAudioOperationHandler {
   /// Execute an audio operation with proper platform thread timing.
   /// Adds a delay before executing the operation to ensure the previous
   /// operation has fully completed on Windows.
+  /// 
+  /// On Windows, the just_audio plugin needs longer delays between successive
+  /// operations to avoid platform channel threading violations.
   Future<T> executeAudioOperation<T>(
     Future<T> Function() operation, {
-    Duration delay = const Duration(milliseconds: 50),
+    Duration delay = const Duration(milliseconds: 100),
   }) async {
     // Wait for any previous operation to complete
     if (_lastOperationTimer?.isActive ?? false) {
@@ -60,7 +63,7 @@ class WindowsAudioOperationHandler {
       if (e.toString().contains('platform thread') || 
           e.toString().contains('Operation aborted') ||
           e.toString().contains('BufferingProgress')) {
-        await Future.delayed(const Duration(milliseconds: 100));
+        await Future.delayed(const Duration(milliseconds: 150));
       }
       rethrow;
     }

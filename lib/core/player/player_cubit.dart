@@ -158,33 +158,58 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   void _setupPlayerStreams() {
-    _positionSub = _player.positionStream.listen((pos) {
-      emit(state.copyWith(position: pos));
-    });
-    _durationSub = _player.durationStream.listen((dur) {
-      emit(state.copyWith(duration: dur ?? Duration.zero));
-    });
-    _playerStateSub = _player.playerStateStream.listen((ps) async {
-      final playing = ps.playing;
-      if (playing) {
-        _userPaused = false;
-      }
-      final buffering =
-          ps.processingState == ProcessingState.loading ||
-          ps.processingState == ProcessingState.buffering;
-      emit(
-        state.copyWith(
-          playing: playing,
-          buffering: buffering,
-          isTransitioning: _isBusySwitching,
-        ),
-      );
+    _positionSub = _player.positionStream.listen(
+      (pos) {
+        emit(state.copyWith(position: pos));
+      },
+      onError: (e) {
+        // Suppress platform channel threading errors from just_audio_windows
+        // These are non-fatal warnings from the plugin
+        if (kDebugMode && !e.toString().contains('platform thread')) {
+          debugPrint('[PlayerCubit] Position stream error: $e');
+        }
+      },
+    );
+    _durationSub = _player.durationStream.listen(
+      (dur) {
+        emit(state.copyWith(duration: dur ?? Duration.zero));
+      },
+      onError: (e) {
+        // Suppress platform channel threading errors from just_audio_windows
+        if (kDebugMode && !e.toString().contains('platform thread')) {
+          debugPrint('[PlayerCubit] Duration stream error: $e');
+        }
+      },
+    );
+    _playerStateSub = _player.playerStateStream.listen(
+      (ps) async {
+        final playing = ps.playing;
+        if (playing) {
+          _userPaused = false;
+        }
+        final buffering =
+            ps.processingState == ProcessingState.loading ||
+            ps.processingState == ProcessingState.buffering;
+        emit(
+          state.copyWith(
+            playing: playing,
+            buffering: buffering,
+            isTransitioning: _isBusySwitching,
+          ),
+        );
 
-      // Auto-advance when current track completes
-      if (ps.processingState == ProcessingState.completed && !_isTrackSwitchInProgress && !_isAdvancingNext) {
-        unawaited(_playNextInternal());
-      }
-    });
+        // Auto-advance when current track completes
+        if (ps.processingState == ProcessingState.completed && !_isTrackSwitchInProgress && !_isAdvancingNext) {
+          unawaited(_playNextInternal());
+        }
+      },
+      onError: (e) {
+        // Suppress platform channel threading errors from just_audio_windows
+        if (kDebugMode && !e.toString().contains('platform thread')) {
+          debugPrint('[PlayerCubit] Player state stream error: $e');
+        }
+      },
+    );
   }
 
   Future<void> _init() async {
@@ -1384,7 +1409,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (_userPaused) return false;
       if (_player.playing) return true;
 
-      await _player.play();
+      await _audioOperationHandler.executeAudioOperation(() => _player.play());
 
       if (_userPaused) {
         await _player.pause();
@@ -1420,7 +1445,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           debugPrint('[PlayerCubit] Reasserting playback after switch token=$switchToken');
         }
         try {
-          await _player.play();
+          await _audioOperationHandler.executeAudioOperation(() => _player.play());
           emit(state.copyWith(playing: _player.playing, buffering: false));
         } catch (e) {
           if (kDebugMode) {
@@ -1535,7 +1560,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       }
       if (state.track == null) return;
       _userPaused = false;
-      await _player.play();
+      await _audioOperationHandler.executeAudioOperation(() => _player.play());
     }
   }
 
@@ -1546,7 +1571,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (state.track == null) return;
     if (_player.playing) return;
     _userPaused = false;
-    await _player.play();
+    await _audioOperationHandler.executeAudioOperation(() => _player.play());
   }
 
   Future<void> seek(Duration position) async {
@@ -1566,7 +1591,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   Future<void> setVolume(double volume) async {
     if (!_platformAudioInitialized) return;
     final safeVolume = volume.clamp(0.0, 1.0).toDouble();
-    await _player.setVolume(safeVolume);
+    await _audioOperationHandler.executeAudioOperation(
+      () => _player.setVolume(safeVolume),
+      delay: const Duration(milliseconds: 50),
+    );
     emit(state.copyWith(volume: safeVolume));
   }
 

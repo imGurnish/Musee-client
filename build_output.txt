@@ -1,0 +1,261 @@
+Launching lib\main.dart on Windows in debug mode...
+Building Windows application...                                 
+Nuget.exe not found, trying to download or use cached version.
+Building Windows application...                                    67.9s
+ΓêÜ Built build\windows\x64\runner\Debug\musee.exe
+supabase.supabase_flutter: INFO: ***** Supabase init completed ***** 
+Syncing files to device Windows...                              
+GoRouter: INFO: Full paths for routes:
+Γö£ΓöÇ/ 
+Γö£ΓöÇ (ShellRoute)
+Γöé Γö£ΓöÇ/dashboard (UserDashboard)
+Γöé Γö£ΓöÇ/albums/:id (UserAlbumPage)
+Γöé Γö£ΓöÇ/playlists/:id (UserPlaylistPage)
+Γöé Γö£ΓöÇ/artists/:id (BlocProvider<UserArtistBloc>)
+Γöé Γö£ΓöÇ/search (BlocProvider<SearchBloc>)
+Γöé Γö£ΓöÇ/library (UserLibraryPage)
+Γöé Γöé Γö£ΓöÇ/library/downloads (DownloadsPage)
+Γöé Γöé ΓööΓöÇ/library/liked-songs (LikedSongsPage)
+Γöé ΓööΓöÇ/create (ComingSoonPage)
+Γö£ΓöÇ/admin (AdminDashboard)
+Γö£ΓöÇ/admin/users (BlocProvider<AdminUsersBloc>)
+Γö£ΓöÇ/admin/users/create-new (AdminUserCreatePage)
+Γö£ΓöÇ/admin/users/:id (AdminUserDetailPage)
+Γö£ΓöÇ/admin/artists (BlocProvider<AdminArtistsBloc>)
+Γö£ΓöÇ/admin/artists/create-new (BlocProvider<AdminArtistsBloc>)
+Γö£ΓöÇ/admin/artists/:id (BlocProvider<AdminArtistsBloc>)
+Γö£ΓöÇ/admin/albums (BlocProvider<AdminAlbumsBloc>)
+Γö£ΓöÇ/admin/albums/create-new (AdminAlbumCreatePage)
+Γö£ΓöÇ/admin/albums/:id (AdminAlbumDetailPage)
+Γö£ΓöÇ/admin/plans (BlocProvider<AdminPlansBloc>)
+Γö£ΓöÇ/admin/tracks (BlocProvider<AdminTracksBloc>)
+Γö£ΓöÇ/admin/tracks/create-new (AdminTrackCreatePage)
+Γö£ΓöÇ/admin/tracks/:id (AdminTrackDetailPage)
+Γö£ΓöÇ/admin/tracks/import/external (AdminExternalImportPage)
+Γö£ΓöÇ/admin/albums/import/external (AdminExternalImportPage)
+Γö£ΓöÇ/admin/import/external (AdminExternalImportPage)
+Γö£ΓöÇ/admin/playlists (AdminPlaylistsPage)
+Γö£ΓöÇ/admin/playlists/:id (BlocProvider<AdminPlaylistDetailBloc>)
+Γö£ΓöÇ/admin/countries (AdminCountriesPage)
+Γö£ΓöÇ/admin/regions (AdminRegionsPage)
+Γö£ΓöÇ/admin/playlists/import/external (AdminExternalImportPage)
+Γö£ΓöÇ/admin/engagement (AdminEngagementPage)
+Γö£ΓöÇ/sign-in (SignInPage)
+Γö£ΓöÇ/sign-up (SignUpPage)
+ΓööΓöÇ/forbidden (ForbiddenPage)
+known full paths for route names:
+  user_dashboard => /dashboard
+  user_album => /albums/:id
+  user_playlist => /playlists/:id
+  user_artist => /artists/:id
+  search => /search
+  library => /library
+  downloads => /library/downloads
+  liked_songs => /library/liked-songs
+  create => /create
+  admin_dashboard => /admin
+  admin_users => /admin/users
+  admin_user_create => /admin/users/create-new
+  admin_user_detail => /admin/users/:id
+  admin_artists => /admin/artists
+  admin_artist_create => /admin/artists/create-new
+  admin_artist_detail => /admin/artists/:id
+  admin_albums => /admin/albums
+  admin_album_create => /admin/albums/create-new
+  admin_album_detail => /admin/albums/:id
+  admin_plans => /admin/plans
+  admin_tracks => /admin/tracks
+  admin_track_create => /admin/tracks/create-new
+  admin_track_detail => /admin/tracks/:id
+  admin_track_import => /admin/tracks/import/external
+  admin_album_import => /admin/albums/import/external
+  admin_import => /admin/import/external
+  admin_playlists => /admin/playlists
+  admin_playlist_detail => /admin/playlists/:id
+  admin_countries => /admin/countries
+  admin_regions => /admin/regions
+  admin_playlist_import => /admin/playlists/import/external
+  admin_engagement => /admin/engagement
+  sign-in => /sign-in
+  sign-up => /sign-up
+  forbidden => /forbidden
+
+GoRouter: INFO: setting initial location /dashboard 
+GoRouter: INFO: Using MaterialApp configuration 
+Syncing files to device Windows...                                 312ms
+
+Flutter run key commands.
+r Hot reload. 
+R Hot restart.
+h List all available interactive commands.
+d Detach (terminate "flutter run" but leave application running).
+c Clear the screen
+q Quit (terminate the application on the device).
+
+A Dart VM Service on Windows is available at: http://127.0.0.1:64102/YdkM2ys6dPU=/
+The Flutter DevTools debugger and profiler on Windows is available at: http://127.0.0.1:64102/YdkM2ys6dPU=/devtools/?uri=ws://127.0.0.1:64102/YdkM2ys6dPU=/ws
+GoRouter: INFO: Using MaterialApp configuration 
+UserDashboard initialized
+Fetching user data for ID: 6d9379f2-58e7-4345-8a65-402f8c5a61b2
+Using access token (len): 1353
+Γ£à User data from backend: {user_id: 6d9379f2-58e7-4345-8a65-402f8c5a61b2, email: universityfinder123@gmail.com, name: Gurnish, user_type: admin, subscription_type: free, plan_id: null, avatar_url: https://xvpputhovrhgowfkjhfv.supabase.co/storage/v1/object/public/avatars/users/6d9379f2-58e7-4345-8a65-402f8c5a61b2.png, followers_count: 0, followings_count: 0, settings: {}, last_login_at: null, created_at: 2026-03-25T06:19:02.44541+00:00, updated_at: 2026-04-01T06:07:29.821428+00:00}
+[just_audio_windows] Called setVolume
+[just_audio_windows] Called setSpeed
+[just_audio_windows] Called setPitch
+[just_audio_windows] Called setSkipSilence
+[just_audio_windows] Called setLoopMode
+[just_audio_windows] Called setShuffleMode
+[just_audio_windows] Called load
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.events.47088958-0efc-44b8-b5ca-7960db83893c' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.data.47088958-0efc-44b8-b5ca-7960db83893c' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[PlayerCubit] caching track: Ranjha
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[ImageCache] Cached: 3dbd98e7.jpg
+[PlayerCubit] Cached track metadata: dea33454-8524-43fa-9f58-1a6fd07fc5f9 (musee)
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows] Called play
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[PlayerCubit] caching track: Ranjha
+[PlayerCubit] Cached track metadata: dea33454-8524-43fa-9f58-1a6fd07fc5f9 (musee)
+[PlayLogQueue] Enqueued log for track dea33454-8524-43fa-9f58-1a6fd07fc5f9 (pending: 1)
+[just_audio_windows] Called setVolume
+[just_audio_windows] Called setSpeed
+[just_audio_windows] Called setPitch
+[just_audio_windows] Called setSkipSilence
+[just_audio_windows] Called setLoopMode
+[just_audio_windows] Called setShuffleMode
+[just_audio_windows] Called load
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.events.07bb3deb-cbce-4f24-ae33-bb8919031822' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.data.07bb3deb-cbce-4f24-ae33-bb8919031822' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[PlayerCubit] caching track: Moves
+[PlayerCubit] caching track: Moves
+[ImageCache] Cached: 3dadb821.jpg
+[PlayerCubit] Cached track metadata: 6198e81c-64b3-4a8f-ac1a-33b758b41fbb (musee)
+[ImageCache] Cached: 3dadb821.jpg
+[PlayerCubit] Cached track metadata: 6198e81c-64b3-4a8f-ac1a-33b758b41fbb (musee)
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows] Called play
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[PlayerCubit] Using cached streaming URL for track: 6198e81c-64b3-4a8f-ac1a-33b758b41fbb
+[just_audio_windows] Called setVolume
+[just_audio_windows] Called setSpeed
+[just_audio_windows] Called setPitch
+[just_audio_windows] Called setSkipSilence
+[just_audio_windows] Called setLoopMode
+[just_audio_windows] Called setShuffleMode
+[just_audio_windows] Called load
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.events.65519c2f-4aaa-42a3-a2d0-930cc1d85270' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.data.65519c2f-4aaa-42a3-a2d0-930cc1d85270' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[PlayerCubit] caching track: Moves
+[PlayerCubit] Cached track metadata: 6198e81c-64b3-4a8f-ac1a-33b758b41fbb (musee)
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows] Called play
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[PlayLogQueue] Flushing 1 entries (remaining: 0)
+[PlayLogQueue] Enqueued log for track 6198e81c-64b3-4a8f-ac1a-33b758b41fbb (pending: 1)
+[just_audio_windows] Called setVolume
+[just_audio_windows] Called setSpeed
+[just_audio_windows] Called setPitch
+[just_audio_windows] Called setSkipSilence
+[just_audio_windows] Called setLoopMode
+[just_audio_windows] Called setShuffleMode
+[just_audio_windows] Called load
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.events.5ad10d2c-2a65-427c-abaf-900644573ecf' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.data.5ad10d2c-2a65-427c-abaf-900644573ecf' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[PlayerCubit] caching track: Dealer
+[PlayerCubit] caching track: Dealer
+[ImageCache] Cached: 139310f6.jpg
+[ImageCache] Cached: 139310f6.jpg
+[PlayerCubit] Cached track metadata: c03f7f9d-67ad-4d3f-8b81-c9c2e73402b8 (musee)
+[PlayerCubit] Cached track metadata: c03f7f9d-67ad-4d3f-8b81-c9c2e73402b8 (musee)
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows] Called play
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[PlayLogQueue] Enqueued log for track c03f7f9d-67ad-4d3f-8b81-c9c2e73402b8 (pending: 2)
+[PlayLogQueue] Flushing 2 entries (remaining: 0)
+[PlayLogQueue] Enqueued log for track c03f7f9d-67ad-4d3f-8b81-c9c2e73402b8 (pending: 1)
+[PlayerCubit] Using cached streaming URL for track: d73e97b4-3114-48bc-8992-abcc2766f5e4
+[just_audio_windows] Called setVolume
+[just_audio_windows] Called setSpeed
+[just_audio_windows] Called setPitch
+[just_audio_windows] Called setSkipSilence
+[just_audio_windows] Called setLoopMode
+[just_audio_windows] Called setShuffleMode
+[just_audio_windows] Called load
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.events.e60251ad-568b-4370-8996-5feda981a7e4' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.data.e60251ad-568b-4370-8996-5feda981a7e4' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows] Called play
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[PlayerCubit] caching track: Top Fella
+[PlayerCubit] Cached track metadata: d73e97b4-3114-48bc-8992-abcc2766f5e4 (musee)
+[PlayerCubit] Using cached streaming URL for track: 599207ab-28a3-44fa-87f5-b83b7aaa7e3f
+[just_audio_windows] Called setVolume
+[just_audio_windows] Called setSpeed
+[just_audio_windows] Called setPitch
+[just_audio_windows] Called setSkipSilence
+[just_audio_windows] Called setLoopMode
+[just_audio_windows] Called setShuffleMode
+[just_audio_windows] Called load
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.events.0f7ef00c-4239-47e4-a498-753509c8de73' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.data.0f7ef00c-4239-47e4-a498-753509c8de73' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[PlayerCubit] caching track: EYES ON ME
+[PlayerCubit] Cached track metadata: 599207ab-28a3-44fa-87f5-b83b7aaa7e3f (musee)
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows] Called play
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[PlayLogQueue] Flushing 1 entries (remaining: 0)
+[PlayLogQueue] Enqueued log for track 599207ab-28a3-44fa-87f5-b83b7aaa7e3f (pending: 1)
+[PlayLogQueue] Flushing 1 entries (remaining: 0)
+GoRouter: INFO: going to /search 
+GoRouter: INFO: Using MaterialApp configuration 
+[ConnectivityService] Status changed: ConnectivityStatus.online
+GoRouter: INFO: pushing /albums/cc1553f2-a736-43cb-a50f-0a858fa4fa82 
+[PlayLogQueue] Enqueued log for track 599207ab-28a3-44fa-87f5-b83b7aaa7e3f (pending: 1)
+[just_audio_windows] Called setVolume
+[just_audio_windows] Called setSpeed
+[just_audio_windows] Called setPitch
+[just_audio_windows] Called setSkipSilence
+[just_audio_windows] Called setLoopMode
+[just_audio_windows] Called setShuffleMode
+[just_audio_windows] Called load
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.events.1434b5ac-0173-4053-8e6f-7974eee5b1c5' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[ERROR:flutter/shell/common/shell.cc(1183)] The 'com.ryanheise.just_audio.data.1434b5ac-0173-4053-8e6f-7974eee5b1c5' channel sent a message from native to Flutter on a non-platform thread. Platform channel messages must be sent on the platform thread. Failure to do so may result in data loss or crashes, and must be fixed in the plugin or application code creating that channel.
+See https://docs.flutter.dev/platform-integration/platform-channels#channels-and-platform-threading for more information.
+[PlayerCubit] caching track: Komagata Maru
+[PlayerCubit] caching track: Komagata Maru
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows] Called play
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[just_audio_windows]: Broadcast playback event error: Error accessing BufferingProgress. Using default value of 1.
+[ImageCache] Cached: 26ca4cba.jpg
+[PlayerCubit] Cached track metadata: aaa00349-dc62-48ae-b1cd-00a5768cf081 (musee)
+[ImageCache] Cached: 26ca4cba.jpg
+[PlayerCubit] Cached track metadata: aaa00349-dc62-48ae-b1cd-00a5768cf081 (musee)
+[PlayLogQueue] Flushing 1 entries (remaining: 0)
+[PlayLogQueue] Enqueued log for track aaa00349-dc62-48ae-b1cd-00a5768cf081 (pending: 1)
+[PlayLogQueue] Flushing 1 entries (remaining: 0)
