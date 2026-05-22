@@ -42,16 +42,27 @@ class UserArtistAlbum extends Equatable {
   final String title;
   final String? coverUrl;
   final String? releaseDate;
+  final bool isSingle;
+  final String? singleTrackId;
 
   const UserArtistAlbum({
     required this.albumId,
     required this.title,
     this.coverUrl,
     this.releaseDate,
+    this.isSingle = false,
+    this.singleTrackId,
   });
 
   @override
-  List<Object?> get props => [albumId, title, coverUrl, releaseDate];
+  List<Object?> get props => [
+    albumId,
+    title,
+    coverUrl,
+    releaseDate,
+    isSingle,
+    singleTrackId,
+  ];
 }
 
 class UserArtistTrack extends Equatable {

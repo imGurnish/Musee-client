@@ -1,7 +1,13 @@
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:musee/core/player/player_cubit.dart';
+import 'package:musee/core/player/player_state.dart';
+import 'package:musee/core/common/widgets/playing_bars_animation.dart';
 
 class MediaCard extends StatelessWidget {
+  final String? id;
   final String title;
   final String subtitle;
   final String? imageUrl;
@@ -14,6 +20,7 @@ class MediaCard extends StatelessWidget {
 
   const MediaCard({
     super.key,
+    this.id,
     required this.title,
     required this.subtitle,
     this.imageUrl,
@@ -47,7 +54,68 @@ class MediaCard extends StatelessWidget {
                 aspectRatio: 1,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: _buildImageOrPlaceholder(color),
+                  child: BlocBuilder<PlayerCubit, PlayerViewState>(
+                    builder: (context, state) {
+                      final type = mediaTypeLabel.toLowerCase();
+                      bool isActive = false;
+                      if (id != null) {
+                        if (type == 'album') {
+                          isActive = state.track?.albumId == id;
+                        } else if (type == 'playlist') {
+                          isActive = state.track?.playlistId == id;
+                        } else if (type == 'artist') {
+                          isActive = state.track?.artistId == id;
+                        } else {
+                          isActive = state.track?.trackId == id;
+                        }
+                      }
+                      final isPlaying = isActive && state.playing;
+
+                      return Stack(
+                        children: [
+                          Positioned.fill(
+                            child: _buildImageOrPlaceholder(color),
+                          ),
+                          if (isActive)
+                            Positioned.fill(
+                              child: Container(
+                                color: Colors.black.withValues(alpha: 0.3),
+                                child: Center(
+                                  child: ClipOval(
+                                    child: BackdropFilter(
+                                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                      child: Container(
+                                        width: 48,
+                                        height: 48,
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(alpha: 0.4),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Colors.white.withValues(alpha: 0.15),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Center(
+                                          child: PlayingBarsAnimation(
+                                            width: 24,
+                                            height: 24,
+                                            barCount: 4,
+                                            barWidth: 3,
+                                            gap: 2,
+                                            color: Colors.white,
+                                            isPlaying: isPlaying,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ),
               const SizedBox(height: 10),

@@ -10,7 +10,13 @@ class GetUserArtistAlbums {
     required String artistId,
     required int page,
     required int limit,
+    bool singleTrack = false,
   }) {
-    return _repo.getArtistAlbums(artistId: artistId, page: page, limit: limit);
+    return _repo.getArtistAlbums(
+      artistId: artistId,
+      page: page,
+      limit: limit,
+      singleTrack: singleTrack,
+    );
   }
-}
+}

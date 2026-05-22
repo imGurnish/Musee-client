@@ -8,6 +8,8 @@ abstract interface class SearchRecentsService {
 
   Future<void> addRecent(SearchRecentItem item);
 
+  Future<void> removeRecent(String uniqueKey);
+
   Future<void> clearRecents();
 }
 
@@ -61,6 +63,20 @@ class SearchRecentsServiceImpl implements SearchRecentsService {
     ];
 
     final normalized = merged.take(_maxItems).map((entry) {
+      return jsonEncode(entry.toJson());
+    }).toList(growable: false);
+
+    await box.put(_itemsKey, normalized);
+  }
+
+  @override
+  Future<void> removeRecent(String uniqueKey) async {
+    final box = await _getBox();
+    final existing = await getRecents(limit: _maxItems);
+
+    final updated = existing.where((entry) => entry.uniqueKey != uniqueKey).toList();
+
+    final normalized = updated.map((entry) {
       return jsonEncode(entry.toJson());
     }).toList(growable: false);
 

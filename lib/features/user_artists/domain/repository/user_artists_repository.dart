@@ -7,5 +7,6 @@ abstract interface class UserArtistsRepository {
     required String artistId,
     required int page,
     required int limit,
+    bool singleTrack = false,
   });
 }

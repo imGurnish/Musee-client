@@ -21,10 +21,20 @@ class SearchRepositoryImpl implements SearchRepository {
   }
 
   @override
-  Future<Either<Failure, CatalogSearchResults>> searchCatalog(String query) {
+  Future<Either<Failure, CatalogSearchResults>> searchCatalog(
+    String query, {
+    String? type,
+    int? limit,
+    int? page,
+  }) {
     try {
       return remoteDataSource
-          .searchCatalog(query)
+          .searchCatalog(
+            query,
+            type: type,
+            limit: limit,
+            page: page,
+          )
           .then((results) => Right(results));
     } catch (error) {
       return Future.value(Left(Failure(error.toString())));

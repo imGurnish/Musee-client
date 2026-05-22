@@ -128,6 +128,10 @@ import 'package:musee/features/user_onboarding/presentation/bloc/onboarding_bloc
 import 'package:musee/core/providers/providers.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';
 import 'package:musee/core/download/download_manager.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
+import 'package:musee/core/equalizer/equalizer_controller.dart';
+import 'package:musee/core/equalizer/headphone_service.dart';
 
 final serviceLocator = GetIt.instance;
 
@@ -147,6 +151,9 @@ Future<void> initDependencies() async {
 
   //core
   serviceLocator.registerLazySingleton(() => AppUserCubit());
+
+  // Settings — must be registered before UI builds
+  serviceLocator.registerLazySingleton(() => SettingsCubit());
 
   // Connectivity service for network monitoring
   serviceLocator.registerLazySingleton<ConnectivityService>(
@@ -208,6 +215,9 @@ Future<void> initDependencies() async {
   // Listening history and recommendations
   _initListeningHistory();
 
+  // Register EqualizerController before PlayerCubit (required for injection)
+  serviceLocator.registerLazySingleton(() => EqualizerController());
+
   // Register player with repository and cache services
   serviceLocator
     ..registerLazySingleton<PlayerDataSource>(
@@ -226,8 +236,36 @@ Future<void> initDependencies() async {
         listeningHistoryRepository:
             serviceLocator<ListeningHistoryRepository>(),
         supabaseClient: serviceLocator<SupabaseClient>(),
+        equalizerController: serviceLocator<EqualizerController>(),
       ),
     );
+
+  // ─── Headphone service & EQ→Player bridge ────────────────────────────────
+
+  // Initialise headphone detection (graceful no-op on Windows/Web)
+  await HeadphoneService.instance.initialize();
+
+  // Helper to apply or bypass equalizer settings
+  void applyEqualizerSettings(SettingsState s) {
+    final player = serviceLocator<PlayerCubit>();
+    if (s.equalizerEnabled) {
+      player
+        ..applyEqBands(s.equalizerBands)
+        ..applyBass(s.bassLevel)
+        ..applySurround(s.surroundLevel);
+    } else {
+      player
+        ..applyEqBands(const [0.0, 0.0, 0.0, 0.0, 0.0])
+        ..applyBass(0)
+        ..applySurround(0);
+    }
+  }
+
+  // Bridge: when EQ settings change → push immediately to the player.
+  serviceLocator<SettingsCubit>().stream.listen(applyEqualizerSettings);
+
+  // Apply persisted EQ settings immediately on startup.
+  applyEqualizerSettings(serviceLocator<SettingsCubit>().state);
 
   //auth
   _initAuth();

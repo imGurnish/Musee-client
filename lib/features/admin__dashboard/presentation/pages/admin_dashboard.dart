@@ -69,7 +69,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       crossAxisSpacing: 16,
                       mainAxisExtent: 188,
                     ),
-                    itemCount: 11,
+                    itemCount: 12,
                     itemBuilder: (context, index) {
                       final cards = [
                         (
@@ -148,6 +148,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           Icons.trending_up_rounded,
                           Colors.lightBlue,
                           Routes.adminEngagement,
+                        ),
+                        (
+                          'System Status',
+                          'Server CPU, memory & storage',
+                          Icons.dns_rounded,
+                          Colors.purpleAccent,
+                          Routes.adminStatus,
                         ),
                       ];
 

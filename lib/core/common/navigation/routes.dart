@@ -2,6 +2,10 @@ class Routes {
   // Primary user-facing dashboard
   static const String dashboard = '/dashboard';
 
+  // Settings
+  static const String settings = '/settings';
+  static const String equalizer = '/equalizer';
+
   // Admin dashboard
   static const String adminDashboard = '/admin';
   static const String adminUsers = '/admin/users';
@@ -25,6 +29,7 @@ class Routes {
   static const String adminCountries = '/admin/countries';
   static const String adminRegions = '/admin/regions';
   static const String adminEngagement = '/admin/engagement';
+  static const String adminStatus = '/admin/status';
 
   // Authentication
   static const String signIn = '/sign-in';
