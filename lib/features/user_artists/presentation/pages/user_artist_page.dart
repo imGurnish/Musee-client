@@ -67,7 +67,7 @@ class _UserArtistViewState extends State<_UserArtistView> {
 
     final bloc = context.read<UserArtistBloc>();
     final state = bloc.state;
-    if (state.isLoading || state.isLoadingMore || state.hasReachedAlbumEnd) {
+    if (state.isLoading || state.isLoadingMore || state.hasReachedAllEnd) {
       return;
     }
 
@@ -155,25 +155,29 @@ class _UserArtistViewState extends State<_UserArtistView> {
                       : (width < 760 ? 3 : 4);
 
                   final albums = artist.albums;
+
                   final albumsSection = albums.isEmpty
-                      ? SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
+                      ? SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                            child: Container(
+                              padding: const EdgeInsets.all(20),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Row(
                                 children: [
                                   Icon(
                                     Icons.album_outlined,
-                                    size: 44,
+                                    size: 32,
                                     color: theme.colorScheme.onSurfaceVariant,
                                   ),
-                                  const SizedBox(height: 10),
+                                  const SizedBox(width: 12),
                                   Text(
                                     'No albums available',
-                                    style: theme.textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.w700,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
                                     ),
                                   ),
                                 ],
@@ -184,15 +188,40 @@ class _UserArtistViewState extends State<_UserArtistView> {
                       : SliverPadding(
                           padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
                           sliver: SliverGrid(
-                            delegate: SliverChildBuilderDelegate((context, index) {
-                              final album = albums[index];
-                              return _AlbumCard(
-                                title: album.title,
-                                coverUrl: album.coverUrl,
-                                onTap: () =>
-                                    context.push('/albums/${album.albumId}'),
-                              );
-                            }, childCount: albums.length),
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                final item = albums[index];
+                                if (item.isSingle) {
+                                  // Singles play directly — no album detail page.
+                                  return _AlbumCard(
+                                    title: item.title,
+                                    coverUrl: item.coverUrl,
+                                    isSingle: true,
+                                    onTap: () {
+                                      if (item.singleTrackId != null) {
+                                        showPlayerBottomSheet(
+                                          context,
+                                          trackId: item.singleTrackId!,
+                                          title: item.title,
+                                          artist: artist.name ?? '',
+                                          imageUrl: item.coverUrl,
+                                          artistId: widget.artistId,
+                                          openSheet: false,
+                                        );
+                                      }
+                                    },
+                                  );
+                                }
+                                return _AlbumCard(
+                                  title: item.title,
+                                  coverUrl: item.coverUrl,
+                                  isSingle: false,
+                                  onTap: () =>
+                                      context.push('/albums/${item.albumId}'),
+                                );
+                              },
+                              childCount: albums.length,
+                            ),
                             gridDelegate:
                                 SliverGridDelegateWithFixedCrossAxisCount(
                                   crossAxisCount: crossAxisCount,
@@ -284,7 +313,7 @@ class _UserArtistViewState extends State<_UserArtistView> {
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                           child: Text(
-                            'Albums',
+                            'Discography',
                             style: theme.textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.w800,
                             ),
@@ -432,9 +461,15 @@ class _ArtistHeader extends StatelessWidget {
 class _AlbumCard extends StatelessWidget {
   final String title;
   final String? coverUrl;
+  final bool isSingle;
   final VoidCallback onTap;
 
-  const _AlbumCard({required this.title, this.coverUrl, required this.onTap});
+  const _AlbumCard({
+    required this.title,
+    this.coverUrl,
+    required this.isSingle,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -451,35 +486,69 @@ class _AlbumCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  color: theme.colorScheme.surfaceContainerHighest,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: coverUrl != null && coverUrl!.isNotEmpty
-                      ? Image.network(
-                          coverUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) {
-                            return Center(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      color: theme.colorScheme.surfaceContainerHighest,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: coverUrl != null && coverUrl!.isNotEmpty
+                          ? Image.network(
+                              coverUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) {
+                                return Center(
+                                  child: Icon(
+                                    isSingle
+                                        ? Icons.music_note_rounded
+                                        : Icons.album_rounded,
+                                    size: 44,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                );
+                              },
+                            )
+                          : Center(
                               child: Icon(
-                                Icons.album_rounded,
+                                isSingle
+                                    ? Icons.music_note_rounded
+                                    : Icons.album_rounded,
                                 size: 44,
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
-                            );
-                          },
-                        )
-                      : Center(
-                          child: Icon(
-                            Icons.album_rounded,
-                            size: 44,
-                            color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                    ),
+                  ),
+                  // Single badge overlay
+                  if (isSingle)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer
+                              .withValues(alpha: 0.93),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Single',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onPrimaryContainer,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.2,
                           ),
                         ),
-                ),
+                      ),
+                    ),
+                ],
               ),
             ),
             const SizedBox(height: 8),
@@ -491,12 +560,21 @@ class _AlbumCard extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
+            if (isSingle)
+              Text(
+                'Single',
+                maxLines: 1,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 }
+
 
 class _HeaderChip extends StatelessWidget {
   final String label;
