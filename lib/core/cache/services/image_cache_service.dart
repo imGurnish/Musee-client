@@ -16,6 +16,9 @@ abstract class ImageCacheService {
   /// Download and cache an image, returns local path on success
   Future<String?> cacheImage(String imageUrl);
 
+  /// Remove a single URL from the file-based cache
+  Future<void> evictUrl(String imageUrl);
+
   /// Get total size of cached images in bytes
   Future<int> getTotalCacheSize();
 
@@ -119,6 +122,24 @@ class ImageCacheServiceImpl implements ImageCacheService {
         print('[ImageCache] Error caching $imageUrl: $e');
       }
       return null;
+    }
+  }
+
+  @override
+  Future<void> evictUrl(String imageUrl) async {
+    if (kIsWeb || imageUrl.isEmpty) return;
+    try {
+      final file = File(_getFilePath(imageUrl));
+      if (await file.exists()) {
+        await file.delete();
+        if (kDebugMode) {
+          print('[ImageCache] Evicted: ${_getFilename(imageUrl)}');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[ImageCache] Error evicting $imageUrl: $e');
+      }
     }
   }
 

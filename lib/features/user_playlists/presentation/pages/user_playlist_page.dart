@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'dart:math';
+import 'dart:ui' show ImageFilter;
+import 'package:go_router/go_router.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:musee/features/user_playlists/presentation/bloc/user_playlist_bloc.dart';
 import 'package:musee/core/player/player_cubit.dart';
+import 'package:musee/core/player/player_state.dart';
+import 'package:musee/core/common/widgets/playing_bars_animation.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
@@ -146,6 +150,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
               String trackId, {
               required String title,
               required String artist,
+              String? artistId,
             }) async {
               if (!context.mounted) return;
               // Don't pre-fetch URL — showPlayerBottomSheet with trackId
@@ -158,6 +163,8 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                 album: playlist.name,
                 imageUrl: playlist.coverUrl,
                 trackId: trackId,
+                artistId: artistId,
+                playlistId: playlist.playlistId,
                 openSheet: false,
               );
             }
@@ -190,6 +197,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                   flexibleSpace: FlexibleSpaceBar(
                     collapseMode: CollapseMode.parallax,
                     background: _PlaylistHeader(
+                      playlistId: playlist.playlistId,
                       title: playlist.name,
                       creator: creatorName,
                       description: playlist.description,
@@ -219,10 +227,10 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                 onPressed: canPlayPlaylist
                                     ? () async {
                                         final first = playlist.tracks.first;
-                                        final artists = first.artists.isNotEmpty
-                                            ? (first.artists.first.name ??
-                                                creatorName)
-                                            : creatorName;
+                                        final firstArtist = first.artists.isNotEmpty
+                                            ? first.artists.first
+                                            : null;
+                                        final artists = firstArtist?.name ?? creatorName;
                                         // Replace queue with all playlist tracks
                                         final queueItems = playlist.tracks
                                             .map((track) {
@@ -249,6 +257,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                           first.trackId,
                                           title: first.title,
                                           artist: artists,
+                                          artistId: firstArtist?.artistId,
                                         );
                                       }
                                     : null,
@@ -303,14 +312,12 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                         ? () async {
                                             final randomTrack = playlist.tracks[
                                                 Random().nextInt(trackCount)];
-                                            final artists = randomTrack
-                                                    .artists.isNotEmpty
+                                            final randomArtist = randomTrack.artists.isNotEmpty
+                                                ? randomTrack.artists.first
+                                                : null;
+                                            final artists = randomArtist != null
                                                 ? randomTrack.artists
-                                                      .map(
-                                                        (a) =>
-                                                            a.name ??
-                                                            'Unknown Artist',
-                                                      )
+                                                      .map((a) => a.name ?? 'Unknown Artist')
                                                       .join(', ')
                                                 : creatorName;
                                             // Replace queue with all playlist tracks
@@ -343,6 +350,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                               randomTrack.trackId,
                                               title: randomTrack.title,
                                               artist: artists,
+                                              artistId: randomArtist?.artistId,
                                             );
                                           }
                                         : null,
@@ -512,10 +520,14 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                   })
                                   .toList();
                               await playerCubit.replaceQueue(queueItems);
+                              final trackArtist = t.artists.isNotEmpty
+                                  ? t.artists.first
+                                  : null;
                               await playTrack(
                                 t.trackId,
                                 title: t.title,
                                 artist: artists,
+                                artistId: trackArtist?.artistId,
                               );
                             },
                             child: Padding(
@@ -525,24 +537,43 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                               ),
                               child: Row(
                                 children: [
-                                  Container(
-                                    width: 34,
-                                    height: 34,
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color:
-                                          theme.colorScheme.primaryContainer,
-                                    ),
-                                    child: Text(
-                                      '${index + 1}',
-                                      style: theme.textTheme.labelMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                            color: theme.colorScheme
-                                                .onPrimaryContainer,
-                                          ),
-                                    ),
+                                  BlocBuilder<PlayerCubit, PlayerViewState>(
+                                    builder: (context, state) {
+                                      final isActive = state.track?.trackId == t.trackId;
+                                      final isPlaying = isActive && state.playing;
+                                      return Container(
+                                        width: 34,
+                                        height: 34,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: isActive
+                                              ? theme.colorScheme.primary
+                                              : theme.colorScheme.primaryContainer,
+                                        ),
+                                        child: isActive
+                                            ? Center(
+                                                child: PlayingBarsAnimation(
+                                                  width: 14,
+                                                  height: 14,
+                                                  barCount: 3,
+                                                  barWidth: 2,
+                                                  gap: 1.5,
+                                                  color: theme.colorScheme.onPrimary,
+                                                  isPlaying: isPlaying,
+                                                ),
+                                              )
+                                            : Text(
+                                                '${index + 1}',
+                                                style: theme.textTheme.labelMedium
+                                                    ?.copyWith(
+                                                      fontWeight: FontWeight.w700,
+                                                      color: theme.colorScheme
+                                                          .onPrimaryContainer,
+                                                    ),
+                                              ),
+                                      );
+                                    },
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
@@ -650,10 +681,14 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                           .toList();
                                       await playerCubit
                                           .replaceQueue(queueItems);
+                                      final trackArtist = t.artists.isNotEmpty
+                                          ? t.artists.first
+                                          : null;
                                       await playTrack(
                                         t.trackId,
                                         title: t.title,
                                         artist: artists,
+                                        artistId: trackArtist?.artistId,
                                       );
                                     },
                                   ),
@@ -772,6 +807,8 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                 return _ArtistChip(
                                   name: artist.name ?? 'Unknown Creator',
                                   avatarUrl: artist.avatarUrl,
+                                  // Playlist creators are users, not music
+                                  // artists — do not navigate on tap.
                                 );
                               },
                             ),
@@ -820,6 +857,7 @@ class _TrackStatusChip extends StatelessWidget {
 }
 
 class _PlaylistHeader extends StatelessWidget {
+  final String playlistId;
   final String title;
   final String creator;
   final String? description;
@@ -830,6 +868,7 @@ class _PlaylistHeader extends StatelessWidget {
   final bool isPublic;
 
   const _PlaylistHeader({
+    required this.playlistId,
     required this.title,
     required this.creator,
     required this.coverUrl,
@@ -853,19 +892,67 @@ class _PlaylistHeader extends StatelessWidget {
           child: SizedBox(
             width: artSize,
             height: artSize,
-            child: coverUrl == null
-                ? Container(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    child: const Icon(Icons.queue_music_rounded, size: 64),
-                  )
-                : Image.network(
-                    coverUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => Container(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      child: const Icon(Icons.queue_music_rounded, size: 64),
-                    ),
-                  ),
+            child: BlocBuilder<PlayerCubit, PlayerViewState>(
+              builder: (context, state) {
+                final isActive = state.track?.playlistId == playlistId;
+                final isPlaying = isActive && state.playing;
+                final img = coverUrl == null
+                    ? Container(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        child: const Icon(Icons.queue_music_rounded, size: 64),
+                      )
+                    : Image.network(
+                        coverUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Container(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          child: const Icon(Icons.queue_music_rounded, size: 64),
+                        ),
+                      );
+
+                return Stack(
+                  children: [
+                    Positioned.fill(child: img),
+                    if (isActive)
+                      Positioned.fill(
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          child: Center(
+                            child: ClipOval(
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                child: Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.4),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.15),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: PlayingBarsAnimation(
+                                      width: 24,
+                                      height: 24,
+                                      barCount: 4,
+                                      barWidth: 3,
+                                      gap: 2,
+                                      color: Colors.white,
+                                      isPlaying: isPlaying,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
           ),
         );
 
@@ -1013,14 +1100,15 @@ class _MetaChip extends StatelessWidget {
 class _ArtistChip extends StatelessWidget {
   final String name;
   final String? avatarUrl;
+  final String? artistId;
 
-  const _ArtistChip({required this.name, this.avatarUrl});
+  const _ArtistChip({required this.name, this.avatarUrl, this.artistId});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Container(
+    final chip = Container(
       width: 84,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
@@ -1046,9 +1134,21 @@ class _ArtistChip extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: theme.textTheme.labelSmall,
+            style: theme.textTheme.labelSmall?.copyWith(
+              decoration: artistId != null ? TextDecoration.underline : null,
+            ),
           ),
         ],
+      ),
+    );
+
+    if (artistId == null) return chip;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => context.push('/artists/$artistId'),
+        child: chip,
       ),
     );
   }

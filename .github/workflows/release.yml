@@ -3,7 +3,7 @@ name: Build and Release Flutter App
 on:
   push:
     tags:
-      - 'v*'   # Run only when you push a tag like v1.0.0
+      - 'v*'
 
 jobs:
   build:
@@ -12,23 +12,32 @@ jobs:
         include:
           - platform: android
             os: ubuntu-latest
+
           - platform: linux
             os: ubuntu-latest
+
           - platform: windows
             os: windows-latest
-          - platform: macos
-            os: macos-latest
+
+          # - platform: macos
+          #   os: macos-latest
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: subosito/flutter-action@v2
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.7'
           channel: stable
           cache: true
+
+      # =========================
+      # ENABLE DESKTOP SUPPORT
+      # =========================
 
       - name: Enable Linux desktop
         if: matrix.platform == 'linux'
@@ -42,69 +51,178 @@ jobs:
         if: matrix.platform == 'macos'
         run: flutter config --enable-macos-desktop
 
-      - run: flutter pub get
+      # =========================
+      # FLUTTER PACKAGES
+      # =========================
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      # =========================
+      # ANDROID SIGNING SETUP
+      # =========================
+
+      - name: Decode Android keystore
+        if: matrix.platform == 'android'
+        shell: bash
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+
+      - name: Create Android key.properties
+        if: matrix.platform == 'android'
+        shell: bash
+        run: |
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=app/upload-keystore.jks
+          EOF
+
+      # =========================
+      # CREATE APP SECRETS FILE
+      # =========================
 
       - name: Create app_secrets.dart
         shell: bash
         run: |
           mkdir -p lib/core/secrets
+
           cat > lib/core/secrets/app_secrets.dart <<'EOF'
           class AppSecrets {
             static const bool isProduction = true;
-            static const String supabaseUrl = "${{ secrets.SUPABASE_URL }}";
-            static const String supabaseAnonKey = "${{ secrets.SUPABASE_ANON_KEY }}";
-            static const String backendUrl = "${{ secrets.BACKEND_URL }}";
+
+            static const String supabaseUrl =
+                "${{ secrets.SUPABASE_URL }}";
+
+            static const String supabaseAnonKey =
+                "${{ secrets.SUPABASE_ANON_KEY }}";
+
+            static const String backendUrl =
+                "${{ secrets.BACKEND_URL }}";
 
             // External Music API
-            static const String externalMusicBaseUrl = "${{ secrets.EXTERNAL_MUSIC_BASE_URL }}";
-            static const String externalMusicDecryptionKey = "${{ secrets.EXTERNAL_MUSIC_DECRYPTION_KEY }}";
-            static const String externalMusicOrigin = "${{ secrets.EXTERNAL_MUSIC_ORIGIN }}";
-            static const String externalMusicReferer = "${{ secrets.EXTERNAL_MUSIC_REFERER }}";
+
+            static const String externalMusicBaseUrl =
+                "${{ secrets.EXTERNAL_MUSIC_BASE_URL }}";
+
+            static const String externalMusicDecryptionKey =
+                "${{ secrets.EXTERNAL_MUSIC_DECRYPTION_KEY }}";
+
+            static const String externalMusicOrigin =
+                "${{ secrets.EXTERNAL_MUSIC_ORIGIN }}";
+
+            static const String externalMusicReferer =
+                "${{ secrets.EXTERNAL_MUSIC_REFERER }}";
           }
           EOF
 
-      # 🐧 Install required build packages for Linux only
+      # =========================
+      # LINUX DEPENDENCIES
+      # =========================
+
       - name: Install Linux dependencies
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev zip
+
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            liblzma-dev \
+            zip
+
+      # =========================
+      # BUILD
+      # =========================
 
       - name: Build for ${{ matrix.platform }}
         shell: bash
         run: |
           if [ "${{ matrix.platform }}" == "android" ]; then
+
             flutter build apk --release
+
           elif [ "${{ matrix.platform }}" == "linux" ]; then
+
             flutter build linux --release
+
           elif [ "${{ matrix.platform }}" == "windows" ]; then
+
             flutter build windows --release
+
           elif [ "${{ matrix.platform }}" == "macos" ]; then
+
             flutter build macos --release
+
           fi
 
-      # ✅ Correct cross-platform packaging
+      # =========================
+      # VERIFY ANDROID SHA-1
+      # =========================
+
+      - name: Verify Android SHA-1
+        if: matrix.platform == 'android'
+        shell: bash
+        run: |
+          keytool -list -v \
+            -keystore android/app/upload-keystore.jks \
+            -alias "${{ secrets.ANDROID_KEY_ALIAS }}" \
+            -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+
+      # =========================
+      # PACKAGE OUTPUTS
+      # =========================
+
       - name: Package build output
+        shell: bash
         run: |
           mkdir -p dist
+
           VERSION=${GITHUB_REF_NAME}
+
           if [ "${{ matrix.platform }}" == "android" ]; then
-            cp build/app/outputs/flutter-apk/app-release.apk dist/musee-android-${VERSION}.apk
+
+            cp build/app/outputs/flutter-apk/app-release.apk \
+              dist/musee-android-${VERSION}.apk
+
           elif [ "${{ matrix.platform }}" == "linux" ]; then
-            zip -r dist/musee-linux-${VERSION}.zip build/linux/x64/release/bundle/
+
+            zip -r \
+              dist/musee-linux-${VERSION}.zip \
+              build/linux/x64/release/bundle/
+
           elif [ "${{ matrix.platform }}" == "macos" ]; then
-            zip -r dist/musee-macos-${VERSION}.zip build/macos/Build/Products/Release/
+
+            zip -r \
+              dist/musee-macos-${VERSION}.zip \
+              build/macos/Build/Products/Release/
+
           fi
-        shell: bash
+
+      # =========================
+      # PACKAGE WINDOWS
+      # =========================
 
       - name: Package Windows output
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist
+
           $version = "${{ github.ref_name }}"
-          Compress-Archive -Path (Get-ChildItem -Path 'build/windows/x64/runner/Release' -Recurse) `
-            -DestinationPath "dist/musee-windows-$version.zip" -Force
+
+          Compress-Archive `
+            -Path (Get-ChildItem -Path 'build/windows/x64/runner/Release' -Recurse) `
+            -DestinationPath "dist/musee-windows-$version.zip" `
+            -Force
+
+      # =========================
+      # UPLOAD ARTIFACTS
+      # =========================
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -112,9 +230,15 @@ jobs:
           name: build-${{ matrix.platform }}
           path: dist/
 
+  # ==========================================
+  # CREATE GITHUB RELEASE
+  # ==========================================
+
   release:
     needs: build
+
     runs-on: ubuntu-latest
+
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4

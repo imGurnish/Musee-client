@@ -33,6 +33,7 @@ class HorizontalMediaSection extends StatelessWidget {
               return SizedBox(
                 width: cardWidth,
                 child: MediaCard(
+                  id: item.id,
                   title: item.title,
                   subtitle: item.subtitle,
                   imageUrl: item.imageUrl,
@@ -54,6 +55,7 @@ class HorizontalMediaSection extends StatelessWidget {
 }
 
 class MediaItem {
+  final String? id;
   final String title;
   final String subtitle;
   final String? imageUrl;
@@ -64,6 +66,7 @@ class MediaItem {
   final VoidCallback? onTap;
 
   const MediaItem({
+    this.id,
     required this.title,
     required this.subtitle,
     this.imageUrl,
@@ -74,3 +77,4 @@ class MediaItem {
     this.onTap,
   });
 }
+

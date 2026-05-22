@@ -215,6 +215,9 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
                     localImagePath: t.localImagePath,
                     headers: t.headers,
                     trackId: t.trackId,
+                    artistId: t.artistId,
+                    albumId: t.albumId,
+                    playlistId: t.playlistId,
                   );
                 }
               : null,

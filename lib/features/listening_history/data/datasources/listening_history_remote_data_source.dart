@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:musee/features/admin__dashboard/data/models/admin_system_status_models.dart';
 import '../models/listening_history_models.dart';
 
 abstract class ListeningHistoryRemoteDataSource {
@@ -56,6 +57,9 @@ abstract class ListeningHistoryRemoteDataSource {
   
   /// Refresh trending data and popularity scores (admin only)
   Future<RefreshTrendingResult> refreshTrending();
+
+  /// Get full system status metrics (admin only)
+  Future<SystemStatusResponse> getSystemStatus();
   
   /// Get personalized recommendations
   Future<Recommendation> getRecommendations({
@@ -325,6 +329,19 @@ class ListeningHistoryRemoteDataSourceImpl implements ListeningHistoryRemoteData
         options: Options(headers: _headers()),
       );
       return EngagementMetrics.fromJson(response.data);
+    } on DioException catch (e) {
+      throw _handleDioException(e);
+    }
+  }
+
+  @override
+  Future<SystemStatusResponse> getSystemStatus() async {
+    try {
+      final response = await dio.get(
+        '$baseUrl/api/admin/metrics',
+        options: Options(headers: _headers()),
+      );
+      return SystemStatusResponse.fromJson(response.data);
     } on DioException catch (e) {
       throw _handleDioException(e);
     }

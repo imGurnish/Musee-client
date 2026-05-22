@@ -14,6 +14,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/core/platform/windows_platform_config.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
 
 // Conditional import for web-specific plugins
 import 'web_url_strategy.dart'
@@ -36,13 +38,13 @@ void main() async {
   GoRouter.optionURLReflectsImperativeAPIs = true;
 
 
-  await initDependencies();
-
   HydratedBloc.storage = await HydratedStorage.build(
     storageDirectory: kIsWeb
         ? HydratedStorageDirectory.web
         : HydratedStorageDirectory((await getTemporaryDirectory()).path),
   );
+
+  await initDependencies();
 
   runApp(
     MultiBlocProvider(
@@ -51,6 +53,7 @@ void main() async {
         BlocProvider(create: (_) => serviceLocator<AppUserCubit>()),
         BlocProvider(create: (_) => serviceLocator<PlayerCubit>()),
         BlocProvider(create: (_) => serviceLocator<DownloadManager>()),
+        BlocProvider(create: (_) => serviceLocator<SettingsCubit>()),
       ],
       // child: DevicePreview(
       //   builder: (BuildContext context) {
@@ -130,24 +133,28 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           ),
         );
       },
-      child: MaterialApp.router(
-        title: 'Musee',
-        debugShowCheckedModeBanner: false,
-        routerConfig: _router,
-        // --- Light Theme Definition ---
-        theme: ThemeData(
-          cardColor: AppColors.lightColorScheme.secondary.withAlpha(10),
-          colorScheme: AppColors.lightColorScheme,
-          useMaterial3: true,
-        ),
-        // Dark Theme
-        darkTheme: ThemeData(
-          cardColor: AppColors.darkColorScheme.secondary.withAlpha(10),
-          colorScheme: AppColors.darkColorScheme,
-          useMaterial3: true,
-        ),
-        // Automatically selects theme based on system settings
-        themeMode: ThemeMode.system,
+      child: BlocBuilder<SettingsCubit, SettingsState>(
+        builder: (context, settings) {
+          return MaterialApp.router(
+            title: 'Musee',
+            debugShowCheckedModeBanner: false,
+            routerConfig: _router,
+            // --- Light Theme Definition ---
+            theme: ThemeData(
+              cardColor: AppColors.lightColorScheme.secondary.withAlpha(10),
+              colorScheme: AppColors.lightColorScheme,
+              useMaterial3: true,
+            ),
+            // Dark Theme
+            darkTheme: ThemeData(
+              cardColor: AppColors.darkColorScheme.secondary.withAlpha(10),
+              colorScheme: AppColors.darkColorScheme,
+              useMaterial3: true,
+            ),
+            // Driven by SettingsCubit — persists across restarts
+            themeMode: settings.themeMode,
+          );
+        },
       ),
     );
   }

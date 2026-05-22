@@ -10,13 +10,15 @@ part 'user_artist_state.dart';
 class UserArtistBloc extends Bloc<UserArtistEvent, UserArtistState> {
   final GetUserArtist _getArtist;
   final GetUserArtistAlbums _getArtistAlbums;
-  static const _albumPageSize = 20;
+  static const _pageSize = 20;
 
   UserArtistBloc(this._getArtist, this._getArtistAlbums)
     : super(const UserArtistState.initial()) {
     on<UserArtistLoadRequested>(_onLoad);
-    on<UserArtistAlbumsLoadRequested>(_onLoadMoreAlbums);
+    on<UserArtistAlbumsLoadRequested>(_onLoadMore);
   }
+
+  // ─── Initial load ──────────────────────────────────────────────────────────
 
   Future<void> _onLoad(
     UserArtistLoadRequested event,
@@ -24,13 +26,32 @@ class UserArtistBloc extends Bloc<UserArtistEvent, UserArtistState> {
   ) async {
     emit(const UserArtistState.loading());
     try {
+      // getArtist already fetches page-0 albums + singles in parallel
+      // via the repository layer.
       final artist = await _getArtist(event.artistId);
+
+      // Determine initial end conditions from the merged list sizes.
+      // The repository places singles first, so we can't easily split them
+      // back out here – instead the repo already fetches 20 of each, and the
+      // first page counts are reflected in the combined list length.
+      // We use a heuristic: if total combined < pageSize for albums or singles
+      // individually we mark that side as done.  The repo fetches 20 of each;
+      // if either returned fewer than _pageSize we know that side ended.
+      //
+      // To keep it simple and correct, we start both cursors at page 0 and
+      // check pagination by counting how many of each kind are in the list.
+      final singlesCount = artist.albums.where((a) => a.isSingle).length;
+      final albumsCount = artist.albums.where((a) => !a.isSingle).length;
+
       emit(
         UserArtistState.loaded(
           artist,
           albumPage: 0,
-          albumLimit: _albumPageSize,
-          hasReachedAlbumEnd: artist.albums.length < _albumPageSize,
+          albumLimit: _pageSize,
+          hasReachedAlbumEnd: albumsCount < _pageSize,
+          singlesPage: 0,
+          singlesLimit: _pageSize,
+          hasReachedSinglesEnd: singlesCount < _pageSize,
         ),
       );
     } catch (e) {
@@ -38,26 +59,57 @@ class UserArtistBloc extends Bloc<UserArtistEvent, UserArtistState> {
     }
   }
 
-  Future<void> _onLoadMoreAlbums(
+  // ─── Load more ─────────────────────────────────────────────────────────────
+
+  Future<void> _onLoadMore(
     UserArtistAlbumsLoadRequested event,
     Emitter<UserArtistState> emit,
   ) async {
     final artist = state.artist;
     if (artist == null || state.isLoading || state.isLoadingMore) return;
-    if (state.hasReachedAlbumEnd) return;
+    if (state.hasReachedAllEnd) return;
 
     emit(state.copyWith(isLoadingMore: true, error: null));
 
     try {
-      final pageData = await _getArtistAlbums(
-        artistId: event.artistId,
-        page: event.page,
-        limit: event.limit,
-      );
+      // Fire both requests concurrently; skip whichever side has ended.
+      final futures = await Future.wait([
+        // Albums page (or empty stub if already done)
+        if (!state.hasReachedAlbumEnd)
+          _getArtistAlbums(
+            artistId: event.artistId,
+            page: state.albumPage + 1,
+            limit: state.albumLimit,
+            singleTrack: false,
+          )
+        else
+          Future.value((<UserArtistAlbum>[], 0, state.albumPage, state.albumLimit)),
+
+        // Singles page (or empty stub if already done)
+        if (!state.hasReachedSinglesEnd)
+          _getArtistAlbums(
+            artistId: event.artistId,
+            page: state.singlesPage + 1,
+            limit: state.singlesLimit,
+            singleTrack: true,
+          )
+        else
+          Future.value((<UserArtistAlbum>[], 0, state.singlesPage, state.singlesLimit)),
+      ]);
+
+      final albumsResult = futures[0];
+      final singlesResult = futures[1];
+
+      final newAlbums = albumsResult.$1;
+      final newSingles = singlesResult.$1;
+
+      // Merge: new singles before new albums, then append to existing list.
       final combinedAlbums = [
         ...artist.albums,
-        ...pageData.$1,
+        ...newSingles,
+        ...newAlbums,
       ];
+
       final updatedArtist = UserArtistDetail(
         artistId: artist.artistId,
         name: artist.name,
@@ -69,14 +121,24 @@ class UserArtistBloc extends Bloc<UserArtistEvent, UserArtistState> {
         albums: combinedAlbums,
         tracks: artist.tracks,
       );
+
       emit(
         state.copyWith(
           isLoading: false,
           isLoadingMore: false,
           artist: updatedArtist,
-          albumPage: pageData.$3,
-          albumLimit: pageData.$4,
-          hasReachedAlbumEnd: pageData.$1.isEmpty || pageData.$1.length < pageData.$4,
+          albumPage: albumsResult.$3,
+          albumLimit: albumsResult.$4,
+          hasReachedAlbumEnd:
+              state.hasReachedAlbumEnd ||
+              newAlbums.isEmpty ||
+              newAlbums.length < state.albumLimit,
+          singlesPage: singlesResult.$3,
+          singlesLimit: singlesResult.$4,
+          hasReachedSinglesEnd:
+              state.hasReachedSinglesEnd ||
+              newSingles.isEmpty ||
+              newSingles.length < state.singlesLimit,
         ),
       );
     } catch (e) {

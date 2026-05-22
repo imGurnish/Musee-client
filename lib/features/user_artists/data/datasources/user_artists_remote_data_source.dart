@@ -41,20 +41,42 @@ class UserArtistAlbumDTO {
   final String title;
   final String? coverUrl;
   final String? releaseDate;
+  final bool isSingle;
+  final String? singleTrackId;
 
   UserArtistAlbumDTO({
     required this.albumId,
     required this.title,
     this.coverUrl,
     this.releaseDate,
+    this.isSingle = false,
+    this.singleTrackId,
   });
 
   factory UserArtistAlbumDTO.fromJson(Map<String, dynamic> json) {
+    // Backend sets `single: true` when ?single-track=true is used.
+    final isSingle = json['single'] == true;
+    // Backend may return `single_track_id` directly, or embed the track id
+    // inside a `tracks` array with one entry.
+    String? singleTrackId = json['single_track_id']?.toString();
+    if (singleTrackId == null && isSingle) {
+      final tracks = json['tracks'];
+      if (tracks is List && tracks.isNotEmpty) {
+        final first = tracks.first;
+        singleTrackId =
+            (first is Map
+                    ? (first['track_id'] ?? first['id'])
+                    : null)
+                ?.toString();
+      }
+    }
     return UserArtistAlbumDTO(
       albumId: (json['album_id'] ?? json['id']).toString(),
       title: json['title']?.toString() ?? '',
       coverUrl: json['cover_url'] as String?,
       releaseDate: json['release_date'] as String?,
+      isSingle: isSingle,
+      singleTrackId: singleTrackId,
     );
   }
 }
@@ -127,6 +149,7 @@ abstract interface class UserArtistsRemoteDataSource {
     required String artistId,
     required int page,
     required int limit,
+    bool singleTrack = false,
   });
   Future<List<UserArtistTrackDTO>> getArtistTracks({
     required String artistId,
@@ -165,9 +188,11 @@ class UserArtistsRemoteDataSourceImpl implements UserArtistsRemoteDataSource {
     required String artistId,
     required int page,
     required int limit,
+    bool singleTrack = false,
   }) async {
+    final singleParam = singleTrack ? '&single-track=true' : '';
     final res = await _dio.get(
-      '$baseArtistsPath/$artistId/albums?page=$page&limit=$limit',
+      '$baseArtistsPath/$artistId/albums?page=$page&limit=$limit$singleParam',
       options: dio.Options(headers: _authHeader()),
     );
     final data = res.data;

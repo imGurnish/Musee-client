@@ -9,6 +9,9 @@ class QueueItem extends Equatable {
   final String? imageUrl;
   final String? localImagePath;
   final int? durationSeconds;
+  final String? artistId;
+  final String? albumId;
+  final String? playlistId;
 
   final String uid;
 
@@ -21,6 +24,9 @@ class QueueItem extends Equatable {
     this.imageUrl,
     this.localImagePath,
     this.durationSeconds,
+    this.artistId,
+    this.albumId,
+    this.playlistId,
   }) : uid = uid ?? const Uuid().v4();
 
   @override
@@ -33,6 +39,9 @@ class QueueItem extends Equatable {
     imageUrl,
     localImagePath,
     durationSeconds,
+    artistId,
+    albumId,
+    playlistId,
   ];
 
   QueueItem copyWith({
@@ -44,6 +53,9 @@ class QueueItem extends Equatable {
     String? imageUrl,
     String? localImagePath,
     int? durationSeconds,
+    String? artistId,
+    String? albumId,
+    String? playlistId,
   }) {
     return QueueItem(
       uid: uid ?? this.uid,
@@ -54,23 +66,34 @@ class QueueItem extends Equatable {
       imageUrl: imageUrl ?? this.imageUrl,
       localImagePath: localImagePath ?? this.localImagePath,
       durationSeconds: durationSeconds ?? this.durationSeconds,
+      artistId: artistId ?? this.artistId,
+      albumId: albumId ?? this.albumId,
+      playlistId: playlistId ?? this.playlistId,
     );
   }
 
   factory QueueItem.fromExpandedJson(Map<String, dynamic> json) {
     String artists = '';
+    String? artistId;
     final rawArtists = json['artists'];
     if (rawArtists is List) {
       artists = rawArtists
           .map((a) => (a['name'] ?? '').toString())
           .where((s) => s.isNotEmpty)
           .join(', ');
+      if (rawArtists.isNotEmpty) {
+        artistId = (rawArtists.first['id'] ?? rawArtists.first['artist_id'])?.toString();
+      }
     } else if (rawArtists is String) {
       artists = rawArtists;
     } else if (json['artist'] is String) {
       artists = json['artist'];
     }
-    // final hls = (json['hls'] as Map?)?.cast<String, dynamic>();
+
+    artistId ??= (json['artist_id'] ?? json['artist']?['id'] ?? json['artist']?['artist_id'])?.toString();
+    final albumId = (json['album']?['id'] ?? json['album_id'] ?? json['album']?['album_id'])?.toString();
+    final playlistId = (json['playlist_id'] ?? json['playlist']?['id'])?.toString();
+
     final imageUrl =
         (json['album']?['cover_url'] ?? json['image_url'] ?? json['cover_url'])
             ?.toString();
@@ -81,6 +104,9 @@ class QueueItem extends Equatable {
       album: (json['album']?['title'] ?? json['album_title'])?.toString(),
       imageUrl: imageUrl,
       durationSeconds: (json['duration'] as num?)?.toInt(),
+      artistId: artistId,
+      albumId: albumId,
+      playlistId: playlistId,
     );
   }
 }

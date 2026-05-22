@@ -12,6 +12,9 @@ class PlayerTrack extends Equatable {
   final String? imageUrl;
   final String? localImagePath;
   final Map<String, String>? headers;
+  final String? artistId;
+  final String? albumId;
+  final String? playlistId;
 
   const PlayerTrack({
     this.trackId,
@@ -22,6 +25,9 @@ class PlayerTrack extends Equatable {
     this.imageUrl,
     this.localImagePath,
     this.headers,
+    this.artistId,
+    this.albumId,
+    this.playlistId,
   });
 
   PlayerTrack copyWith({
@@ -33,6 +39,9 @@ class PlayerTrack extends Equatable {
     String? imageUrl,
     String? localImagePath,
     Map<String, String>? headers,
+    String? artistId,
+    String? albumId,
+    String? playlistId,
   }) => PlayerTrack(
     trackId: trackId ?? this.trackId,
     url: url ?? this.url,
@@ -42,6 +51,9 @@ class PlayerTrack extends Equatable {
     imageUrl: imageUrl ?? this.imageUrl,
     localImagePath: localImagePath ?? this.localImagePath,
     headers: headers ?? this.headers,
+    artistId: artistId ?? this.artistId,
+    albumId: albumId ?? this.albumId,
+    playlistId: playlistId ?? this.playlistId,
   );
 
   @override
@@ -54,6 +66,9 @@ class PlayerTrack extends Equatable {
     imageUrl,
     localImagePath,
     headers,
+    artistId,
+    albumId,
+    playlistId,
   ];
 }
 

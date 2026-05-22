@@ -21,6 +21,7 @@ import 'package:musee/core/platform/platform_io_stub.dart'
   if (dart.library.io) 'package:musee/core/platform/platform_io_native.dart'
   as platform_io;
 import 'package:musee/core/platform/windows_platform_config.dart';
+import 'package:musee/core/equalizer/equalizer_controller.dart';
 
 import 'player_state.dart';
 
@@ -56,6 +57,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
+
+  // ─── Equalizer ──────────────────────────────────────────────────────────────────
+  late final EqualizerController _equalizerController;
 
   void _armSwitchFailSafe(int switchToken) {
     _switchFailSafeTimer?.cancel();
@@ -120,6 +124,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     MusicProviderRegistry? musicProviderRegistry,
      ListeningHistoryRepository? listeningHistoryRepository,
      SupabaseClient? supabaseClient,
+    EqualizerController? equalizerController,
   }) : _repo = repository,
        _trackCache = trackCache,
        _audioCache = audioCache,
@@ -128,15 +133,22 @@ class PlayerCubit extends Cubit<PlayerViewState> {
        _listeningHistoryRepository = listeningHistoryRepository,
        _supabaseClient = supabaseClient,
        super(const PlayerViewState()) {
+    _equalizerController = equalizerController ?? EqualizerController();
     _init();
   }
 
   Future<void> _ensurePlatformAudio() async {
     if (_platformAudioInitialized) return;
     _platformAudioInitialized = true;
+
+    // Build Android EQ pipeline before creating the player.
+    // Returns null on Windows/Web — AudioPlayer handles null gracefully.
+    final pipeline = _equalizerController.buildAndroidPipeline();
+
     _player = AudioPlayer(
       handleAudioSessionActivation: false,
       handleInterruptions: false,
+      audioPipeline: pipeline ?? AudioPipeline(),
     );
     _setupPlayerStreams();
 
@@ -676,6 +688,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     String? artist,
     String? album,
     String? imageUrl,
+    String? artistId,
+    String? albumId,
+    String? playlistId,
   }) async {
     _userPaused = false;
     if (state.track?.trackId != null && state.track?.trackId != trackId) {
@@ -701,6 +716,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       album: album,
       imageUrl: imageUrl,
       localImagePath: localImagePath,
+      artistId: artistId,
+      albumId: albumId,
+      playlistId: playlistId,
     );
 
     emit(
@@ -740,14 +758,31 @@ class PlayerCubit extends Cubit<PlayerViewState> {
               album: album,
               imageUrl: imageUrl,
               uid: const Uuid().v4(),
+              artistId: artistId,
+              albumId: albumId,
+              playlistId: playlistId,
             );
             items.insert(0, fallback);
             newIndex = 0;
           }
+          // Patch the live track with IDs resolved from the expanded API data.
+          // This handles the case where artistId/albumId/playlistId were not
+          // available when the provisional track was first emitted (e.g. played
+          // from search or mini-player without full context).
+          final matchedItem = newIndex >= 0 ? items[newIndex] : null;
+          final patchedTrack = state.track?.trackId == trackId
+              ? state.track?.copyWith(
+                  artistId: matchedItem?.artistId ?? artistId ?? state.track?.artistId,
+                  albumId: matchedItem?.albumId ?? albumId ?? state.track?.albumId,
+                  playlistId: matchedItem?.playlistId ?? playlistId ?? state.track?.playlistId,
+                )
+              : state.track;
+
           emit(
             state.copyWith(
               queue: items,
               currentIndex: _sanitizeIndex(newIndex, items.length),
+              track: patchedTrack,
             ),
           );
         } catch (e) {
@@ -777,6 +812,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       album: album,
       imageUrl: imageUrl,
       localImagePath: localImagePath,
+      artistId: artistId,
+      albumId: albumId,
+      playlistId: playlistId,
     );
 
     await playTrack(track);
@@ -1156,6 +1194,36 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     emit(state.copyWith(repeatMode: nextMode));
   }
 
+  /// Directly set the repeat mode (used from settings page).
+  void setRepeatMode(PlayerRepeatMode mode) {
+    emit(state.copyWith(repeatMode: mode));
+  }
+
+  /// Enable or disable recommendation auto-fill (used from settings page).
+  void setRecommendationAutoFill(bool enabled) {
+    emit(state.copyWith(recommendationAutoFillEnabled: enabled));
+  }
+
+  // ─── Equalizer public API ─────────────────────────────────────────────────
+
+  /// Apply 5-band EQ gains (dB). Delegates to [EqualizerController].
+  /// No-op on Windows/Web.
+  Future<void> applyEqBands(List<double> bands) async {
+    await _equalizerController.applyEqBands(bands);
+  }
+
+  /// Apply bass enhancement 0–100. Delegates to [EqualizerController].
+  /// No-op on Windows/Web.
+  Future<void> applyBass(int level) async {
+    await _equalizerController.applyBass(level);
+  }
+
+  /// Apply surround/stereo widening 0–100. Delegates to [EqualizerController].
+  /// No-op on Windows/Web.
+  Future<void> applySurround(int level) async {
+    await _equalizerController.applySurround(level);
+  }
+
   Future<void> _playAtIndex(int index) async {
     _userPaused = false;
     if (index < 0 || index >= state.queue.length) return;
@@ -1178,6 +1246,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       album: item.album,
       imageUrl: item.imageUrl,
       localImagePath: item.localImagePath,
+      artistId: item.artistId,
+      albumId: item.albumId,
+      playlistId: item.playlistId,
     );
     emit(
       state.copyWith(
@@ -1221,6 +1292,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       album: item.album,
       imageUrl: item.imageUrl,
       localImagePath: item.localImagePath,
+      artistId: item.artistId,
+      albumId: item.albumId,
+      playlistId: item.playlistId,
     );
 
     try {

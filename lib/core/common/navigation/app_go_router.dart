@@ -31,8 +31,10 @@ import 'package:musee/features/admin_playlists/presentation/bloc/admin_playlist_
 import 'package:musee/features/admin_countries/presentation/pages/admin_countries_page.dart';
 import 'package:musee/features/admin_regions/presentation/pages/admin_regions_page.dart';
 import 'package:musee/features/admin__dashboard/presentation/pages/admin_engagement_page.dart';
+import 'package:musee/features/admin__dashboard/presentation/pages/admin_system_status_page.dart';
 import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:async';
 import 'package:musee/features/user_albums/presentation/pages/user_album_page.dart';
@@ -46,6 +48,9 @@ import 'package:musee/features/library/presentation/pages/user_library_page.dart
 import 'package:musee/features/library/presentation/pages/downloads_page.dart';
 import 'package:musee/features/library/presentation/pages/liked_songs_page.dart';
 import 'package:musee/core/common/navigation/user_shell_page.dart';
+import 'package:musee/features/settings/presentation/pages/settings_page.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:musee/features/settings/presentation/pages/equalizer_page.dart';
 
 class AppGoRouter {
   static GoRouter createRouter(AppUserCubit appUserCubit) {
@@ -380,6 +385,12 @@ class AppGoRouter {
           name: 'admin_engagement',
           builder: (context, state) => const AdminEngagementPage(),
         ),
+        
+        GoRoute(
+          path: Routes.adminStatus,
+          name: 'admin_status',
+          builder: (context, state) => const AdminSystemStatusPage(),
+        ),
 
         GoRoute(
           path: Routes.signIn,
@@ -409,6 +420,31 @@ class AppGoRouter {
         //   builder: (context, state) =>
         //       const ComingSoonPage(featureName: 'Premium'),
         // ),
+        GoRoute(
+          path: Routes.settings,
+          name: 'settings',
+          builder: (context, state) => BlocProvider.value(
+            value: serviceLocator<SettingsCubit>(),
+            child: const SettingsPage(),
+          ),
+        ),
+
+        GoRoute(
+          path: Routes.equalizer,
+          name: 'equalizer',
+          redirect: (context, state) {
+            final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+            if (!isAndroid) {
+              return Routes.forbidden;
+            }
+            return null;
+          },
+          builder: (context, state) => BlocProvider.value(
+            value: serviceLocator<SettingsCubit>(),
+            child: const EqualizerPage(),
+          ),
+        ),
+
         GoRoute(
           path: Routes.forbidden,
           name: 'forbidden',

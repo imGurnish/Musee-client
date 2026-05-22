@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'dart:math';
+import 'dart:ui' show ImageFilter;
+import 'package:go_router/go_router.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:musee/features/user_albums/presentation/bloc/user_album_bloc.dart';
 import 'package:musee/core/player/player_cubit.dart';
+import 'package:musee/core/player/player_state.dart';
+import 'package:musee/core/common/widgets/playing_bars_animation.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
@@ -153,6 +157,7 @@ class _UserAlbumViewState extends State<_UserAlbumView>
               String trackId, {
               required String title,
               required String artist,
+              String? artistId,
             }) async {
               if (!context.mounted) return;
               // Don't pre-fetch URL — showPlayerBottomSheet with trackId
@@ -165,6 +170,8 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                 album: album.title,
                 imageUrl: album.coverUrl,
                 trackId: trackId,
+                artistId: artistId,
+                albumId: album.albumId,
                 openSheet: false,
               );
             }
@@ -197,6 +204,7 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                   flexibleSpace: FlexibleSpaceBar(
                     collapseMode: CollapseMode.parallax,
                     background: _AlbumHeader(
+                      albumId: album.albumId,
                       title: album.title,
                       artist: primaryArtist,
                       coverUrl: album.coverUrl,
@@ -227,14 +235,15 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                                 onPressed: canPlayAlbum
                                     ? () async {
                                         final first = album.tracks.first;
-                                        final artists = first.artists.isNotEmpty
-                                            ? (first.artists.first.name ??
-                                                  primaryArtist)
-                                            : primaryArtist;
+                                        final firstArtist = first.artists.isNotEmpty
+                                            ? first.artists.first
+                                            : null;
+                                        final artists = firstArtist?.name ?? primaryArtist;
                                         await playTrack(
                                           first.trackId,
                                           title: first.title,
                                           artist: artists,
+                                          artistId: firstArtist?.artistId,
                                         );
                                       }
                                     : null,
@@ -289,20 +298,19 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                                         ? () async {
                                             final randomTrack = album.tracks[
                                                 Random().nextInt(trackCount)];
-                                            final artists =
-                                                randomTrack.artists.isNotEmpty
+                                            final randomArtist = randomTrack.artists.isNotEmpty
+                                                ? randomTrack.artists.first
+                                                : null;
+                                            final artists = randomArtist != null
                                                 ? randomTrack.artists
-                                                      .map(
-                                                        (a) =>
-                                                            a.name ??
-                                                            'Unknown Artist',
-                                                      )
+                                                      .map((a) => a.name ?? 'Unknown Artist')
                                                       .join(', ')
                                                 : primaryArtist;
                                             await playTrack(
                                               randomTrack.trackId,
                                               title: randomTrack.title,
                                               artist: artists,
+                                              artistId: randomArtist?.artistId,
                                             );
                                           }
                                         : null,
@@ -452,10 +460,14 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                         child: InkWell(
                           borderRadius: BorderRadius.circular(18),
                           onTap: () async {
+                            final trackArtist = t.artists.isNotEmpty
+                                ? t.artists.first
+                                : null;
                             await playTrack(
                               t.trackId,
                               title: t.title,
                               artist: artists,
+                              artistId: trackArtist?.artistId,
                             );
                           },
                           child: Padding(
@@ -465,24 +477,44 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                             ),
                             child: Row(
                               children: [
-                                Container(
-                                  width: 34,
-                                  height: 34,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: theme.colorScheme.primaryContainer,
-                                  ),
-                                  child: Text(
-                                    '${index + 1}',
-                                    style: theme.textTheme.labelMedium
-                                        ?.copyWith(
-                                          fontWeight: FontWeight.w700,
-                                          color: theme
-                                              .colorScheme
-                                              .onPrimaryContainer,
-                                        ),
-                                  ),
+                                BlocBuilder<PlayerCubit, PlayerViewState>(
+                                  builder: (context, state) {
+                                    final isActive = state.track?.trackId == t.trackId;
+                                    final isPlaying = isActive && state.playing;
+                                    return Container(
+                                      width: 34,
+                                      height: 34,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: isActive
+                                            ? theme.colorScheme.primary
+                                            : theme.colorScheme.primaryContainer,
+                                      ),
+                                      child: isActive
+                                          ? Center(
+                                              child: PlayingBarsAnimation(
+                                                width: 14,
+                                                height: 14,
+                                                barCount: 3,
+                                                barWidth: 2,
+                                                gap: 1.5,
+                                                color: theme.colorScheme.onPrimary,
+                                                isPlaying: isPlaying,
+                                              ),
+                                            )
+                                          : Text(
+                                              '${index + 1}',
+                                              style: theme.textTheme.labelMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                    color: theme
+                                                        .colorScheme
+                                                        .onPrimaryContainer,
+                                                  ),
+                                            ),
+                                    );
+                                  },
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
@@ -557,10 +589,14 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                                   icon: const Icon(Icons.play_arrow_rounded),
                                   tooltip: 'Play',
                                   onPressed: () async {
+                                    final trackArtist = t.artists.isNotEmpty
+                                        ? t.artists.first
+                                        : null;
                                     await playTrack(
                                       t.trackId,
                                       title: t.title,
                                       artist: artists,
+                                      artistId: trackArtist?.artistId,
                                     );
                                   },
                                 ),
@@ -675,6 +711,7 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                                 return _ArtistChip(
                                   name: artist.name ?? 'Unknown Artist',
                                   avatarUrl: artist.avatarUrl,
+                                  artistId: artist.artistId,
                                 );
                               },
                             ),
@@ -724,6 +761,7 @@ class _TrackStatusChip extends StatelessWidget {
 }
 
 class _AlbumHeader extends StatelessWidget {
+  final String albumId;
   final String title;
   final String artist;
   final String? coverUrl;
@@ -733,6 +771,7 @@ class _AlbumHeader extends StatelessWidget {
   final int explicitCount;
   final String? releaseYear;
   const _AlbumHeader({
+    required this.albumId,
     required this.title,
     required this.artist,
     this.coverUrl,
@@ -756,19 +795,67 @@ class _AlbumHeader extends StatelessWidget {
           child: SizedBox(
             width: artSize,
             height: artSize,
-            child: coverUrl == null
-                ? Container(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    child: const Icon(Icons.album_rounded, size: 64),
-                  )
-                : Image.network(
-                    coverUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => Container(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      child: const Icon(Icons.album_rounded, size: 64),
-                    ),
-                  ),
+            child: BlocBuilder<PlayerCubit, PlayerViewState>(
+              builder: (context, state) {
+                final isActive = state.track?.albumId == albumId;
+                final isPlaying = isActive && state.playing;
+                final img = coverUrl == null
+                    ? Container(
+                        color: theme.colorScheme.surfaceContainerHighest,
+                        child: const Icon(Icons.album_rounded, size: 64),
+                      )
+                    : Image.network(
+                        coverUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Container(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          child: const Icon(Icons.album_rounded, size: 64),
+                        ),
+                      );
+
+                return Stack(
+                  children: [
+                    Positioned.fill(child: img),
+                    if (isActive)
+                      Positioned.fill(
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.35),
+                          child: Center(
+                            child: ClipOval(
+                              child: BackdropFilter(
+                                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                child: Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.4),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.15),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: PlayingBarsAnimation(
+                                      width: 24,
+                                      height: 24,
+                                      barCount: 4,
+                                      barWidth: 3,
+                                      gap: 2,
+                                      color: Colors.white,
+                                      isPlaying: isPlaying,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
           ),
         );
 
@@ -914,14 +1001,15 @@ class _MetaChip extends StatelessWidget {
 class _ArtistChip extends StatelessWidget {
   final String name;
   final String? avatarUrl;
+  final String? artistId;
 
-  const _ArtistChip({required this.name, this.avatarUrl});
+  const _ArtistChip({required this.name, this.avatarUrl, this.artistId});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Container(
+    final chip = Container(
       width: 84,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
@@ -949,9 +1037,21 @@ class _ArtistChip extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: theme.textTheme.labelSmall,
+            style: theme.textTheme.labelSmall?.copyWith(
+              decoration: artistId != null ? TextDecoration.underline : null,
+            ),
           ),
         ],
+      ),
+    );
+
+    if (artistId == null) return chip;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => context.push('/artists/$artistId'),
+        child: chip,
       ),
     );
   }
