@@ -1,8 +1,12 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
+import 'package:musee/core/common/widgets/playing_bars_animation.dart';
+import 'package:musee/core/player/player_cubit.dart';
+import 'package:musee/core/player/player_state.dart';
 import 'package:musee/features/user_artists/domain/entities/user_artist.dart';
 import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.dart';
 
@@ -197,6 +201,7 @@ class _UserArtistViewState extends State<_UserArtistView> {
                                     title: item.title,
                                     coverUrl: item.coverUrl,
                                     isSingle: true,
+                                    singleTrackId: item.singleTrackId,
                                     onTap: () {
                                       if (item.singleTrackId != null) {
                                         showPlayerBottomSheet(
@@ -216,6 +221,7 @@ class _UserArtistViewState extends State<_UserArtistView> {
                                   title: item.title,
                                   coverUrl: item.coverUrl,
                                   isSingle: false,
+                                  albumId: item.albumId,
                                   onTap: () =>
                                       context.push('/albums/${item.albumId}'),
                                 );
@@ -462,12 +468,16 @@ class _AlbumCard extends StatelessWidget {
   final String title;
   final String? coverUrl;
   final bool isSingle;
+  final String? albumId;
+  final String? singleTrackId;
   final VoidCallback onTap;
 
   const _AlbumCard({
     required this.title,
     this.coverUrl,
     required this.isSingle,
+    this.albumId,
+    this.singleTrackId,
     required this.onTap,
   });
 
@@ -522,6 +532,42 @@ class _AlbumCard extends StatelessWidget {
                               ),
                             ),
                     ),
+                  ),
+                  // Frosted glass equalizer overlay when active
+                  BlocBuilder<PlayerCubit, PlayerViewState>(
+                    builder: (context, state) {
+                      final isActive = isSingle
+                          ? (singleTrackId != null && state.track?.trackId == singleTrackId)
+                          : (albumId != null && state.track?.albumId == albumId);
+                      if (!isActive) return const SizedBox.shrink();
+
+                      return Center(
+                        child: ClipOval(
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                            child: Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: theme.colorScheme.surface.withValues(alpha: 0.4),
+                                border: Border.all(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.15),
+                                  width: 1.5,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: PlayingBarsAnimation(
+                                width: 28,
+                                height: 22,
+                                isPlaying: state.playing,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   // Single badge overlay
                   if (isSingle)
@@ -648,6 +694,7 @@ class _PopularTracksSection extends StatelessWidget {
 
           return _PopularTrackRow(
             index: index + 1,
+            trackId: track.trackId,
             title: track.title,
             subtitle: subtitle,
             durationSeconds: track.duration,
@@ -676,6 +723,7 @@ class _PopularTracksSection extends StatelessWidget {
 
 class _PopularTrackRow extends StatelessWidget {
   final int index;
+  final String trackId;
   final String title;
   final String subtitle;
   final int? durationSeconds;
@@ -686,6 +734,7 @@ class _PopularTrackRow extends StatelessWidget {
 
   const _PopularTrackRow({
     required this.index,
+    required this.trackId,
     required this.title,
     required this.subtitle,
     required this.durationSeconds,
@@ -707,13 +756,26 @@ class _PopularTrackRow extends StatelessWidget {
           children: [
             SizedBox(
               width: 22,
-              child: Text(
-                '$index',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                ),
+              child: BlocBuilder<PlayerCubit, PlayerViewState>(
+                builder: (context, state) {
+                  final isActive = state.track?.trackId == trackId;
+                  if (isActive) {
+                    return PlayingBarsAnimation(
+                      width: 22,
+                      height: 18,
+                      isPlaying: state.playing,
+                      color: theme.colorScheme.primary,
+                    );
+                  }
+                  return Text(
+                    '$index',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  );
+                },
               ),
             ),
             const SizedBox(width: 10),
@@ -764,11 +826,28 @@ class _PopularTrackRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            IconButton(
-              onPressed: onPlay,
-              icon: const Icon(Icons.play_circle_fill_rounded),
-              tooltip:
-                  '${_compactCount(playCount)} plays • ${_compactCount(likesCount)} likes',
+            BlocBuilder<PlayerCubit, PlayerViewState>(
+              builder: (context, state) {
+                final isActive = state.track?.trackId == trackId;
+                final isCurrentlyPlaying = isActive && state.playing;
+                return IconButton(
+                  onPressed: () {
+                    if (isActive) {
+                      context.read<PlayerCubit>().togglePlayPause();
+                    } else {
+                      onPlay();
+                    }
+                  },
+                  icon: Icon(
+                    isCurrentlyPlaying
+                        ? Icons.pause_circle_filled_rounded
+                        : Icons.play_circle_fill_rounded,
+                    color: isActive ? theme.colorScheme.primary : null,
+                  ),
+                  tooltip:
+                      '${_compactCount(playCount)} plays • ${_compactCount(likesCount)} likes',
+                );
+              },
             ),
           ],
         ),

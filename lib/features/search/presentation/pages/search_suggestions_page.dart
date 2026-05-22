@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:get_it/get_it.dart';
+import 'package:musee/core/common/widgets/playing_bars_animation.dart';
 import 'package:musee/init_dependencies.dart';
 
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:musee/core/player/player_cubit.dart';
+import 'package:musee/core/player/player_state.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 
@@ -1560,19 +1563,44 @@ class _ArtistTile extends StatelessWidget {
                   ],
                 ),
                 child: ClipOval(
-                  child: artist.avatarUrl != null && artist.avatarUrl!.isNotEmpty
-                      ? Image.network(
-                          artist.avatarUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            color: theme.colorScheme.surfaceContainerHighest,
-                            child: const Icon(Icons.person, size: 28),
-                          ),
-                        )
-                      : Container(
-                          color: theme.colorScheme.surfaceContainerHighest,
-                          child: const Icon(Icons.person, size: 28),
-                        ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      artist.avatarUrl != null && artist.avatarUrl!.isNotEmpty
+                          ? Image.network(
+                              artist.avatarUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                color: theme.colorScheme.surfaceContainerHighest,
+                                child: const Icon(Icons.person, size: 28),
+                              ),
+                            )
+                          : Container(
+                              color: theme.colorScheme.surfaceContainerHighest,
+                              child: const Icon(Icons.person, size: 28),
+                            ),
+                      BlocBuilder<PlayerCubit, PlayerViewState>(
+                        builder: (context, state) {
+                          final isActive = state.track?.artistId == artist.artistId;
+                          if (!isActive) return const SizedBox.shrink();
+
+                          return BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                            child: Container(
+                              color: theme.colorScheme.surface.withValues(alpha: 0.35),
+                              alignment: Alignment.center,
+                              child: PlayingBarsAnimation(
+                                width: 22,
+                                height: 18,
+                                isPlaying: state.playing,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1921,6 +1949,31 @@ class _TrackArtwork extends StatelessWidget {
                     ),
             ),
           ),
+          BlocBuilder<PlayerCubit, PlayerViewState>(
+            builder: (context, state) {
+              final isActive = state.track?.trackId == track.trackId;
+              if (!isActive) return const SizedBox.shrink();
+
+              return Positioned.fill(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                    child: Container(
+                      color: theme.colorScheme.surface.withValues(alpha: 0.35),
+                      alignment: Alignment.center,
+                      child: PlayingBarsAnimation(
+                        width: 22,
+                        height: 18,
+                        isPlaying: state.playing,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
           _ArtworkCacheBadge(visible: isCached),
         ],
       ),
@@ -1963,6 +2016,31 @@ class _AlbumArtwork extends StatelessWidget {
                     ),
             ),
           ),
+          BlocBuilder<PlayerCubit, PlayerViewState>(
+            builder: (context, state) {
+              final isActive = state.track?.albumId == album.albumId;
+              if (!isActive) return const SizedBox.shrink();
+
+              return Positioned.fill(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                    child: Container(
+                      color: theme.colorScheme.surface.withValues(alpha: 0.35),
+                      alignment: Alignment.center,
+                      child: PlayingBarsAnimation(
+                        width: 22,
+                        height: 18,
+                        isPlaying: state.playing,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
           _ArtworkCacheBadge(visible: isCached),
         ],
       ),
@@ -2004,6 +2082,31 @@ class _PlaylistArtwork extends StatelessWidget {
                       child: const Icon(Icons.queue_music_rounded),
                     ),
             ),
+          ),
+          BlocBuilder<PlayerCubit, PlayerViewState>(
+            builder: (context, state) {
+              final isActive = state.track?.playlistId == playlist.playlistId;
+              if (!isActive) return const SizedBox.shrink();
+
+              return Positioned.fill(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                    child: Container(
+                      color: theme.colorScheme.surface.withValues(alpha: 0.35),
+                      alignment: Alignment.center,
+                      child: PlayingBarsAnimation(
+                        width: 22,
+                        height: 18,
+                        isPlaying: state.playing,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
           _ArtworkCacheBadge(visible: isCached),
         ],

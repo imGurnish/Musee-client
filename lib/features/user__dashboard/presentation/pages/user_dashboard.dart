@@ -17,6 +17,7 @@ import 'package:musee/features/user__dashboard/domain/entities/dashboard_album.d
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
+import 'package:musee/core/common/widgets/playing_bars_animation.dart';
 import 'package:musee/features/user_onboarding/presentation/bloc/onboarding_bloc.dart';
 import 'package:musee/features/user_onboarding/presentation/pages/onboarding_page.dart';
 import 'package:musee/init_dependencies.dart';
@@ -238,6 +239,7 @@ class _UserDashboardState extends State<UserDashboard> {
 
   MediaItem _toMediaItem(BuildContext context, DashboardItem item) {
     return MediaItem(
+      id: item.id,
       title: item.title,
       subtitle: _getSubtitle(item),
       imageUrl: item.coverUrl,
@@ -363,6 +365,7 @@ class _UserDashboardState extends State<UserDashboard> {
                                 items: state.recentlyPlayed
                                     .map(
                                       (t) => MediaItem(
+                                        id: t.trackId,
                                         title: t.title,
                                         subtitle: t.artistName,
                                         imageUrl: t.albumCoverUrl,
@@ -823,17 +826,60 @@ class _TrendingImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme;
-    if (item.localImagePath != null) {
-      return Image.file(
+    Widget img;
+    if (item.localImagePath != null && File(item.localImagePath!).existsSync()) {
+      img = Image.file(
         File(item.localImagePath!),
         fit: BoxFit.cover,
         errorBuilder: (_, _, _) => _fallback(color),
       );
+    } else if (item.imageUrl != null && item.imageUrl!.isNotEmpty) {
+      img = Image.network(item.imageUrl!, fit: BoxFit.cover);
+    } else {
+      img = _fallback(color);
     }
-    if (item.imageUrl != null && item.imageUrl!.isNotEmpty) {
-      return Image.network(item.imageUrl!, fit: BoxFit.cover);
-    }
-    return _fallback(color);
+
+    return BlocBuilder<PlayerCubit, PlayerViewState>(
+      builder: (context, state) {
+        final type = item.mediaTypeLabel.toLowerCase();
+        bool isActive = false;
+        if (item.id != null) {
+          if (type == 'album') {
+            isActive = state.track?.albumId == item.id;
+          } else if (type == 'playlist') {
+            isActive = state.track?.playlistId == item.id;
+          } else if (type == 'artist') {
+            isActive = state.track?.artistId == item.id;
+          } else {
+            isActive = state.track?.trackId == item.id;
+          }
+        }
+        final isPlaying = isActive && state.playing;
+
+        return Stack(
+          children: [
+            Positioned.fill(child: img),
+            if (isActive)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  child: Center(
+                    child: PlayingBarsAnimation(
+                      width: 18,
+                      height: 18,
+                      barCount: 3,
+                      barWidth: 2.5,
+                      gap: 1.5,
+                      color: Colors.white,
+                      isPlaying: isPlaying,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _fallback(ColorScheme color) {
@@ -1121,11 +1167,13 @@ class _SuggestedTracksPageState extends State<_SuggestedTracksPage> {
                       height: 44,
                       child: _TrendingImage(
                         item: MediaItem(
+                          id: item.id,
                           title: item.title,
                           subtitle: subtitle,
                           imageUrl: item.coverUrl,
                           localImagePath: item.localImagePath,
                           icon: Icons.music_note_rounded,
+                          mediaTypeLabel: 'Track',
                         ),
                       ),
                     ),
@@ -1370,10 +1418,16 @@ class _TrendingPicksPage extends StatelessWidget {
                       height: 48,
                       child: _TrendingImage(
                         item: MediaItem(
+                          id: item.id,
                           title: item.title,
                           subtitle: subtitle,
                           imageUrl: item.coverUrl,
                           localImagePath: item.localImagePath,
+                          mediaTypeLabel: switch (item.type) {
+                            DashboardItemType.track => 'Track',
+                            DashboardItemType.album => 'Album',
+                            DashboardItemType.playlist => 'Playlist',
+                          },
                           icon: switch (item.type) {
                             DashboardItemType.track => Icons.music_note_rounded,
                             DashboardItemType.album => Icons.album_rounded,
