@@ -20,6 +20,7 @@ import 'package:musee/core/player/media_controls_service.dart';
 import 'package:musee/core/platform/platform_io_stub.dart'
   if (dart.library.io) 'package:musee/core/platform/platform_io_native.dart'
   as platform_io;
+import 'package:musee/core/platform/windows_platform_config.dart';
 
 import 'player_state.dart';
 
@@ -48,6 +49,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   int _trackSwitchToken = 0;
   bool _platformAudioInitialized = false;
   final _random = math.Random();
+  final _audioOperationHandler = WindowsAudioOperationHandler();
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
@@ -450,12 +452,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       await _stopPlaybackForTrackSwitch();
       await _ensurePlatformAudio();
 
-      await _player.setAudioSource(
-        AudioSource.uri(
-          toUri(track.url),
-          headers: headers.isEmpty ? null : headers,
+      await _audioOperationHandler.executeAudioOperation(
+        () => _player.setAudioSource(
+          AudioSource.uri(
+            toUri(track.url),
+            headers: headers.isEmpty ? null : headers,
+          ),
+          initialPosition: const Duration(milliseconds: 50),
         ),
-        initialPosition: const Duration(milliseconds: 50),
       );
 
       if (_userPaused) {
@@ -556,12 +560,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         await _stopPlaybackForTrackSwitch();
         await _ensurePlatformAudio();
 
-        await _player.setAudioSource(
-          AudioSource.uri(
-            toUri(refreshedTrack.url),
-            headers: headers.isEmpty ? null : headers,
+        await _audioOperationHandler.executeAudioOperation(
+          () => _player.setAudioSource(
+            AudioSource.uri(
+              toUri(refreshedTrack.url),
+              headers: headers.isEmpty ? null : headers,
+            ),
+            initialPosition: const Duration(milliseconds: 50),
           ),
-          initialPosition: const Duration(milliseconds: 50),
         );
 
         if (_userPaused) {
@@ -1197,9 +1203,11 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       await _stopPlaybackForTrackSwitch();
       await _ensurePlatformAudio();
 
-      await _player.setAudioSource(
-        AudioSource.uri(uri),
-        initialPosition: const Duration(milliseconds: 50),
+      await _audioOperationHandler.executeAudioOperation(
+        () => _player.setAudioSource(
+          AudioSource.uri(uri),
+          initialPosition: const Duration(milliseconds: 50),
+        ),
       );
 
       if (_userPaused) {
@@ -1291,9 +1299,11 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         await _stopPlaybackForTrackSwitch();
         await _ensurePlatformAudio();
 
-        await _player.setAudioSource(
-          AudioSource.uri(refreshedUri),
-          initialPosition: const Duration(milliseconds: 50),
+        await _audioOperationHandler.executeAudioOperation(
+          () => _player.setAudioSource(
+            AudioSource.uri(refreshedUri),
+            initialPosition: const Duration(milliseconds: 50),
+          ),
         );
 
         if (_userPaused) {
@@ -1760,6 +1770,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     await _playerStateSub?.cancel();
     await _viewStateSub?.cancel();
     if (_platformAudioInitialized) await _player.dispose();
+    _audioOperationHandler.dispose();
     return super.close();
   }
 }
