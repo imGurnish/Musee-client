@@ -61,10 +61,12 @@ class SaveOnboardingPreferencesUseCase
   SaveOnboardingPreferencesUseCase(this.repository);
 
   @override
-  Future<Either<Failure, void>> call(SaveOnboardingPreferencesParams params) async {
+  Future<Either<Failure, void>> call(
+    SaveOnboardingPreferencesParams params,
+  ) async {
     return await repository.saveOnboardingPreferences(
       params.userId,
-      params.language,
+      params.languages,
       params.genres,
       params.moods,
       params.artists,
@@ -75,7 +77,7 @@ class SaveOnboardingPreferencesUseCase
 
 class SaveOnboardingPreferencesParams {
   final String userId;
-  final String language;
+  final List<String> languages;
   final List<String> genres;
   final List<String> moods;
   final List<String> artists;
@@ -83,7 +85,7 @@ class SaveOnboardingPreferencesParams {
 
   SaveOnboardingPreferencesParams({
     required this.userId,
-    required this.language,
+    required this.languages,
     required this.genres,
     required this.moods,
     required this.artists,

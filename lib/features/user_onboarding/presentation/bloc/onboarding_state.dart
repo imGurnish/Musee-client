@@ -11,7 +11,7 @@ class OnboardingState extends Equatable {
   final List<GenreModel> genres;
   final List<MoodModel> moods;
   final List<ArtistSearchModel> searchResults;
-  final LanguageModel? selectedLanguage;
+  final List<LanguageModel> selectedLanguages;
   final List<String> selectedGenres;
   final List<String> selectedMoods;
   final List<ArtistSearchModel> selectedArtists;
@@ -28,7 +28,7 @@ class OnboardingState extends Equatable {
     this.genres = const [],
     this.moods = const [],
     this.searchResults = const [],
-    this.selectedLanguage,
+    this.selectedLanguages = const [],
     this.selectedGenres = const [],
     this.selectedMoods = const [],
     this.selectedArtists = const [],
@@ -37,21 +37,21 @@ class OnboardingState extends Equatable {
 
   /// Initial state
   const OnboardingState.initial()
-      : isLoading = false,
-        isSaving = false,
-        isSearching = false,
-        isCompleted = false,
-        error = null,
-        searchError = null,
-        languages = const [],
-        genres = const [],
-        moods = const [],
-        searchResults = const [],
-        selectedLanguage = null,
-        selectedGenres = const [],
-        selectedMoods = const [],
-        selectedArtists = const [],
-        randomnessPercentage = 15;
+    : isLoading = false,
+      isSaving = false,
+      isSearching = false,
+      isCompleted = false,
+      error = null,
+      searchError = null,
+      languages = const [],
+      genres = const [],
+      moods = const [],
+      searchResults = const [],
+      selectedLanguages = const [],
+      selectedGenres = const [],
+      selectedMoods = const [],
+      selectedArtists = const [],
+      randomnessPercentage = 15;
 
   OnboardingState copyWith({
     bool? isLoading,
@@ -64,7 +64,7 @@ class OnboardingState extends Equatable {
     List<GenreModel>? genres,
     List<MoodModel>? moods,
     List<ArtistSearchModel>? searchResults,
-    LanguageModel? selectedLanguage,
+    List<LanguageModel>? selectedLanguages,
     List<String>? selectedGenres,
     List<String>? selectedMoods,
     List<ArtistSearchModel>? selectedArtists,
@@ -81,7 +81,7 @@ class OnboardingState extends Equatable {
       genres: genres ?? this.genres,
       moods: moods ?? this.moods,
       searchResults: searchResults ?? this.searchResults,
-      selectedLanguage: selectedLanguage ?? this.selectedLanguage,
+      selectedLanguages: selectedLanguages ?? this.selectedLanguages,
       selectedGenres: selectedGenres ?? this.selectedGenres,
       selectedMoods: selectedMoods ?? this.selectedMoods,
       selectedArtists: selectedArtists ?? this.selectedArtists,
@@ -101,7 +101,7 @@ class OnboardingState extends Equatable {
     genres,
     moods,
     searchResults,
-    selectedLanguage,
+    selectedLanguages,
     selectedGenres,
     selectedMoods,
     selectedArtists,

@@ -43,61 +43,64 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
 
     try {
       // Fetch all data in parallel
-      final languagesResult = await getAvailableLanguagesUseCase.call(NoParams());
+      final languagesResult = await getAvailableLanguagesUseCase.call(
+        NoParams(),
+      );
       final genresResult = await getAvailableGenresUseCase.call(NoParams());
       final moodsResult = await getAvailableMoodsUseCase.call(NoParams());
 
       languagesResult.fold(
-        (failure) => emit(state.copyWith(
-          isLoading: false,
-          error: failure.message,
-        )),
+        (failure) =>
+            emit(state.copyWith(isLoading: false, error: failure.message)),
         (languages) {
           genresResult.fold(
-            (failure) => emit(state.copyWith(
-              isLoading: false,
-              error: failure.message,
-            )),
+            (failure) =>
+                emit(state.copyWith(isLoading: false, error: failure.message)),
             (genres) {
               moodsResult.fold(
-                (failure) => emit(state.copyWith(
-                  isLoading: false,
-                  error: failure.message,
-                )),
+                (failure) => emit(
+                  state.copyWith(isLoading: false, error: failure.message),
+                ),
                 (moods) {
                   final languageModels = languages
-                      .map((l) => LanguageModel(
-                            code: l.code,
-                            name: l.name,
-                            nativeName: l.nativeName,
-                            isSelected: l.code == 'en', // Default to English
-                          ))
+                      .map(
+                        (l) => LanguageModel(
+                          code: l.code,
+                          name: l.name,
+                          nativeName: l.nativeName,
+                          isSelected: l.code == 'en', // Default to English
+                        ),
+                      )
                       .toList();
 
                   final genreModels = genres
-                      .map((g) => GenreModel(
-                            id: g.id,
-                            name: g.name,
-                            icon: g.icon,
-                          ))
+                      .map(
+                        (g) => GenreModel(id: g.id, name: g.name, icon: g.icon),
+                      )
                       .toList();
 
                   final moodModels = moods
-                      .map((m) => MoodModel(
-                            id: m.id,
-                            name: m.name,
-                            icon: m.icon,
-                            description: m.description,
-                          ))
+                      .map(
+                        (m) => MoodModel(
+                          id: m.id,
+                          name: m.name,
+                          icon: m.icon,
+                          description: m.description,
+                        ),
+                      )
                       .toList();
 
-                  emit(state.copyWith(
-                    isLoading: false,
-                    languages: languageModels,
-                    genres: genreModels,
-                    moods: moodModels,
-                    selectedLanguage: languageModels.first,
-                  ));
+                  emit(
+                    state.copyWith(
+                      isLoading: false,
+                      languages: languageModels,
+                      genres: genreModels,
+                      moods: moodModels,
+                      selectedLanguages: languageModels
+                          .where((language) => language.isSelected)
+                          .toList(),
+                    ),
+                  );
                 },
               );
             },
@@ -105,10 +108,12 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
         },
       );
     } catch (e) {
-      emit(state.copyWith(
-        isLoading: false,
-        error: 'Failed to initialize onboarding: $e',
-      ));
+      emit(
+        state.copyWith(
+          isLoading: false,
+          error: 'Failed to initialize onboarding: $e',
+        ),
+      );
     }
   }
 
@@ -128,10 +133,9 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
         .map((g) => g.id)
         .toList();
 
-    emit(state.copyWith(
-      genres: updatedGenres,
-      selectedGenres: selectedGenreIds,
-    ));
+    emit(
+      state.copyWith(genres: updatedGenres, selectedGenres: selectedGenreIds),
+    );
   }
 
   Future<void> _onSelectMood(
@@ -150,10 +154,7 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
         .map((m) => m.id)
         .toList();
 
-    emit(state.copyWith(
-      moods: updatedMoods,
-      selectedMoods: selectedMoodIds,
-    ));
+    emit(state.copyWith(moods: updatedMoods, selectedMoods: selectedMoodIds));
   }
 
   Future<void> _onSelectLanguage(
@@ -161,16 +162,22 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
     Emitter<OnboardingState> emit,
   ) async {
     final updatedLanguages = state.languages.map((lang) {
-      return lang.copyWith(isSelected: lang.code == event.languageCode);
+      if (lang.code == event.languageCode) {
+        return lang.copyWith(isSelected: !lang.isSelected);
+      }
+      return lang;
     }).toList();
 
-    final selectedLanguage = updatedLanguages
-        .firstWhere((l) => l.code == event.languageCode);
+    final selectedLanguages = updatedLanguages
+        .where((language) => language.isSelected)
+        .toList();
 
-    emit(state.copyWith(
-      languages: updatedLanguages,
-      selectedLanguage: selectedLanguage,
-    ));
+    emit(
+      state.copyWith(
+        languages: updatedLanguages,
+        selectedLanguages: selectedLanguages,
+      ),
+    );
   }
 
   Future<void> _onSearchArtists(
@@ -182,24 +189,22 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
     final result = await searchArtistsUseCase.call(event.query);
 
     result.fold(
-      (failure) => emit(state.copyWith(
-        isSearching: false,
-        searchError: failure.message,
-      )),
+      (failure) => emit(
+        state.copyWith(isSearching: false, searchError: failure.message),
+      ),
       (artists) {
         final artistModels = artists
-            .map((a) => ArtistSearchModel(
-                  id: a.id,
-                  name: a.name,
-                  imageUrl: a.imageUrl,
-                  genre: a.genre,
-                ))
+            .map(
+              (a) => ArtistSearchModel(
+                id: a.id,
+                name: a.name,
+                imageUrl: a.imageUrl,
+                genre: a.genre,
+              ),
+            )
             .toList();
 
-        emit(state.copyWith(
-          isSearching: false,
-          searchResults: artistModels,
-        ));
+        emit(state.copyWith(isSearching: false, searchResults: artistModels));
       },
     );
   }
@@ -238,9 +243,13 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
   ) async {
     emit(state.copyWith(isSaving: true));
 
+    final selectedLanguageCodes = state.selectedLanguages.isNotEmpty
+        ? state.selectedLanguages.map((language) => language.code).toList()
+        : <String>['en'];
+
     final params = SaveOnboardingPreferencesParams(
       userId: event.userId,
-      language: state.selectedLanguage?.code ?? 'en',
+      languages: selectedLanguageCodes,
       genres: state.selectedGenres,
       moods: state.selectedMoods,
       artists: state.selectedArtists.map((a) => a.id).toList(),
@@ -250,14 +259,9 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
     final result = await saveOnboardingPreferencesUseCase.call(params);
 
     result.fold(
-      (failure) => emit(state.copyWith(
-        isSaving: false,
-        error: failure.message,
-      )),
-      (_) => emit(state.copyWith(
-        isSaving: false,
-        isCompleted: true,
-      )),
+      (failure) =>
+          emit(state.copyWith(isSaving: false, error: failure.message)),
+      (_) => emit(state.copyWith(isSaving: false, isCompleted: true)),
     );
   }
 
@@ -270,29 +274,40 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
     final result = await getUserOnboardingPreferencesUseCase.call(event.userId);
 
     result.fold(
-      (failure) => emit(state.copyWith(
-        isLoading: false,
-        error: failure.message,
-      )),
+      (failure) =>
+          emit(state.copyWith(isLoading: false, error: failure.message)),
       (preferences) {
         // Map preferences back to UI models
+        final selectedLanguageCodes = preferences.preferredLanguages.toSet();
 
-        emit(state.copyWith(
-          isLoading: false,
-          selectedGenres: preferences.favoriteGenres,
-          selectedMoods: preferences.favoriteMoods,
-          randomnessPercentage: preferences.randomnessPercentage,
-          genres: state.genres.map((g) {
-            return g.copyWith(
-              isSelected: preferences.favoriteGenres.contains(g.id),
-            );
-          }).toList(),
-          moods: state.moods.map((m) {
-            return m.copyWith(
-              isSelected: preferences.favoriteMoods.contains(m.id),
-            );
-          }).toList(),
-        ));
+        emit(
+          state.copyWith(
+            isLoading: false,
+            selectedGenres: preferences.favoriteGenres,
+            selectedMoods: preferences.favoriteMoods,
+            randomnessPercentage: preferences.randomnessPercentage,
+            genres: state.genres.map((g) {
+              return g.copyWith(
+                isSelected: preferences.favoriteGenres.contains(g.id),
+              );
+            }).toList(),
+            moods: state.moods.map((m) {
+              return m.copyWith(
+                isSelected: preferences.favoriteMoods.contains(m.id),
+              );
+            }).toList(),
+            selectedLanguages: state.languages.map((language) {
+              return language.copyWith(
+                isSelected: selectedLanguageCodes.contains(language.code),
+              );
+            }).toList(),
+            languages: state.languages.map((language) {
+              return language.copyWith(
+                isSelected: selectedLanguageCodes.contains(language.code),
+              );
+            }).toList(),
+          ),
+        );
       },
     );
   }

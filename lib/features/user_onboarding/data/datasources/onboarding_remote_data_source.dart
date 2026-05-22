@@ -27,9 +27,7 @@ abstract class OnboardingRemoteDataSource {
 class OnboardingRemoteDataSourceImpl implements OnboardingRemoteDataSource {
   final SupabaseClient supabaseClient;
 
-  OnboardingRemoteDataSourceImpl({
-    required this.supabaseClient,
-  });
+  OnboardingRemoteDataSourceImpl({required this.supabaseClient});
 
   @override
   Future<List<LanguageModel>> getAvailableLanguages() async {
@@ -52,7 +50,9 @@ class OnboardingRemoteDataSourceImpl implements OnboardingRemoteDataSource {
       final token = supabaseClient.auth.currentSession?.accessToken;
       final trimmed = query.trim();
       final uri = trimmed.isEmpty
-          ? Uri.parse('${AppSecrets.backendUrl}/api/user/artists?page=0&limit=20')
+          ? Uri.parse(
+              '${AppSecrets.backendUrl}/api/user/artists?page=0&limit=20',
+            )
           : Uri.parse(
               '${AppSecrets.backendUrl}/api/user/artists?page=0&limit=20&q=${Uri.encodeQueryComponent(trimmed)}',
             );
@@ -75,7 +75,8 @@ class OnboardingRemoteDataSourceImpl implements OnboardingRemoteDataSource {
             return ArtistSearchModel(
               id: (map['artist_id'] ?? map['id'] ?? '').toString(),
               name: (map['name'] ?? '').toString(),
-              imageUrl: map['avatar_url']?.toString() ?? map['image_url']?.toString(),
+              imageUrl:
+                  map['avatar_url']?.toString() ?? map['image_url']?.toString(),
               genre: map['genre']?.toString(),
             );
           })
@@ -94,18 +95,16 @@ class OnboardingRemoteDataSourceImpl implements OnboardingRemoteDataSource {
         throw Exception('No authenticated Supabase session found');
       }
 
-      await supabaseClient
-          .from('user_onboarding_preferences')
-          .upsert({
-            // Under RLS, writes must target the authenticated user's row.
-            'user_id': authUserId,
-            'preferred_language': preferences.preferredLanguage,
-            'favorite_genres': preferences.favoriteGenres,
-            'favorite_moods': preferences.favoriteMoods,
-            'favorite_artists': preferences.favoriteArtists,
-            'randomness_percentage': preferences.randomnessPercentage / 100,
-            'completed_at': DateTime.now().toIso8601String(),
-          }, onConflict: 'user_id');
+      await supabaseClient.from('user_onboarding_preferences').upsert({
+        // Under RLS, writes must target the authenticated user's row.
+        'user_id': authUserId,
+        'preferred_languages': preferences.preferredLanguages,
+        'favorite_genres': preferences.favoriteGenres,
+        'favorite_moods': preferences.favoriteMoods,
+        'favorite_artists': preferences.favoriteArtists,
+        'randomness_percentage': preferences.randomnessPercentage / 100,
+        'completed_at': DateTime.now().toIso8601String(),
+      }, onConflict: 'user_id');
     } catch (e) {
       throw Exception('Failed to save onboarding preferences: $e');
     }
@@ -118,7 +117,9 @@ class OnboardingRemoteDataSourceImpl implements OnboardingRemoteDataSource {
 
       final data = await supabaseClient
           .from('user_onboarding_preferences')
-          .select('user_id, preferred_language, favorite_genres, favorite_moods, favorite_artists, randomness_percentage')
+          .select(
+            'user_id, preferred_languages, favorite_genres, favorite_moods, favorite_artists, randomness_percentage',
+          )
           .eq('user_id', resolvedUserId)
           .maybeSingle();
 

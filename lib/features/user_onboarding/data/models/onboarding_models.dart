@@ -6,7 +6,7 @@ import 'package:equatable/equatable.dart';
 
 class OnboardingUserDTO extends Equatable {
   final String userId;
-  final String preferredLanguage;
+  final List<String> preferredLanguages;
   final List<String> favoriteGenres;
   final List<String> favoriteMoods;
   final List<String> favoriteArtists;
@@ -14,7 +14,7 @@ class OnboardingUserDTO extends Equatable {
 
   const OnboardingUserDTO({
     required this.userId,
-    required this.preferredLanguage,
+    required this.preferredLanguages,
     required this.favoriteGenres,
     required this.favoriteMoods,
     required this.favoriteArtists,
@@ -24,7 +24,7 @@ class OnboardingUserDTO extends Equatable {
   // Convert to JSON for API/Database
   Map<String, dynamic> toJson() => {
     'user_id': userId,
-    'preferred_language': preferredLanguage,
+    'preferred_languages': preferredLanguages,
     'favorite_genres': favoriteGenres,
     'favorite_moods': favoriteMoods,
     'favorite_artists': favoriteArtists,
@@ -38,13 +38,20 @@ class OnboardingUserDTO extends Equatable {
         ? rawRandomness.toDouble()
         : double.tryParse(rawRandomness?.toString() ?? '0.15') ?? 0.15;
     final percentage = asNum <= 1 ? (asNum * 100).round() : asNum.round();
+    final preferredLanguages = json['preferred_languages'] is List
+        ? List<String>.from(json['preferred_languages'] as List)
+        : json['preferred_language'] != null
+        ? [json['preferred_language'].toString()]
+        : const ['en'];
 
     return OnboardingUserDTO(
       userId: json['user_id'] as String,
-      preferredLanguage: json['preferred_language'] as String? ?? 'en',
+      preferredLanguages: preferredLanguages,
       favoriteGenres: List<String>.from(json['favorite_genres'] as List? ?? []),
       favoriteMoods: List<String>.from(json['favorite_moods'] as List? ?? []),
-      favoriteArtists: List<String>.from(json['favorite_artists'] as List? ?? []),
+      favoriteArtists: List<String>.from(
+        json['favorite_artists'] as List? ?? [],
+      ),
       randomnessPercentage: percentage,
     );
   }
@@ -52,7 +59,7 @@ class OnboardingUserDTO extends Equatable {
   @override
   List<Object?> get props => [
     userId,
-    preferredLanguage,
+    preferredLanguages,
     favoriteGenres,
     favoriteMoods,
     favoriteArtists,

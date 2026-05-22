@@ -53,7 +53,7 @@ class OnboardingRepositoryImpl implements OnboardingRepository {
   @override
   Future<Either<Failure, void>> saveOnboardingPreferences(
     String userId,
-    String language,
+    List<String> languages,
     List<String> genres,
     List<String> moods,
     List<String> artists,
@@ -62,7 +62,7 @@ class OnboardingRepositoryImpl implements OnboardingRepository {
     try {
       final dto = OnboardingUserDTO(
         userId: userId,
-        preferredLanguage: language,
+        preferredLanguages: languages,
         favoriteGenres: genres,
         favoriteMoods: moods,
         favoriteArtists: artists,
@@ -83,7 +83,7 @@ class OnboardingRepositoryImpl implements OnboardingRepository {
       final dto = await remoteDataSource.getUserOnboardingPreferences(userId);
       final entity = OnboardingUser(
         userId: dto.userId,
-        preferredLanguage: dto.preferredLanguage,
+        preferredLanguages: dto.preferredLanguages,
         favoriteGenres: dto.favoriteGenres,
         favoriteMoods: dto.favoriteMoods,
         favoriteArtists: dto.favoriteArtists,
@@ -108,11 +108,7 @@ class OnboardingRepositoryImpl implements OnboardingRepository {
 
   List<Genre> _mapGenreModelToEntity(List<GenreModel> models) {
     return models.map((model) {
-      return Genre(
-        id: model.id,
-        name: model.name,
-        icon: model.icon,
-      );
+      return Genre(id: model.id, name: model.name, icon: model.icon);
     }).toList();
   }
 

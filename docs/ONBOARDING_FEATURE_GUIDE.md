@@ -190,7 +190,7 @@ if (isNewUser && !hasCompletedOnboarding) {
 
 ### **Uses Existing Tables**
 - **user_onboarding_preferences** (already exists in schema)
-  - `user_id`, `preferred_language`, `favorite_genres`, `favorite_moods`
+   - `user_id`, `preferred_languages`, `favorite_genres`, `favorite_moods`
   - `favorite_artists`, `randomness_percentage`
 
 - **users.settings** (JSONB)

@@ -5,10 +5,7 @@ import '../bloc/onboarding_bloc.dart';
 class OnboardingLanguageScreen extends StatelessWidget {
   final VoidCallback onNext;
 
-  const OnboardingLanguageScreen({
-    super.key,
-    required this.onNext,
-  });
+  const OnboardingLanguageScreen({super.key, required this.onNext});
 
   @override
   Widget build(BuildContext context) {
@@ -25,18 +22,18 @@ class OnboardingLanguageScreen extends StatelessWidget {
           children: [
             // Title
             Text(
-              'Select Your Language',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+              'Select Your Languages',
+              style: Theme.of(
+                context,
+              ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             // Subtitle
             Text(
-              'Choose your preferred language for music content',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
-              ),
+              'Choose one or more languages for music content',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
             ),
             const SizedBox(height: 30),
             // Language grid
@@ -129,9 +126,9 @@ class OnboardingLanguageScreen extends StatelessWidget {
                 Text(
                   name,
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[500],
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey[500]),
                 ),
               ],
             ),

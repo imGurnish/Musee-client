@@ -18,7 +18,7 @@ abstract class OnboardingRepository {
   /// Save user onboarding preferences
   Future<Either<Failure, void>> saveOnboardingPreferences(
     String userId,
-    String language,
+    List<String> languages,
     List<String> genres,
     List<String> moods,
     List<String> artists,
@@ -26,5 +26,7 @@ abstract class OnboardingRepository {
   );
 
   /// Get user's current onboarding preferences
-  Future<Either<Failure, OnboardingUser>> getUserOnboardingPreferences(String userId);
+  Future<Either<Failure, OnboardingUser>> getUserOnboardingPreferences(
+    String userId,
+  );
 }

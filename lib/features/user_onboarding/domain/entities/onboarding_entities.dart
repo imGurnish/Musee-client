@@ -3,7 +3,7 @@ import 'package:equatable/equatable.dart';
 /// Domain entity for user onboarding preferences
 class OnboardingUser extends Equatable {
   final String userId;
-  final String preferredLanguage;
+  final List<String> preferredLanguages;
   final List<String> favoriteGenres;
   final List<String> favoriteMoods;
   final List<String> favoriteArtists;
@@ -11,7 +11,7 @@ class OnboardingUser extends Equatable {
 
   const OnboardingUser({
     required this.userId,
-    required this.preferredLanguage,
+    required this.preferredLanguages,
     required this.favoriteGenres,
     required this.favoriteMoods,
     required this.favoriteArtists,
@@ -21,7 +21,7 @@ class OnboardingUser extends Equatable {
   @override
   List<Object?> get props => [
     userId,
-    preferredLanguage,
+    preferredLanguages,
     favoriteGenres,
     favoriteMoods,
     favoriteArtists,
@@ -35,11 +35,7 @@ class Genre extends Equatable {
   final String name;
   final String icon;
 
-  const Genre({
-    required this.id,
-    required this.name,
-    required this.icon,
-  });
+  const Genre({required this.id, required this.name, required this.icon});
 
   @override
   List<Object?> get props => [id, name, icon];
