@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:musee/core/common/cubit/app_user_cubit.dart';
+import 'package:musee/core/common/navigation/routes.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
 import 'package:musee/features/auth/presentation/bloc/auth_bloc.dart';
@@ -334,6 +336,13 @@ class _SettingsPageState extends State<SettingsPage> {
                       context
                           .read<SettingsCubit>()
                           .setShowExplicitContent(v),
+                ),
+                SettingsNavTile(
+                  icon: Icons.equalizer_rounded,
+                  iconColor: colorScheme.primary,
+                  title: 'Equalizer & Sound',
+                  subtitle: 'EQ presets, bass & surround enhancement',
+                  onTap: () => context.push(Routes.equalizer),
                 ),
               ],
             );

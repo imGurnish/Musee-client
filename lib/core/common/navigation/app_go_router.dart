@@ -49,6 +49,7 @@ import 'package:musee/features/library/presentation/pages/liked_songs_page.dart'
 import 'package:musee/core/common/navigation/user_shell_page.dart';
 import 'package:musee/features/settings/presentation/pages/settings_page.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:musee/features/settings/presentation/pages/equalizer_page.dart';
 
 class AppGoRouter {
   static GoRouter createRouter(AppUserCubit appUserCubit) {
@@ -421,9 +422,18 @@ class AppGoRouter {
         GoRoute(
           path: Routes.settings,
           name: 'settings',
-          builder: (context, state) => BlocProvider(
-            create: (_) => serviceLocator<SettingsCubit>(),
+          builder: (context, state) => BlocProvider.value(
+            value: serviceLocator<SettingsCubit>(),
             child: const SettingsPage(),
+          ),
+        ),
+
+        GoRoute(
+          path: Routes.equalizer,
+          name: 'equalizer',
+          builder: (context, state) => BlocProvider.value(
+            value: serviceLocator<SettingsCubit>(),
+            child: const EqualizerPage(),
           ),
         ),
 

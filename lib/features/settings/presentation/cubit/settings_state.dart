@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
+import 'package:musee/core/equalizer/eq_presets.dart';
 
 enum DownloadQuality { low, medium, high }
 
@@ -15,6 +16,16 @@ class SettingsState extends Equatable {
   final bool showExplicitContent;
   final bool normalizeVolume;
 
+  // ─── Equalizer & Sound ───────────────────────────────────────────────────
+  /// Active preset key — one of [kEqPresets] keys or 'custom'.
+  final String equalizerPreset;
+  /// Per-band dB gains (5 bands). Range: −12.0 to +12.0 per band.
+  final List<double> equalizerBands;
+  /// Bass enhancement level 0–100.
+  final int bassLevel;
+  /// Surround/stereo widening level 0–100 (active only when earphones connected).
+  final int surroundLevel;
+
   const SettingsState({
     this.themeMode = ThemeMode.system,
     this.downloadQuality = DownloadQuality.high,
@@ -24,6 +35,10 @@ class SettingsState extends Equatable {
     this.crossfadeEnabled = false,
     this.showExplicitContent = true,
     this.normalizeVolume = false,
+    this.equalizerPreset = 'normal',
+    this.equalizerBands = const [0.0, 0.0, 0.0, 0.0, 0.0],
+    this.bassLevel = 0,
+    this.surroundLevel = 0,
   });
 
   SettingsState copyWith({
@@ -35,6 +50,10 @@ class SettingsState extends Equatable {
     bool? crossfadeEnabled,
     bool? showExplicitContent,
     bool? normalizeVolume,
+    String? equalizerPreset,
+    List<double>? equalizerBands,
+    int? bassLevel,
+    int? surroundLevel,
   }) {
     return SettingsState(
       themeMode: themeMode ?? this.themeMode,
@@ -45,6 +64,10 @@ class SettingsState extends Equatable {
       crossfadeEnabled: crossfadeEnabled ?? this.crossfadeEnabled,
       showExplicitContent: showExplicitContent ?? this.showExplicitContent,
       normalizeVolume: normalizeVolume ?? this.normalizeVolume,
+      equalizerPreset: equalizerPreset ?? this.equalizerPreset,
+      equalizerBands: equalizerBands ?? this.equalizerBands,
+      bassLevel: bassLevel ?? this.bassLevel,
+      surroundLevel: surroundLevel ?? this.surroundLevel,
     );
   }
 
@@ -58,10 +81,23 @@ class SettingsState extends Equatable {
       'crossfadeEnabled': crossfadeEnabled,
       'showExplicitContent': showExplicitContent,
       'normalizeVolume': normalizeVolume,
+      'equalizerPreset': equalizerPreset,
+      'equalizerBands': equalizerBands,
+      'bassLevel': bassLevel,
+      'surroundLevel': surroundLevel,
     };
   }
 
   factory SettingsState.fromJson(Map<String, dynamic> json) {
+    // Safely parse equalizerBands — stored as List<dynamic> in JSON
+    List<double> parseBands(dynamic raw) {
+      if (raw is List) {
+        return raw.map((e) => (e as num).toDouble()).toList();
+      }
+      return const [0.0, 0.0, 0.0, 0.0, 0.0];
+    }
+
+    final preset = json['equalizerPreset'] as String? ?? 'normal';
     return SettingsState(
       themeMode: ThemeMode.values[json['themeMode'] as int? ?? 0],
       downloadQuality: DownloadQuality.values[json['downloadQuality'] as int? ?? 2],
@@ -71,6 +107,10 @@ class SettingsState extends Equatable {
       crossfadeEnabled: json['crossfadeEnabled'] as bool? ?? false,
       showExplicitContent: json['showExplicitContent'] as bool? ?? true,
       normalizeVolume: json['normalizeVolume'] as bool? ?? false,
+      equalizerPreset: preset,
+      equalizerBands: parseBands(json['equalizerBands']) ,
+      bassLevel: (json['bassLevel'] as int?) ?? 0,
+      surroundLevel: (json['surroundLevel'] as int?) ?? 0,
     );
   }
 
@@ -84,6 +124,10 @@ class SettingsState extends Equatable {
     crossfadeEnabled,
     showExplicitContent,
     normalizeVolume,
+    equalizerPreset,
+    equalizerBands,
+    bassLevel,
+    surroundLevel,
   ];
 }
 

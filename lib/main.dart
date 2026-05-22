@@ -38,13 +38,13 @@ void main() async {
   GoRouter.optionURLReflectsImperativeAPIs = true;
 
 
-  await initDependencies();
-
   HydratedBloc.storage = await HydratedStorage.build(
     storageDirectory: kIsWeb
         ? HydratedStorageDirectory.web
         : HydratedStorageDirectory((await getTemporaryDirectory()).path),
   );
+
+  await initDependencies();
 
   runApp(
     MultiBlocProvider(

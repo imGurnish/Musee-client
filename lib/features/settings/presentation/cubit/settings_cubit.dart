@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
+import 'package:musee/core/equalizer/eq_presets.dart';
 import 'settings_state.dart';
 
 class SettingsCubit extends HydratedCubit<SettingsState> {
@@ -35,6 +36,29 @@ class SettingsCubit extends HydratedCubit<SettingsState> {
 
   void setNormalizeVolume(bool value) {
     emit(state.copyWith(normalizeVolume: value));
+  }
+
+  // ─── Equalizer & Sound ────────────────────────────────────────────────────────
+
+  /// Switch to a named preset — updates both the preset key and the band gains.
+  void setEqualizerPreset(String preset) {
+    final bands = kEqPresets[preset] ?? List<double>.filled(5, 0.0);
+    emit(state.copyWith(equalizerPreset: preset, equalizerBands: bands));
+  }
+
+  /// Update band gains directly (moves preset to 'custom').
+  void setEqualizerBands(List<double> bands) {
+    emit(state.copyWith(equalizerPreset: 'custom', equalizerBands: bands));
+  }
+
+  /// Set bass enhancement level 0–100.
+  void setBassLevel(int level) {
+    emit(state.copyWith(bassLevel: level.clamp(0, 100)));
+  }
+
+  /// Set surround/stereo widening level 0–100.
+  void setSurroundLevel(int level) {
+    emit(state.copyWith(surroundLevel: level.clamp(0, 100)));
   }
 
   @override

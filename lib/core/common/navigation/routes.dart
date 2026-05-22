@@ -4,6 +4,7 @@ class Routes {
 
   // Settings
   static const String settings = '/settings';
+  static const String equalizer = '/equalizer';
 
   // Admin dashboard
   static const String adminDashboard = '/admin';

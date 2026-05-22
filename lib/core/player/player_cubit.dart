@@ -21,6 +21,7 @@ import 'package:musee/core/platform/platform_io_stub.dart'
   if (dart.library.io) 'package:musee/core/platform/platform_io_native.dart'
   as platform_io;
 import 'package:musee/core/platform/windows_platform_config.dart';
+import 'package:musee/core/equalizer/equalizer_controller.dart';
 
 import 'player_state.dart';
 
@@ -56,6 +57,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
+
+  // ─── Equalizer ──────────────────────────────────────────────────────────────────
+  late final EqualizerController _equalizerController;
 
   void _armSwitchFailSafe(int switchToken) {
     _switchFailSafeTimer?.cancel();
@@ -120,6 +124,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     MusicProviderRegistry? musicProviderRegistry,
      ListeningHistoryRepository? listeningHistoryRepository,
      SupabaseClient? supabaseClient,
+    EqualizerController? equalizerController,
   }) : _repo = repository,
        _trackCache = trackCache,
        _audioCache = audioCache,
@@ -128,15 +133,22 @@ class PlayerCubit extends Cubit<PlayerViewState> {
        _listeningHistoryRepository = listeningHistoryRepository,
        _supabaseClient = supabaseClient,
        super(const PlayerViewState()) {
+    _equalizerController = equalizerController ?? EqualizerController();
     _init();
   }
 
   Future<void> _ensurePlatformAudio() async {
     if (_platformAudioInitialized) return;
     _platformAudioInitialized = true;
+
+    // Build Android EQ pipeline before creating the player.
+    // Returns null on Windows/Web — AudioPlayer handles null gracefully.
+    final pipeline = _equalizerController.buildAndroidPipeline();
+
     _player = AudioPlayer(
       handleAudioSessionActivation: false,
       handleInterruptions: false,
+      audioPipeline: pipeline ?? AudioPipeline(),
     );
     _setupPlayerStreams();
 
@@ -1190,6 +1202,26 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   /// Enable or disable recommendation auto-fill (used from settings page).
   void setRecommendationAutoFill(bool enabled) {
     emit(state.copyWith(recommendationAutoFillEnabled: enabled));
+  }
+
+  // ─── Equalizer public API ─────────────────────────────────────────────────
+
+  /// Apply 5-band EQ gains (dB). Delegates to [EqualizerController].
+  /// No-op on Windows/Web.
+  Future<void> applyEqBands(List<double> bands) async {
+    await _equalizerController.applyEqBands(bands);
+  }
+
+  /// Apply bass enhancement 0–100. Delegates to [EqualizerController].
+  /// No-op on Windows/Web.
+  Future<void> applyBass(int level) async {
+    await _equalizerController.applyBass(level);
+  }
+
+  /// Apply surround/stereo widening 0–100. Delegates to [EqualizerController].
+  /// No-op on Windows/Web.
+  Future<void> applySurround(int level) async {
+    await _equalizerController.applySurround(level);
   }
 
   Future<void> _playAtIndex(int index) async {

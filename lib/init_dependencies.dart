@@ -129,6 +129,8 @@ import 'package:musee/core/providers/providers.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:musee/core/equalizer/equalizer_controller.dart';
+import 'package:musee/core/equalizer/headphone_service.dart';
 
 final serviceLocator = GetIt.instance;
 
@@ -212,6 +214,9 @@ Future<void> initDependencies() async {
   // Listening history and recommendations
   _initListeningHistory();
 
+  // Register EqualizerController before PlayerCubit (required for injection)
+  serviceLocator.registerLazySingleton(() => EqualizerController());
+
   // Register player with repository and cache services
   serviceLocator
     ..registerLazySingleton<PlayerDataSource>(
@@ -230,8 +235,30 @@ Future<void> initDependencies() async {
         listeningHistoryRepository:
             serviceLocator<ListeningHistoryRepository>(),
         supabaseClient: serviceLocator<SupabaseClient>(),
+        equalizerController: serviceLocator<EqualizerController>(),
       ),
     );
+
+  // ─── Headphone service & EQ→Player bridge ────────────────────────────────
+
+  // Initialise headphone detection (graceful no-op on Windows/Web)
+  await HeadphoneService.instance.initialize();
+
+  // Bridge: when EQ settings change → push immediately to the player.
+  serviceLocator<SettingsCubit>().stream.listen((s) {
+    final player = serviceLocator<PlayerCubit>();
+    player
+      ..applyEqBands(s.equalizerBands)
+      ..applyBass(s.bassLevel)
+      ..applySurround(s.surroundLevel);
+  });
+
+  // Apply persisted EQ settings immediately on startup.
+  final savedSettings = serviceLocator<SettingsCubit>().state;
+  serviceLocator<PlayerCubit>()
+    ..applyEqBands(savedSettings.equalizerBands)
+    ..applyBass(savedSettings.bassLevel)
+    ..applySurround(savedSettings.surroundLevel);
 
   //auth
   _initAuth();
