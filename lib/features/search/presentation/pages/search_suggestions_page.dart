@@ -76,8 +76,7 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
       final state = context.read<SearchBloc>().state;
       if (state is SearchResultsLoaded &&
           !state.hasReachedMax &&
-          !state.isFetchingMore &&
-          _selectedType != null) {
+          !state.isFetchingMore) {
         context.read<SearchBloc>().add(SearchQuery(
           query: _searchController.text.trim(),
           type: _selectedType,
@@ -318,7 +317,6 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
   }
 
   Widget _buildFilterChips() {
-    final theme = Theme.of(context);
     return SizedBox(
       height: 40,
       child: ListView.builder(
@@ -329,37 +327,16 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
           final isSelected = _selectedType == filter['type'];
           
           return Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: ChoiceChip(
-              label: Text(
-                filter['label'],
-                style: TextStyle(
-                  color: isSelected
-                      ? theme.colorScheme.onPrimary
-                      : theme.colorScheme.onSurfaceVariant,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-              selected: isSelected,
-              onSelected: (selected) {
-                if (selected) {
-                  setState(() {
-                    _selectedType = filter['type'];
-                  });
-                  _triggerSearch(_searchController.text);
-                }
+            padding: const EdgeInsets.only(right: 10.0),
+            child: _CustomFilterChip(
+              label: filter['label'],
+              isSelected: isSelected,
+              onTap: () {
+                setState(() {
+                  _selectedType = filter['type'];
+                });
+                _triggerSearch(_searchController.text);
               },
-              selectedColor: theme.colorScheme.primary,
-              backgroundColor: theme.colorScheme.surfaceContainerHighest.withAlpha(128),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: isSelected
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.outlineVariant.withAlpha(128),
-                ),
-              ),
-              showCheckmark: false,
             ),
           );
         },
@@ -377,70 +354,83 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
 
   Widget _buildAllResults(SearchResultsLoaded state) {
     final results = state.results;
-    if (results.isEmpty) return _buildEmptyState();
+    if (results.isEmpty) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildFilterChips(),
+            const SizedBox(height: 24),
+            _buildNoResultsState(_searchController.text),
+          ],
+        ),
+      );
+    }
 
     final top = _pickTopResult(results);
+    final mixedItems = _buildUnifiedMixedList(results, top);
 
-    return SingleChildScrollView(
+    return ListView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildFilterChips(),
-          const SizedBox(height: 16),
-          if (state.fromOfflineCache) ...[
-            const _OfflineSearchBanner(),
-            const SizedBox(height: 16),
-          ],
-          if (top != null) ...[
-            _TopResultCard(top: top, onInteraction: _loadRecents),
-            const SizedBox(height: 16),
-          ],
-          if (results.tracks.isNotEmpty) ...[
-            _buildSectionHeader('Songs', 'track'),
-            ...results.tracks.take(5).map(
-                  (t) => _TrackTile(
-                    track: t,
-                    isCached: state.cachedTrackIds.contains(t.trackId),
-                    onInteraction: _loadRecents,
-                  ),
-                ),
-            const SizedBox(height: 16),
-          ],
-          if (results.artists.isNotEmpty) ...[
-            _buildSectionHeader('Artists', 'artist'),
-            ...results.artists.take(5).map(
-                  (a) => _ArtistTile(
-                    artist: a,
-                    onInteraction: _loadRecents,
-                  ),
-                ),
-            const SizedBox(height: 16),
-          ],
-          if (results.albums.isNotEmpty) ...[
-            _buildSectionHeader('Albums', 'album'),
-            ...results.albums.take(5).map(
-                  (a) => _AlbumTile(
-                    album: a,
-                    isCached: state.cachedAlbumIds.contains(a.albumId),
-                    onInteraction: _loadRecents,
-                  ),
-                ),
-            const SizedBox(height: 16),
-          ],
-          if (results.playlists.isNotEmpty) ...[
-            _buildSectionHeader('Playlists', 'playlist'),
-            ...results.playlists.take(5).map(
-                  (p) => _PlaylistTile(
-                    playlist: p,
-                    isCached: state.cachedPlaylistIds.contains(p.playlistId),
-                    onInteraction: _loadRecents,
-                  ),
-                ),
-            const SizedBox(height: 32),
-          ],
-        ],
-      ),
+      itemCount: 1 + // Filter chips
+          (state.fromOfflineCache ? 1 : 0) + // Offline banner
+          (top != null ? 1 : 0) + // Top result card
+          mixedItems.length + // Unified mixed items
+          1, // Bottom loader / spacing
+      itemBuilder: (context, index) {
+        int currentIndex = 0;
+
+        // 1. Filter Chips
+        if (index == currentIndex) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildFilterChips(),
+              const SizedBox(height: 16),
+            ],
+          );
+        }
+        currentIndex++;
+
+        // 2. Offline Banner
+        if (state.fromOfflineCache) {
+          if (index == currentIndex) {
+            return const Padding(
+              padding: EdgeInsets.only(bottom: 16.0),
+              child: _OfflineSearchBanner(),
+            );
+          }
+          currentIndex++;
+        }
+
+        // 3. Top Result Card
+        if (top != null) {
+          if (index == currentIndex) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 20.0),
+              child: _TopResultCard(top: top, onInteraction: _loadRecents),
+            );
+          }
+          currentIndex++;
+        }
+
+        // 4. Unified Mixed Items
+        final mixedItemIndex = index - currentIndex;
+        if (mixedItemIndex >= 0 && mixedItemIndex < mixedItems.length) {
+          final item = mixedItems[mixedItemIndex];
+          return _buildMixedItemTile(item, state);
+        }
+
+        // 5. Bottom Loader / Spacing
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24.0),
+          child: state.isFetchingMore
+              ? const Center(child: CircularProgressIndicator())
+              : const SizedBox.shrink(),
+        );
+      },
     );
   }
 
@@ -448,7 +438,12 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
     final results = state.results;
     
     final List<Widget> items = [];
+    int totalCount = 0;
+    String categoryLabel = '';
+    
     if (_selectedType == 'track') {
+      totalCount = results.tracks.length;
+      categoryLabel = 'Songs';
       items.addAll(results.tracks.map(
         (t) => _TrackTile(
           track: t,
@@ -457,6 +452,8 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
         ),
       ));
     } else if (_selectedType == 'artist') {
+      totalCount = results.artists.length;
+      categoryLabel = 'Artists';
       items.addAll(results.artists.map(
         (a) => _ArtistTile(
           artist: a,
@@ -464,6 +461,8 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
         ),
       ));
     } else if (_selectedType == 'album') {
+      totalCount = results.albums.length;
+      categoryLabel = 'Albums';
       items.addAll(results.albums.map(
         (a) => _AlbumTile(
           album: a,
@@ -472,6 +471,8 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
         ),
       ));
     } else if (_selectedType == 'playlist') {
+      totalCount = results.playlists.length;
+      categoryLabel = 'Playlists';
       items.addAll(results.playlists.map(
         (p) => _PlaylistTile(
           playlist: p,
@@ -481,12 +482,36 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
       ));
     }
 
-    if (items.isEmpty) return _buildEmptyState();
+    if (items.isEmpty) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildFilterChips(),
+            const SizedBox(height: 16),
+            if (state.fromOfflineCache) ...[
+              const _OfflineSearchBanner(),
+              const SizedBox(height: 16),
+            ],
+            _CategoryHeaderCard(
+              label: categoryLabel,
+              totalCount: 0,
+              query: _searchController.text,
+            ),
+            const SizedBox(height: 24),
+            _buildNoResultsState(_searchController.text),
+          ],
+        ),
+      );
+    }
 
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: items.length + 2, // 1 for filter chips, 1 for bottom loader
+      itemCount: 1 + // Filter chips + Category header card + Offline banner (combined in index 0)
+          items.length + // Result items
+          1, // Bottom loader / spacing
       itemBuilder: (context, index) {
         if (index == 0) {
           return Column(
@@ -498,6 +523,11 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
                 const _OfflineSearchBanner(),
                 const SizedBox(height: 16),
               ],
+              _CategoryHeaderCard(
+                label: categoryLabel,
+                totalCount: totalCount,
+                query: _searchController.text,
+              ),
             ],
           );
         }
@@ -509,45 +539,12 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
         
         // Bottom loader
         return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16.0),
+          padding: const EdgeInsets.symmetric(vertical: 24.0),
           child: state.isFetchingMore
               ? const Center(child: CircularProgressIndicator())
               : const SizedBox.shrink(),
         );
       },
-    );
-  }
-
-  Widget _buildSectionHeader(String title, String type) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _selectedType = type;
-              });
-              _triggerSearch(_searchController.text);
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: theme.colorScheme.primary,
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(50, 30),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text('See all'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -557,6 +554,132 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
     if (r.albums.isNotEmpty) return r.albums.first;
     if (r.playlists.isNotEmpty) return r.playlists.first;
     return null;
+  }
+
+  double _computeRelevance(Object item, String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return 0.0;
+
+    String primaryText = '';
+    String secondaryText = '';
+    double typeWeight = 0.0;
+
+    if (item is CatalogTrack) {
+      primaryText = item.title;
+      secondaryText = item.artists.map((a) => a.name ?? '').join(' ');
+      typeWeight = 4.0;
+    } else if (item is CatalogArtist) {
+      primaryText = item.name ?? '';
+      typeWeight = 3.0;
+    } else if (item is CatalogAlbum) {
+      primaryText = item.title;
+      secondaryText = item.artists.map((a) => a.name ?? '').join(' ');
+      typeWeight = 2.0;
+    } else if (item is CatalogPlaylist) {
+      primaryText = item.name;
+      secondaryText = item.creatorName ?? '';
+      typeWeight = 1.0;
+    }
+
+    primaryText = primaryText.trim().toLowerCase();
+    secondaryText = secondaryText.trim().toLowerCase();
+
+    double score = 0.0;
+
+    // Primary text matching
+    if (primaryText == q) {
+      score += 100.0;
+    } else if (primaryText.startsWith(q)) {
+      score += 50.0;
+    } else if (primaryText.contains(' $q') || primaryText.contains('$q ')) {
+      score += 30.0;
+    } else if (primaryText.contains(q)) {
+      score += 10.0;
+    }
+
+    // Secondary text matching
+    if (secondaryText.isNotEmpty) {
+      if (secondaryText == q) {
+        score += 40.0;
+      } else if (secondaryText.startsWith(q)) {
+        score += 20.0;
+      } else if (secondaryText.contains(q)) {
+        score += 5.0;
+      }
+    }
+
+    return score + (score > 0 ? typeWeight : 0.0);
+  }
+
+  List<Object> _buildUnifiedMixedList(CatalogSearchResults results, Object? topResult) {
+    final List<Object> mixed = [];
+    
+    bool isTopResult(Object item) {
+      if (topResult == null) return false;
+      if (item is CatalogTrack && topResult is CatalogTrack) {
+        return item.trackId == topResult.trackId;
+      }
+      if (item is CatalogArtist && topResult is CatalogArtist) {
+        return item.artistId == topResult.artistId;
+      }
+      if (item is CatalogAlbum && topResult is CatalogAlbum) {
+        return item.albumId == topResult.albumId;
+      }
+      if (item is CatalogPlaylist && topResult is CatalogPlaylist) {
+        return item.playlistId == topResult.playlistId;
+      }
+      return false;
+    }
+
+    for (final t in results.tracks) {
+      if (!isTopResult(t)) mixed.add(t);
+    }
+    for (final a in results.artists) {
+      if (!isTopResult(a)) mixed.add(a);
+    }
+    for (final al in results.albums) {
+      if (!isTopResult(al)) mixed.add(al);
+    }
+    for (final p in results.playlists) {
+      if (!isTopResult(p)) mixed.add(p);
+    }
+
+    final query = _searchController.text;
+    mixed.sort((a, b) {
+      final scoreA = _computeRelevance(a, query);
+      final scoreB = _computeRelevance(b, query);
+      return scoreB.compareTo(scoreA);
+    });
+
+    return mixed;
+  }
+
+  Widget _buildMixedItemTile(Object item, SearchResultsLoaded state) {
+    if (item is CatalogTrack) {
+      return _TrackTile(
+        track: item,
+        isCached: state.cachedTrackIds.contains(item.trackId),
+        onInteraction: _loadRecents,
+      );
+    } else if (item is CatalogArtist) {
+      return _ArtistTile(
+        artist: item,
+        onInteraction: _loadRecents,
+      );
+    } else if (item is CatalogAlbum) {
+      return _AlbumTile(
+        album: item,
+        isCached: state.cachedAlbumIds.contains(item.albumId),
+        onInteraction: _loadRecents,
+      );
+    } else if (item is CatalogPlaylist) {
+      return _PlaylistTile(
+        playlist: item,
+        isCached: state.cachedPlaylistIds.contains(item.playlistId),
+        onInteraction: _loadRecents,
+      );
+    }
+    return const SizedBox.shrink();
   }
 
   Widget _buildRecentsState() {
@@ -651,10 +774,22 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
                               ],
                             ),
                           ),
-                          Icon(
-                            Icons.chevron_right_rounded,
-                            color: theme.colorScheme.onSurfaceVariant,
-                            size: 20,
+                          GestureDetector(
+                            onTap: () {
+                              _removeRecentItem(item);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: theme.colorScheme.onSurface.withValues(alpha: 0.05),
+                              ),
+                              child: Icon(
+                                Icons.close_rounded,
+                                color: theme.colorScheme.onSurfaceVariant,
+                                size: 16,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -771,6 +906,55 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
     );
   }
 
+  Widget _buildNoResultsState(String query) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.sentiment_dissatisfied_rounded,
+              size: 64,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No results found',
+              style: textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            RichText(
+              textAlign: TextAlign.center,
+              text: TextSpan(
+                style: textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+                children: [
+                  const TextSpan(text: 'We couldn\'t find any matches for '),
+                  TextSpan(
+                    text: '"$query"',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                  const TextSpan(text: '.\nPlease check spelling or try other keywords.'),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildErrorState(String message) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
@@ -832,6 +1016,11 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
     await _loadRecents();
   }
 
+  Future<void> _removeRecentItem(SearchRecentItem item) async {
+    await _recentsService.removeRecent(item.uniqueKey);
+    await _loadRecents();
+  }
+
   Future<void> _openRecent(SearchRecentItem item) async {
     await _recentsService.addRecent(item);
     if (!mounted) return;
@@ -871,20 +1060,59 @@ class _TopResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => _handleTap(context),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              _artwork(context),
-              const SizedBox(width: 16),
-              Expanded(child: _info(context)),
-            ],
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          colors: [
+            colorScheme.surfaceContainerHighest.withAlpha(160),
+            colorScheme.surfaceContainerHighest.withAlpha(60),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(
+          color: colorScheme.primary.withAlpha(40),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.primary.withAlpha(20),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => _handleTap(context),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                _artwork(context),
+                const SizedBox(width: 20),
+                Expanded(child: _info(context)),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withAlpha(30),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.play_arrow_rounded,
+                    color: colorScheme.primary,
+                    size: 24,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -892,15 +1120,17 @@ class _TopResultCard extends StatelessWidget {
   }
 
   Widget _artwork(BuildContext context) {
-    final double size = 96;
+    final double size = 88;
     String? imageUrl;
     IconData fallback = Icons.music_note;
+    bool isCircle = false;
     if (top is CatalogAlbum) {
       imageUrl = (top as CatalogAlbum).coverUrl;
       fallback = Icons.album;
     } else if (top is CatalogArtist) {
       imageUrl = (top as CatalogArtist).avatarUrl;
       fallback = Icons.person;
+      isCircle = true;
     } else if (top is CatalogPlaylist) {
       imageUrl = (top as CatalogPlaylist).coverUrl;
       fallback = Icons.queue_music_rounded;
@@ -908,58 +1138,89 @@ class _TopResultCard extends StatelessWidget {
       imageUrl = (top as CatalogTrack).imageUrl;
       fallback = Icons.music_note_rounded;
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: size,
-        height: size,
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: imageUrl != null && imageUrl.isNotEmpty
-            ? Image.network(imageUrl, fit: BoxFit.cover)
-            : Icon(fallback, size: 48),
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: isCircle ? null : BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(60),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: isCircle ? BorderRadius.circular(size / 2) : BorderRadius.circular(16),
+        child: Container(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: imageUrl != null && imageUrl.isNotEmpty
+              ? Image.network(imageUrl, fit: BoxFit.cover)
+              : Icon(fallback, size: 40),
+        ),
       ),
     );
   }
 
   Widget _info(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     String title;
     String subtitle;
+    String typeLabel;
+    
     if (top is CatalogArtist) {
       final a = top as CatalogArtist;
       title = a.name ?? 'Artist';
-      subtitle = 'Artist';
+      subtitle = 'Popular Artist';
+      typeLabel = 'Artist';
     } else if (top is CatalogTrack) {
       final t = top as CatalogTrack;
       title = t.title;
       final artistNames = t.artists.map((a) => a.name ?? a.artistId).join(', ');
       subtitle = 'Song • $artistNames';
+      typeLabel = 'Song';
     } else if (top is CatalogPlaylist) {
       final p = top as CatalogPlaylist;
       title = p.name;
       subtitle = p.creatorName?.isNotEmpty == true
-          ? 'Playlist • ${p.creatorName}'
+          ? 'Playlist • By ${p.creatorName}'
           : 'Playlist';
+      typeLabel = 'Playlist';
     } else {
       final a = top as CatalogAlbum;
       title = a.title;
       final artistNames = a.artists.map((x) => x.name ?? x.artistId).join(', ');
       subtitle = 'Album • $artistNames';
+      typeLabel = 'Album';
     }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _TypeBadge(label: typeLabel),
+        const SizedBox(height: 8),
         Text(
           title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+            letterSpacing: -0.5,
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(
           subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+            color: colorScheme.onSurfaceVariant,
+            letterSpacing: 0.1,
           ),
         ),
       ],
@@ -1043,6 +1304,38 @@ class _TopResultCard extends StatelessWidget {
       await context.push('/albums/${a.albumId}');
       if (onInteraction != null) onInteraction!();
     }
+  }
+}
+
+class _TypeBadge extends StatelessWidget {
+  final String label;
+  const _TypeBadge({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.primary.withAlpha(40),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: colorScheme.primary.withAlpha(80),
+          width: 0.8,
+        ),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: colorScheme.primary,
+          fontWeight: FontWeight.w800,
+          fontSize: 10,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
   }
 }
 
@@ -1228,26 +1521,11 @@ class _ArtistTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return _ResultTileContainer(
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundImage: artist.avatarUrl != null
-              ? NetworkImage(artist.avatarUrl!)
-              : null,
-          child: artist.avatarUrl == null ? const Icon(Icons.person) : null,
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                artist.name ?? 'Artist',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        trailing: const _TypeChip(label: 'Artist'),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
         onTap: () async {
           await GetIt.I<SearchRecentsService>().addRecent(
             SearchRecentItem(
@@ -1264,6 +1542,67 @@ class _ArtistTile extends StatelessWidget {
           await context.push('/artists/${artist.artistId}');
           if (onInteraction != null) onInteraction!();
         },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+          child: Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 6,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: artist.avatarUrl != null && artist.avatarUrl!.isNotEmpty
+                      ? Image.network(
+                          artist.avatarUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            child: const Icon(Icons.person, size: 28),
+                          ),
+                        )
+                      : Container(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          child: const Icon(Icons.person, size: 28),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      artist.name ?? 'Artist',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Artist',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const _TypeChip(label: 'Artist'),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1416,27 +1755,23 @@ class _PlaylistTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final subtitle = playlist.creatorName?.isNotEmpty == true
-        ? playlist.creatorName!
+        ? 'Playlist • By ${playlist.creatorName}'
         : 'Playlist';
 
     return _ResultTileContainer(
-      child: ListTile(
-        leading: _PlaylistArtwork(playlist: playlist, isCached: isCached),
-        title: Text(
-          playlist.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-        trailing: const _TypeChip(label: 'Playlist'),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
         onTap: () async {
           await GetIt.I<SearchRecentsService>().addRecent(
             SearchRecentItem(
               type: SearchRecentType.playlist,
               id: playlist.playlistId,
               title: playlist.name,
-              subtitle: subtitle,
+              subtitle: playlist.creatorName?.isNotEmpty == true
+                  ? playlist.creatorName!
+                  : 'Playlist',
               imageUrl: playlist.coverUrl,
               updatedAt: DateTime.now(),
             ),
@@ -1446,6 +1781,41 @@ class _PlaylistTile extends StatelessWidget {
           await context.push('/playlists/${playlist.playlistId}');
           if (onInteraction != null) onInteraction!();
         },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+          child: Row(
+            children: [
+              _PlaylistArtwork(playlist: playlist, isCached: isCached),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      playlist.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const _TypeChip(label: 'Playlist'),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1458,13 +1828,25 @@ class _ResultTileContainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(
-          alpha: 0.48,
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: [
+              colorScheme.surfaceContainerHighest.withValues(alpha: 0.25),
+              colorScheme.surfaceContainerHighest.withValues(alpha: 0.1),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.12),
+            width: 1.0,
+          ),
         ),
-        borderRadius: BorderRadius.circular(14),
         child: child,
       ),
     );
@@ -1681,10 +2063,10 @@ class _TypeChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withAlpha(96),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.38),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: theme.colorScheme.outlineVariant.withAlpha(96),
+          color: theme.colorScheme.outlineVariant.withValues(alpha: 0.38),
         ),
       ),
       child: Text(
@@ -1693,6 +2075,157 @@ class _TypeChip extends StatelessWidget {
           color: theme.colorScheme.onSurfaceVariant,
           fontWeight: FontWeight.w600,
         ),
+      ),
+    );
+  }
+}
+
+class _CustomFilterChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _CustomFilterChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: isSelected
+            ? LinearGradient(
+                colors: [
+                  colorScheme.primary,
+                  colorScheme.primary.withValues(alpha: 0.8),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+        color: isSelected
+            ? null
+            : colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        border: Border.all(
+          color: isSelected
+              ? colorScheme.primary.withValues(alpha: 0.2)
+              : colorScheme.outlineVariant.withValues(alpha: 0.15),
+          width: 1,
+        ),
+        boxShadow: isSelected
+            ? [
+                BoxShadow(
+                  color: colorScheme.primary.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                )
+              ]
+            : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Center(
+              child: Text(
+                label,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: isSelected
+                      ? colorScheme.onPrimary
+                      : colorScheme.onSurface,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryHeaderCard extends StatelessWidget {
+  final String label;
+  final int totalCount;
+  final String query;
+
+  const _CategoryHeaderCard({
+    required this.label,
+    required this.totalCount,
+    required this.query,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          colors: [
+            colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            colorScheme.surfaceContainerHighest.withValues(alpha: 0.15),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.15),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          RichText(
+            text: TextSpan(
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: colorScheme.onSurface,
+              ),
+              children: [
+                const TextSpan(text: 'Showing '),
+                TextSpan(
+                  text: '$totalCount',
+                  style: TextStyle(color: colorScheme.primary),
+                ),
+                const TextSpan(text: ' results for '),
+                TextSpan(
+                  text: '"$query"',
+                  style: TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
