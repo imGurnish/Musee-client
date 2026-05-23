@@ -12,6 +12,7 @@ import 'package:musee/core/common/widgets/playing_bars_animation.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
+import 'package:musee/features/user_playlists/presentation/widgets/add_to_playlist_sheet.dart';
 
 class UserAlbumPage extends StatefulWidget {
   final String albumId;
@@ -626,6 +627,18 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                                                   ),
                                                   ListTile(
                                                     leading: const Icon(
+                                                      Icons.playlist_add_rounded,
+                                                    ),
+                                                    title: const Text(
+                                                      'Add to playlist',
+                                                    ),
+                                                    onTap: () => Navigator.pop(
+                                                      context,
+                                                      'playlist',
+                                                    ),
+                                                  ),
+                                                  ListTile(
+                                                    leading: const Icon(
                                                       Icons.download_rounded,
                                                     ),
                                                     title: const Text(
@@ -673,6 +686,14 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                                           ),
                                         );
                                       }
+                                    } else if (action == 'playlist') {
+                                      await showAddToPlaylistSheet(
+                                        context,
+                                        trackId: t.trackId,
+                                        trackTitle: t.title,
+                                        artistNames: artists,
+                                        imageUrl: album.coverUrl,
+                                      );
                                     }
                                   },
                                 ),

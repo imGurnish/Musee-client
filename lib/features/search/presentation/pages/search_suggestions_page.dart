@@ -12,6 +12,7 @@ import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
+import 'package:musee/features/user_playlists/presentation/widgets/add_to_playlist_sheet.dart';
 
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
 import 'package:musee/features/search/data/services/search_recents_service.dart';
@@ -1433,6 +1434,11 @@ class _TrackTile extends StatelessWidget {
               onTap: () => Navigator.pop(context, 'queue'),
             ),
             ListTile(
+              leading: const Icon(Icons.playlist_add_rounded),
+              title: const Text('Add to playlist'),
+              onTap: () => Navigator.pop(context, 'playlist'),
+            ),
+            ListTile(
               leading: const Icon(Icons.download_rounded),
               title: const Text('Download'),
               onTap: () => Navigator.pop(context, 'download'),
@@ -1463,6 +1469,17 @@ class _TrackTile extends StatelessWidget {
           context,
         ).showSnackBar(const SnackBar(content: Text('Added to downloads')));
       }
+      return;
+    }
+
+    if (action == 'playlist') {
+      await showAddToPlaylistSheet(
+        context,
+        trackId: track.trackId,
+        trackTitle: track.title,
+        artistNames: artistNames,
+        imageUrl: track.imageUrl,
+      );
       return;
     }
 

@@ -10,6 +10,7 @@ import 'package:musee/core/player/player_state.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
+import 'package:musee/features/user_playlists/presentation/widgets/add_to_playlist_sheet.dart';
 
 bool _isPlayerSheetOpen = false;
 DateTime? _lastPlayerSheetOpenAt;
@@ -334,6 +335,44 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
     }
   }
 
+  Future<void> _showTrackActionsSheet(PlayerViewState state) async {
+    final track = state.track;
+    if (track?.trackId == null) return;
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      useRootNavigator: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.playlist_add_rounded),
+                title: const Text('Add to playlist'),
+                onTap: () => Navigator.pop(context, 'playlist'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || action == null) return;
+
+    if (action == 'playlist') {
+      await showAddToPlaylistSheet(
+        context,
+        trackId: track!.trackId!,
+        trackTitle: track.title,
+        artistNames: track.artist,
+        imageUrl: track.imageUrl,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.of(context).viewPadding.top;
@@ -436,11 +475,12 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                       ],
                     ),
                   ),
-                  // IconButton(
-                  //   tooltip: 'More',
-                  //   onPressed: () {},
-                  //   icon: const Icon(Icons.more_vert_rounded),
-                  // ),
+                  if (state.track?.trackId != null)
+                    IconButton(
+                      tooltip: 'More',
+                      onPressed: () => _showTrackActionsSheet(state),
+                      icon: const Icon(Icons.more_vert_rounded),
+                    ),
                 ],
               ),
 
