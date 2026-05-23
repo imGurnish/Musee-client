@@ -11,8 +11,9 @@ class LoadPlaylistDetails extends AdminPlaylistDetailEvent {
 class SearchTracksEvent extends AdminPlaylistDetailEvent {
   final String? query;
   final int page;
+  final bool appendResults;
 
-  SearchTracksEvent({this.query, this.page = 0});
+  SearchTracksEvent({this.query, this.page = 0, this.appendResults = false});
 }
 
 class AddTrackEvent extends AdminPlaylistDetailEvent {

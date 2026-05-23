@@ -18,24 +18,43 @@ class AdminPlaylistDetailPage extends StatefulWidget {
 
 class _AdminPlaylistDetailPageState extends State<AdminPlaylistDetailPage> {
   final _searchController = TextEditingController();
+  final ScrollController _searchScrollController = ScrollController();
   int _searchPage = 0;
+  bool _hasMoreResults = false;
 
   @override
   void initState() {
     super.initState();
     context.read<AdminPlaylistDetailBloc>()
         .add(LoadPlaylistDetails(widget.playlistId));
+    // Auto-load all tracks on open so the list isn't empty
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onSearch(reset: true);
+    });
+    _searchScrollController.addListener(_onSearchScroll);
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchScrollController
+      ..removeListener(_onSearchScroll)
+      ..dispose();
     super.dispose();
+  }
+
+  void _onSearchScroll() {
+    if (!_hasMoreResults) return;
+    if (_searchScrollController.position.pixels >=
+        _searchScrollController.position.maxScrollExtent - 200) {
+      _loadMoreSearchResults();
+    }
   }
 
   void _onSearch({bool reset = false}) {
     if (reset) {
       _searchPage = 0;
+      _hasMoreResults = false;
     }
     context.read<AdminPlaylistDetailBloc>().add(
       SearchTracksEvent(
@@ -47,10 +66,24 @@ class _AdminPlaylistDetailPageState extends State<AdminPlaylistDetailPage> {
     );
   }
 
+  void _loadMoreSearchResults() {
+    final state = context.read<AdminPlaylistDetailBloc>().state;
+    if (state is! AdminPlaylistDetailLoaded || state.isSearching) return;
+    if (!_hasMoreResults) return;
+    _searchPage++;
+    context.read<AdminPlaylistDetailBloc>().add(
+      SearchTracksEvent(
+        query: _searchController.text.trim().isEmpty
+            ? null
+            : _searchController.text.trim(),
+        page: _searchPage,
+        appendResults: true,
+      ),
+    );
+  }
+
   void _onAddTrack(String trackId) {
     context.read<AdminPlaylistDetailBloc>().add(AddTrackEvent(trackId));
-    _searchController.clear();
-    _searchPage = 0;
   }
 
   void _onRemoveTrack(String trackId) {
@@ -319,28 +352,26 @@ class _AdminPlaylistDetailPageState extends State<AdminPlaylistDetailPage> {
   }
 
   Widget _buildSearchResults(BuildContext context, AdminPlaylistDetailLoaded state) {
-    final hasQuery = _searchController.text.trim().isNotEmpty;
+    // Update hasMoreResults based on the latest state
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final total = state.searchTotal;
+        final loaded = state.searchResults.length;
+        final newHasMore = loaded < total;
+        if (_hasMoreResults != newHasMore) {
+          setState(() => _hasMoreResults = newHasMore);
+        }
+      }
+    });
 
-    if (state.searchResults.isEmpty && !state.isSearching && !hasQuery) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(color: Theme.of(context).dividerColor),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          'Search tracks to add them to this playlist.',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+    if (state.searchResults.isEmpty && state.isSearching) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 32),
+        child: Center(child: CircularProgressIndicator()),
       );
     }
 
-    if (state.searchResults.isEmpty && state.isSearching) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (state.searchResults.isEmpty && !state.isSearching && hasQuery) {
+    if (state.searchResults.isEmpty && !state.isSearching) {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
@@ -349,7 +380,9 @@ class _AdminPlaylistDetailPageState extends State<AdminPlaylistDetailPage> {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
-          'No tracks found.',
+          _searchController.text.trim().isNotEmpty
+              ? 'No tracks found.'
+              : 'No tracks available.',
           style: Theme.of(context).textTheme.bodyMedium,
         ),
       );
@@ -359,16 +392,47 @@ class _AdminPlaylistDetailPageState extends State<AdminPlaylistDetailPage> {
         state.playlist.tracks?.map((t) => t.trackId).toSet() ?? {};
 
     return Container(
-      constraints: const BoxConstraints(maxHeight: 400),
+      constraints: const BoxConstraints(maxHeight: 500),
       decoration: BoxDecoration(
         border: Border.all(color: Theme.of(context).dividerColor),
         borderRadius: BorderRadius.circular(8),
       ),
       child: ListView.separated(
+        controller: _searchScrollController,
         shrinkWrap: true,
-        itemCount: state.searchResults.length,
+        // +1 for the footer row (loading indicator or load-more button)
+        itemCount: state.searchResults.length + 1,
         separatorBuilder: (_, _) => const Divider(height: 1),
         itemBuilder: (context, index) {
+          // Footer
+          if (index == state.searchResults.length) {
+            if (state.isSearching) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              );
+            }
+            if (_hasMoreResults) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                child: TextButton.icon(
+                  onPressed: _loadMoreSearchResults,
+                  icon: const Icon(Icons.expand_more, size: 18),
+                  label: Text(
+                    'Load more (${state.searchTotal - state.searchResults.length} remaining)',
+                  ),
+                ),
+              );
+            }
+            return const SizedBox.shrink();
+          }
+
           final track = state.searchResults[index];
           final alreadyInPlaylist = playlistTrackIds.contains(track.trackId);
           final duration = _formatDuration(track.duration);
@@ -404,10 +468,9 @@ class _AdminPlaylistDetailPageState extends State<AdminPlaylistDetailPage> {
                 ],
               ),
               trailing: alreadyInPlaylist
-                  ? Chip(
-                      label: const Text('Added'),
-                      avatar: const Icon(Icons.check, size: 16),
-                      onDeleted: null,
+                  ? const Chip(
+                      label: Text('Added'),
+                      avatar: Icon(Icons.check, size: 16),
                     )
                   : IconButton.filledTonal(
                       onPressed: state.isAddingTrack

@@ -64,8 +64,12 @@ class AdminPlaylistDetailBloc
           emit(currentState.copyWith(isSearching: false, error: failure.message)),
       (data) {
         final (items, total, page, limit) = data;
+        // When appending (lazy-load), merge new items into the existing list
+        final mergedResults = event.appendResults
+            ? [...currentState.searchResults, ...items]
+            : items;
         emit(currentState.copyWith(
-          searchResults: items,
+          searchResults: mergedResults,
           searchTotal: total,
           searchPage: page,
           searchQuery: event.query,

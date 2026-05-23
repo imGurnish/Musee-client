@@ -101,6 +101,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
       _isLiked = false;
       _loadedPlaylistId = null;
       _recommendedTracks = null;
+      _allRecommendedTrackIds = null;
       _isLoadingRecommendations = false;
       _recommendationsError = null;
       _recommendationsPage = 0;
@@ -118,6 +119,10 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
     }
   }
 
+  // Holds the full list of recommended track IDs fetched from /api/recommendations
+  List<String>? _allRecommendedTrackIds;
+  static const int _recPageSize = 20;
+
   Future<void> _fetchRecommendations({bool loadMore = false}) async {
     if (!mounted) return;
     if (loadMore && (_isLoadingRecommendations || _recommendationsReachedEnd)) return;
@@ -127,6 +132,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
         _recommendationsPage = 0;
         _recommendationsReachedEnd = false;
         _recommendedTracks = null;
+        _allRecommendedTrackIds = null;
         _seenRecommendationTrackIds.clear();
       });
     }
@@ -140,82 +146,123 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
       final dio = GetIt.I<Dio>();
       final supabase = GetIt.I<SupabaseClient>();
       final token = supabase.auth.currentSession?.accessToken;
-      
-      final limit = 20;
-      final page = _recommendationsPage;
+      final authHeader = {'Authorization': 'Bearer $token'};
 
-      // 1. Fetch from made-for-you and trending dashboard feeds
-      final futures = [
-        dio.get(
-          '${AppSecrets.backendUrl}/api/user/dashboard/made-for-you?page=$page&limit=$limit',
-          options: Options(
-            headers: {'Authorization': 'Bearer $token'},
-          ),
-        ),
-        dio.get(
-          '${AppSecrets.backendUrl}/api/user/dashboard/trending?page=$page&limit=$limit',
-          options: Options(
-            headers: {'Authorization': 'Bearer $token'},
-          ),
-        ),
-      ];
+      // ── Step 1: Fetch personalised track IDs from the recommendations API ──
+      // Only fetch the ID list once; subsequent "load more" pages slice from it.
+      if (_allRecommendedTrackIds == null) {
+        List<String> recommendedIds = [];
 
-      final responses = await Future.wait(futures);
-      final rawItems = <dynamic>[];
-
-      for (final r in responses) {
-        if (r.data is Map) {
-          final items = r.data['items'] as List<dynamic>? ?? const [];
-          rawItems.addAll(items);
-        } else if (r.data is List) {
-          rawItems.addAll(r.data as List<dynamic>);
+        // Primary: /api/recommendations (personalised, returns track_ids)
+        try {
+          final recRes = await dio.get(
+            '${AppSecrets.backendUrl}/api/recommendations',
+            queryParameters: {'limit': 100, 'type': 'discovery'},
+            options: Options(headers: authHeader),
+          );
+          if (recRes.data is Map) {
+            final data = recRes.data as Map<String, dynamic>;
+            final ids = data['track_ids'] as List<dynamic>? ?? [];
+            recommendedIds = ids.map((e) => e.toString()).toList();
+          }
+        } catch (_) {
+          // If personalised recs fail, fall through to trending
         }
+
+        // Fallback: /api/user/dashboard/trending — extract track-type items
+        if (recommendedIds.isEmpty) {
+          try {
+            final trendRes = await dio.get(
+              '${AppSecrets.backendUrl}/api/user/dashboard/trending',
+              queryParameters: {'page': 0, 'limit': 100},
+              options: Options(headers: authHeader),
+            );
+            final rawItems = trendRes.data is Map
+                ? (trendRes.data['items'] as List<dynamic>? ?? [])
+                : (trendRes.data is List ? trendRes.data as List<dynamic> : []);
+            for (final item in rawItems) {
+              if (item is Map) {
+                final type = item['type']?.toString().toLowerCase();
+                final id = item['track_id']?.toString() ?? item['id']?.toString();
+                if ((type == 'track' || type == null) && id != null && id.isNotEmpty) {
+                  recommendedIds.add(id);
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        // Last resort: /api/user/tracks (user's own library)
+        if (recommendedIds.isEmpty) {
+          try {
+            final libRes = await dio.get(
+              '${AppSecrets.backendUrl}/api/user/tracks',
+              queryParameters: {'page': 0, 'limit': 100},
+              options: Options(headers: authHeader),
+            );
+            final rawItems = libRes.data is Map
+                ? ((libRes.data['items'] ?? libRes.data['tracks'] ?? libRes.data['data'] ?? []) as List<dynamic>)
+                : (libRes.data is List ? libRes.data as List<dynamic> : []);
+            for (final item in rawItems) {
+              if (item is Map) {
+                final id = item['track_id']?.toString() ?? item['id']?.toString();
+                if (id != null && id.isNotEmpty) recommendedIds.add(id);
+              }
+            }
+          } catch (_) {}
+        }
+
+        _allRecommendedTrackIds = recommendedIds;
       }
 
-      var trackItemsOnly = rawItems.where((item) {
-        if (item is! Map) return false;
-        final type = item['type']?.toString().toLowerCase();
-        return type == 'track';
-      }).toList();
+      // ── Step 2: Slice the next page of IDs & resolve full metadata ──
+      final allIds = _allRecommendedTrackIds!;
+      final offset = _recommendationsPage * _recPageSize;
+      final pageIds = allIds.skip(offset).take(_recPageSize).toList();
 
-      // 2. If we got no tracks from the dashboard endpoints, fall back to /api/user/tracks directly
-      if (trackItemsOnly.isEmpty) {
-        final tracksRes = await dio.get(
-          '${AppSecrets.backendUrl}/api/user/tracks?page=$page&limit=$limit',
-          options: Options(
-            headers: {'Authorization': 'Bearer $token'},
-          ),
-        );
-        if (tracksRes.data is List) {
-          trackItemsOnly = (tracksRes.data as List<dynamic>).whereType<Map>().toList();
-        } else if (tracksRes.data is Map) {
-          final map = tracksRes.data as Map<String, dynamic>;
-          final items = (map['items'] ?? map['data'] ?? map['results'] ?? map['tracks']) as List<dynamic>? ?? const [];
-          trackItemsOnly = items.whereType<Map>().toList();
+      if (pageIds.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _recommendedTracks ??= [];
+            _isLoadingRecommendations = false;
+            _recommendationsReachedEnd = true;
+          });
         }
+        return;
       }
 
-      final list = trackItemsOnly.map((item) {
-        final trackArtists = (item['artists'] as List<dynamic>? ?? const [])
-            .map((a) => UserPlaylistArtist(
-                  artistId: a['artist_id'] ?? a['id'] ?? '',
-                  name: a['name'] ?? 'Unknown Artist',
-                  avatarUrl: a['avatar_url'],
-                ))
-            .toList();
-        return UserPlaylistTrack(
-          trackId: item['track_id'] ?? item['id'] ?? '',
-          title: item['title'] ?? 'Unknown Track',
-          duration: item['duration'] ?? 0,
-          isExplicit: item['is_explicit'] ?? false,
-          artists: trackArtists,
-        );
-      }).toList();
+      // Resolve metadata in parallel (up to _recPageSize concurrent requests)
+      final List<UserPlaylistTrack> resolved = [];
+      await Future.wait(pageIds.map((trackId) async {
+        try {
+          final res = await dio.get(
+            '${AppSecrets.backendUrl}/api/user/tracks/$trackId',
+            options: Options(headers: authHeader),
+          );
+          final item = res.data as Map<String, dynamic>? ?? {};
+          final trackArtists = (item['artists'] as List<dynamic>? ?? const [])
+              .map((a) => UserPlaylistArtist(
+                    artistId: a['artist_id']?.toString() ?? a['id']?.toString() ?? '',
+                    name: a['name']?.toString() ?? 'Unknown Artist',
+                    avatarUrl: a['avatar_url']?.toString(),
+                  ))
+              .toList();
+          resolved.add(UserPlaylistTrack(
+            trackId: item['track_id']?.toString() ?? item['id']?.toString() ?? trackId,
+            title: item['title']?.toString() ?? 'Unknown Track',
+            duration: (item['duration'] as num?)?.toInt() ?? 0,
+            isExplicit: item['is_explicit'] == true,
+            artists: trackArtists,
+          ));
+        } catch (_) {
+          // Skip tracks whose metadata can't be fetched
+        }
+      }));
 
       if (mounted) {
         setState(() {
           final currentList = _recommendedTracks ?? <UserPlaylistTrack>[];
-          for (final track in list) {
+          for (final track in resolved) {
             if (_seenRecommendationTrackIds.add(track.trackId)) {
               currentList.add(track);
             }
@@ -223,7 +270,10 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
           _recommendedTracks = currentList;
           _isLoadingRecommendations = false;
           _recommendationsPage++;
-          _recommendationsReachedEnd = list.isEmpty;
+          // Reached end when this page returned fewer items than requested
+          // OR when there are no more IDs left to page through
+          _recommendationsReachedEnd =
+              resolved.isEmpty || (offset + _recPageSize) >= allIds.length;
         });
       }
     } catch (e) {
@@ -281,67 +331,205 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
   }
 
   void _showPlaylistOptions(BuildContext pageContext, UserPlaylistDetail playlist) {
+    final theme = Theme.of(pageContext);
+    final cs = theme.colorScheme;
     showModalBottomSheet(
       context: pageContext,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (sheetContext) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.edit_rounded),
-                title: const Text('Edit Details'),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _showEditPlaylistDialog(pageContext, playlist);
-                },
-              ),
-              ListTile(
-                leading: const Icon(
-                  Icons.delete_outline_rounded,
-                  color: Colors.redAccent,
+        return Container(
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Drag handle
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 4),
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: cs.onSurfaceVariant.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
-                title: const Text(
-                  'Delete Playlist',
-                  style: TextStyle(color: Colors.redAccent),
+                // Playlist identity row
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: playlist.coverUrl != null
+                            ? Image.network(
+                                playlist.coverUrl!,
+                                width: 52,
+                                height: 52,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => Container(
+                                  width: 52,
+                                  height: 52,
+                                  color: cs.primaryContainer,
+                                  child: Icon(Icons.music_note_rounded,
+                                      color: cs.onPrimaryContainer),
+                                ),
+                              )
+                            : Container(
+                                width: 52,
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  color: cs.primaryContainer,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(Icons.music_note_rounded,
+                                    color: cs.onPrimaryContainer, size: 26),
+                              ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              playlist.name,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (playlist.description != null &&
+                                playlist.description!.isNotEmpty)
+                              Text(
+                                playlist.description!,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _showDeleteConfirmationDialog(pageContext, playlist);
-                },
-              ),
-            ],
+                Divider(height: 1, color: cs.outlineVariant),
+                // Edit option
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: cs.primaryContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.edit_rounded,
+                        size: 20, color: cs.onPrimaryContainer),
+                  ),
+                  title: const Text('Edit Details',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Change name, description or visibility'),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _showEditPlaylistSheet(pageContext, playlist);
+                  },
+                ),
+                // Delete option
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: cs.errorContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.delete_outline_rounded,
+                        size: 20, color: cs.onErrorContainer),
+                  ),
+                  title: Text(
+                    'Delete Playlist',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, color: cs.error),
+                  ),
+                  subtitle: const Text('This cannot be undone'),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _showDeleteConfirmationDialog(pageContext, playlist);
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  void _showDeleteConfirmationDialog(BuildContext pageContext, UserPlaylistDetail playlist) {
+  void _showDeleteConfirmationDialog(
+      BuildContext pageContext, UserPlaylistDetail playlist) {
     final bloc = pageContext.read<UserPlaylistBloc>();
+    final theme = Theme.of(pageContext);
+    final cs = theme.colorScheme;
     showDialog(
       context: pageContext,
       builder: (dialogContext) {
-        final theme = Theme.of(pageContext);
         return AlertDialog(
-          title: const Text('Delete Playlist'),
-          content: Text('Are you sure you want to delete "${playlist.name}"? This action cannot be undone.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-              ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          icon: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cs.errorContainer,
+              shape: BoxShape.circle,
             ),
+            child: Icon(Icons.delete_forever_rounded,
+                color: cs.onErrorContainer, size: 28),
+          ),
+          title: const Text('Delete Playlist',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          content: Text(
+            'Are you sure you want to delete "${playlist.name}"? This action cannot be undone.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actionsPadding:
+              const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+              ),
+              child: const Text('Cancel'),
+            ),
+            const SizedBox(width: 8),
             FilledButton(
               onPressed: () {
                 Navigator.pop(dialogContext);
                 bloc.add(UserPlaylistDeleted(playlist.playlistId));
               },
               style: FilledButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                foregroundColor: Colors.white,
+                backgroundColor: cs.error,
+                foregroundColor: cs.onError,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
               ),
               child: const Text('Delete'),
             ),
@@ -351,115 +539,239 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
     );
   }
 
-  void _showEditPlaylistDialog(BuildContext pageContext, UserPlaylistDetail playlist) {
+  void _showEditPlaylistSheet(
+      BuildContext pageContext, UserPlaylistDetail playlist) {
     final nameController = TextEditingController(text: playlist.name);
-    final descController = TextEditingController(text: playlist.description ?? '');
+    final descController =
+        TextEditingController(text: playlist.description ?? '');
     bool isPublic = playlist.isPublic;
     bool isCollaborative = playlist.isCollaborative;
     final bloc = pageContext.read<UserPlaylistBloc>();
 
-    showDialog(
+    showModalBottomSheet(
       context: pageContext,
-      builder: (dialogContext) {
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
         final theme = Theme.of(pageContext);
+        final cs = theme.colorScheme;
         return StatefulBuilder(
-          builder: (statefulContext, setState) {
-            return AlertDialog(
-              title: Row(
-                children: [
-                  Icon(Icons.edit_note_rounded, color: theme.colorScheme.primary, size: 28),
-                  const SizedBox(width: 8),
-                  const Text('Edit Playlist Info'),
-                ],
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: InputDecoration(
-                        labelText: 'Playlist Name',
-                        hintText: 'Enter a name',
-                        prefixIcon: const Icon(Icons.title_rounded),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: descController,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        labelText: 'Description',
-                        hintText: 'Describe this playlist...',
-                        prefixIcon: const Icon(Icons.description_rounded),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SwitchListTile(
-                      title: const Text('Public Playlist'),
-                      subtitle: const Text('Anyone can see and search for it'),
-                      value: isPublic,
-                      activeThumbColor: theme.colorScheme.primary,
-                      contentPadding: EdgeInsets.zero,
-                      onChanged: (val) {
-                        setState(() {
-                          isPublic = val;
-                        });
-                      },
-                    ),
-                    SwitchListTile(
-                      title: const Text('Collaborative'),
-                      subtitle: const Text('Allow friends to join and edit tracks'),
-                      value: isCollaborative,
-                      activeThumbColor: theme.colorScheme.primary,
-                      contentPadding: EdgeInsets.zero,
-                      onChanged: (val) {
-                        setState(() {
-                          isCollaborative = val;
-                        });
-                      },
-                    ),
-                  ],
+          builder: (sbCtx, setSheetState) {
+            return Padding(
+              // Pushes sheet up when keyboard appears
+              padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(28)),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: Text(
-                    'Cancel',
-                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Drag handle
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 12, bottom: 20),
+                          child: Container(
+                            width: 36,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: cs.onSurfaceVariant.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // Header
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(9),
+                              decoration: BoxDecoration(
+                                color: cs.primaryContainer,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(Icons.edit_rounded,
+                                  size: 20, color: cs.onPrimaryContainer),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Edit Playlist',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Name field
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: TextField(
+                          controller: nameController,
+                          textCapitalization: TextCapitalization.words,
+                          style: theme.textTheme.bodyLarge,
+                          decoration: InputDecoration(
+                            labelText: 'Playlist Name',
+                            hintText: 'Give it a great name…',
+                            filled: true,
+                            fillColor: cs.surfaceContainerHighest
+                                .withValues(alpha: 0.4),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide(
+                                  color: cs.primary, width: 1.5),
+                            ),
+                            prefixIcon: Icon(Icons.title_rounded,
+                                color: cs.onSurfaceVariant),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Description field
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: TextField(
+                          controller: descController,
+                          maxLines: 2,
+                          textCapitalization: TextCapitalization.sentences,
+                          style: theme.textTheme.bodyLarge,
+                          decoration: InputDecoration(
+                            labelText: 'Description',
+                            hintText: 'Optional — describe the vibe…',
+                            filled: true,
+                            fillColor: cs.surfaceContainerHighest
+                                .withValues(alpha: 0.4),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide(
+                                  color: cs.primary, width: 1.5),
+                            ),
+                            prefixIcon: Padding(
+                              padding: const EdgeInsets.only(bottom: 24),
+                              child: Icon(Icons.notes_rounded,
+                                  color: cs.onSurfaceVariant),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Toggles section
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Column(
+                          children: [
+                            _EditToggleRow(
+                              icon: Icons.public_rounded,
+                              label: 'Public',
+                              subtitle: 'Anyone can find & listen',
+                              value: isPublic,
+                              onChanged: (v) =>
+                                  setSheetState(() => isPublic = v),
+                              activeColor: cs.primary,
+                            ),
+                            const SizedBox(height: 8),
+                            _EditToggleRow(
+                              icon: Icons.group_rounded,
+                              label: 'Collaborative',
+                              subtitle: 'Friends can add & remove tracks',
+                              value: isCollaborative,
+                              onChanged: (v) =>
+                                  setSheetState(() => isCollaborative = v),
+                              activeColor: cs.secondary,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+
+                      // Action buttons
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.pop(sheetContext),
+                                style: OutlinedButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(14)),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 14),
+                                ),
+                                child: const Text('Cancel'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: FilledButton(
+                                onPressed: () {
+                                  final name =
+                                      nameController.text.trim();
+                                  if (name.isEmpty) {
+                                    ScaffoldMessenger.of(sbCtx)
+                                        .showSnackBar(
+                                      const SnackBar(
+                                          content: Text(
+                                              'Playlist name cannot be empty')),
+                                    );
+                                    return;
+                                  }
+                                  Navigator.pop(sheetContext);
+                                  bloc.add(UserPlaylistUpdated(
+                                    playlistId: playlist.playlistId,
+                                    name: name,
+                                    description:
+                                        descController.text.trim(),
+                                    isPublic: isPublic,
+                                    isCollaborative: isCollaborative,
+                                  ));
+                                },
+                                style: FilledButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(14)),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 14),
+                                ),
+                                child: const Text('Save Changes'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                   ),
                 ),
-                FilledButton(
-                  onPressed: () {
-                    final name = nameController.text.trim();
-                    if (name.isEmpty) {
-                      ScaffoldMessenger.of(statefulContext).showSnackBar(
-                        const SnackBar(content: Text('Playlist name cannot be empty')),
-                      );
-                      return;
-                    }
-                    Navigator.pop(dialogContext);
-                    bloc.add(
-                      UserPlaylistUpdated(
-                        playlistId: playlist.playlistId,
-                        name: name,
-                        description: descController.text.trim(),
-                        isPublic: isPublic,
-                        isCollaborative: isCollaborative,
-                      ),
-                    );
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
+              ),
             );
           },
         );
@@ -528,8 +840,11 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
             final canPlayPlaylist = playlist.tracks.isNotEmpty;
 
             final currentUserId = GetIt.I<SupabaseClient>().auth.currentUser?.id;
-            final isCreator = playlist.artists.isNotEmpty &&
-                playlist.artists.first.artistId == currentUserId;
+            // Show menu if: user is in artists list, OR the playlist has no
+            // artists yet (newly-created empty playlist always belongs to creator).
+            final isCreator = currentUserId != null &&
+                (playlist.artists.isEmpty ||
+                    playlist.artists.first.artistId == currentUserId);
 
             Future<void> playTrack(
               String trackId, {
@@ -1858,6 +2173,92 @@ class _ArtistChip extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: theme.textTheme.labelSmall,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A compact toggle row used inside the edit-playlist bottom sheet.
+class _EditToggleRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final Color activeColor;
+
+  const _EditToggleRow({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+    required this.activeColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: value
+            ? activeColor.withValues(alpha: 0.08)
+            : cs.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: value
+              ? activeColor.withValues(alpha: 0.35)
+              : cs.outline.withValues(alpha: 0.2),
+          width: 1.2,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: value
+                  ? activeColor.withValues(alpha: 0.15)
+                  : cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              size: 18,
+              color: value ? activeColor : cs.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: value ? activeColor : cs.onSurface,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          CupertinoSwitch(
+            value: value,
+            onChanged: onChanged,
+            activeTrackColor: activeColor,
           ),
         ],
       ),
