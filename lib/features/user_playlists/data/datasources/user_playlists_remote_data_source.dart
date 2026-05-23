@@ -80,6 +80,7 @@ class UserPlaylistTrackDTO {
   final String title;
   final int duration;
   final bool isExplicit;
+  final String? coverUrl;
   final List<UserPlaylistArtistDTO> artists;
 
   UserPlaylistTrackDTO({
@@ -87,6 +88,7 @@ class UserPlaylistTrackDTO {
     required this.title,
     required this.duration,
     required this.isExplicit,
+    this.coverUrl,
     required this.artists,
   });
 
@@ -96,6 +98,12 @@ class UserPlaylistTrackDTO {
       title: json['title'] as String,
       duration: (json['duration'] ?? 0) as int,
       isExplicit: (json['is_explicit'] ?? false) as bool,
+      coverUrl: json['cover_url'] as String? ??
+          json['image_url'] as String? ??
+          json['album_cover_url'] as String? ??
+          (json['album'] is Map
+              ? (json['album']['cover_url']?.toString())
+              : null),
       artists: (json['artists'] as List<dynamic>? ?? const [])
           .map((e) => UserPlaylistArtistDTO.fromJson(Map<String, dynamic>.from(e)))
           .toList(),
@@ -192,9 +200,15 @@ class UserPlaylistsRemoteDataSourceImpl implements UserPlaylistsRemoteDataSource
     final Map<String, dynamic> data = {
       'name': name,
       if (description != null) 'description': description,
-      'is_public': isPublic.toString(),
-      'is_collaborative': isCollaborative.toString(),
     };
+
+    if (isPublic) {
+      data['is_public'] = 'true';
+    }
+
+    if (isCollaborative) {
+      data['is_collaborative'] = 'true';
+    }
 
     final formData = dio.FormData.fromMap(data);
 
@@ -272,7 +286,7 @@ class UserPlaylistsRemoteDataSourceImpl implements UserPlaylistsRemoteDataSource
   Future<List<UserPlaylistDetailDTO>> getPlaylists() async {
     try {
       final res = await _dio.get(
-        basePath,
+        '$basePath/library',
         options: dio.Options(headers: await _authHeader()),
       );
       final rawList = res.data['items'] as List<dynamic>? ?? const [];

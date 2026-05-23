@@ -202,7 +202,10 @@ class AppGoRouter {
                 GoRoute(
                   path: '/create',
                   name: 'create',
-                  builder: (context, state) => const CreatePlaylistPage(),
+                  builder: (context, state) {
+                    final freshKey = state.uri.queryParameters['fresh'] ?? 'root';
+                    return CreatePlaylistPage(key: ValueKey(freshKey));
+                  },
                 ),
               ],
             ),

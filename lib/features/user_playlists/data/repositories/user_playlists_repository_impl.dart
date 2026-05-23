@@ -201,6 +201,12 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
                     ? (entry['duration'] as num).toInt()
                     : int.tryParse(entry['duration']?.toString() ?? '') ?? 0,
                 isExplicit: (entry['is_explicit'] ?? false) as bool,
+                coverUrl: entry['cover_url']?.toString() ??
+                    entry['image_url']?.toString() ??
+                    entry['album_cover_url']?.toString() ??
+                    (entry['album'] is Map
+                        ? (entry['album']['cover_url']?.toString())
+                        : null),
                 artists: trackArtists,
               );
             })
@@ -291,6 +297,7 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
               title: t.title,
               duration: t.duration,
               isExplicit: t.isExplicit,
+              coverUrl: t.coverUrl,
               artists: t.artists
                   .map(
                     (a) => UserPlaylistArtist(

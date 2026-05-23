@@ -252,6 +252,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
             title: item['title']?.toString() ?? 'Unknown Track',
             duration: (item['duration'] as num?)?.toInt() ?? 0,
             isExplicit: item['is_explicit'] == true,
+            coverUrl: _extractTrackCoverUrl(item),
             artists: trackArtists,
           ));
         } catch (_) {
@@ -1678,14 +1679,33 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                               ),
                               child: Row(
                                 children: [
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white10,
-                                      borderRadius: BorderRadius.circular(6),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: SizedBox(
+                                      width: 40,
+                                      height: 40,
+                                      child: rec.coverUrl != null && rec.coverUrl!.isNotEmpty
+                                          ? Image.network(
+                                              rec.coverUrl!,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, _, _) => Container(
+                                                color: Colors.white10,
+                                                child: const Icon(
+                                                  CupertinoIcons.music_note,
+                                                  color: Colors.white30,
+                                                  size: 20,
+                                                ),
+                                              ),
+                                            )
+                                          : Container(
+                                              color: Colors.white10,
+                                              child: const Icon(
+                                                CupertinoIcons.music_note,
+                                                color: Colors.white30,
+                                                size: 20,
+                                              ),
+                                            ),
                                     ),
-                                    child: const Icon(CupertinoIcons.music_note, color: Colors.white30, size: 20),
                                   ),
                                   const SizedBox(width: 12),
                                   Expanded(
@@ -1698,6 +1718,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
+
                                         const SizedBox(height: 2),
                                         Text(
                                           recArtists,
@@ -1744,6 +1765,25 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
         ),
       ),
     );
+  }
+
+  String? _extractTrackCoverUrl(Map<String, dynamic> item) {
+    final directCover = item['cover_url']?.toString();
+    if (directCover != null && directCover.isNotEmpty) return directCover;
+
+    final imageUrl = item['image_url']?.toString();
+    if (imageUrl != null && imageUrl.isNotEmpty) return imageUrl;
+
+    final albumCover = item['album_cover_url']?.toString();
+    if (albumCover != null && albumCover.isNotEmpty) return albumCover;
+
+    final album = item['album'];
+    if (album is Map) {
+      final nestedCover = album['cover_url']?.toString();
+      if (nestedCover != null && nestedCover.isNotEmpty) return nestedCover;
+    }
+
+    return null;
   }
 }
 

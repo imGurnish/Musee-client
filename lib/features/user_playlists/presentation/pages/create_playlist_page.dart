@@ -357,7 +357,7 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage>
           ),
           const SizedBox(height: 24),
 
-          // Toggle rows
+          // Public visibility toggle
           _CreateToggleRow(
             icon: CupertinoIcons.globe,
             label: 'Public',
@@ -366,16 +366,6 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage>
             activeColor: cs.primary,
             isDark: isDark,
             onChanged: (v) => setState(() => _isPublic = v),
-          ),
-          const SizedBox(height: 10),
-          _CreateToggleRow(
-            icon: CupertinoIcons.person_3_fill,
-            label: 'Collaborative',
-            subtitle: 'Friends can add & remove tracks',
-            value: _isCollaborative,
-            activeColor: isDark ? cs.secondary : const Color(0xFF765A51),
-            isDark: isDark,
-            onChanged: (v) => setState(() => _isCollaborative = v),
           ),
           const SizedBox(height: 32),
 

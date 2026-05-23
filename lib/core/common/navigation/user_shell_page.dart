@@ -17,6 +17,11 @@ class UserShellPage extends StatelessWidget {
           final branchIndex = _branchIndexFromNav(index);
           if (branchIndex == null) return;
 
+          if (branchIndex == 3) {
+            context.go('/create?fresh=${DateTime.now().microsecondsSinceEpoch}');
+            return;
+          }
+
           navigationShell.goBranch(
             branchIndex,
             initialLocation: index == 1,
@@ -27,6 +32,8 @@ class UserShellPage extends StatelessWidget {
             navigationShell.goBranch(0, initialLocation: true);
           } else if (index == 1) {
             navigationShell.goBranch(1, initialLocation: true);
+          } else if (index == 4) {
+            context.go('/create?fresh=${DateTime.now().microsecondsSinceEpoch}');
           }
         },
       ),
