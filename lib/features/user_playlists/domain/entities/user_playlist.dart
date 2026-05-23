@@ -8,6 +8,8 @@ class UserPlaylistDetail extends Equatable {
   final List<UserPlaylistArtist> artists; // creator info
   final List<UserPlaylistTrack> tracks;
   final bool isPublic;
+  final bool isCollaborative;
+  final List<UserPlaylistArtist> collaborators;
   final int totalTracks;
   final int totalDuration; // in seconds
   final String? createdAt;
@@ -23,6 +25,8 @@ class UserPlaylistDetail extends Equatable {
     required this.artists,
     required this.tracks,
     required this.isPublic,
+    required this.isCollaborative,
+    required this.collaborators,
     required this.totalTracks,
     required this.totalDuration,
     required this.createdAt,
@@ -46,6 +50,8 @@ class UserPlaylistDetail extends Equatable {
     artists,
     tracks,
     isPublic,
+    isCollaborative,
+    collaborators,
     totalTracks,
     totalDuration,
     createdAt,

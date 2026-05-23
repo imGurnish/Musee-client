@@ -85,6 +85,10 @@ import 'package:musee/features/user_playlists/data/datasources/user_playlists_re
 import 'package:musee/features/user_playlists/data/repositories/user_playlists_repository_impl.dart';
 import 'package:musee/features/user_playlists/domain/repository/user_playlists_repository.dart';
 import 'package:musee/features/user_playlists/domain/usecases/get_user_playlist.dart';
+import 'package:musee/features/user_playlists/domain/usecases/create_playlist.dart';
+import 'package:musee/features/user_playlists/domain/usecases/join_playlist.dart';
+import 'package:musee/features/user_playlists/domain/usecases/add_playlist_track.dart';
+import 'package:musee/features/user_playlists/domain/usecases/remove_playlist_track.dart';
 import 'package:musee/features/user_playlists/presentation/bloc/user_playlist_bloc.dart';
 import 'package:musee/features/user__dashboard/data/datasources/user_dashboard_remote_data_source.dart';
 import 'package:musee/features/user__dashboard/data/repositories/user_dashboard_repository_impl.dart';
@@ -576,9 +580,26 @@ void _initUserPlaylists() {
     ..registerFactory(
       () => GetUserPlaylist(serviceLocator<UserPlaylistsRepository>()),
     )
+    ..registerFactory(
+      () => CreatePlaylist(serviceLocator<UserPlaylistsRepository>()),
+    )
+    ..registerFactory(
+      () => JoinPlaylist(serviceLocator<UserPlaylistsRepository>()),
+    )
+    ..registerFactory(
+      () => AddPlaylistTrack(serviceLocator<UserPlaylistsRepository>()),
+    )
+    ..registerFactory(
+      () => RemovePlaylistTrack(serviceLocator<UserPlaylistsRepository>()),
+    )
     // bloc
     ..registerFactory(
-      () => UserPlaylistBloc(serviceLocator<GetUserPlaylist>()),
+      () => UserPlaylistBloc(
+        serviceLocator<GetUserPlaylist>(),
+        serviceLocator<AddPlaylistTrack>(),
+        serviceLocator<RemovePlaylistTrack>(),
+        serviceLocator<JoinPlaylist>(),
+      ),
     );
 }
 

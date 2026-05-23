@@ -10,6 +10,8 @@ class UserPlaylistDetailDTO {
   final List<UserPlaylistArtistDTO> artists;
   final List<UserPlaylistTrackDTO> tracks;
   final bool isPublic;
+  final bool isCollaborative;
+  final List<UserPlaylistArtistDTO> collaborators;
   final int totalTracks;
   final int totalDuration;
   final String? createdAt;
@@ -22,6 +24,8 @@ class UserPlaylistDetailDTO {
     required this.artists,
     required this.tracks,
     required this.isPublic,
+    required this.isCollaborative,
+    required this.collaborators,
     required this.totalTracks,
     required this.totalDuration,
     required this.createdAt,
@@ -40,6 +44,10 @@ class UserPlaylistDetailDTO {
           .map((e) => UserPlaylistTrackDTO.fromJson(Map<String, dynamic>.from(e)))
           .toList(),
       isPublic: (json['is_public'] ?? false) as bool,
+      isCollaborative: (json['is_collaborative'] ?? false) as bool,
+      collaborators: (json['collaborators'] as List<dynamic>? ?? const [])
+          .map((e) => UserPlaylistArtistDTO.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
       totalTracks: (json['total_tracks'] ?? 0) as int,
       totalDuration: (json['duration'] ?? 0) as int,
       createdAt: json['created_at'] as String?,
@@ -97,6 +105,17 @@ class UserPlaylistTrackDTO {
 
 abstract interface class UserPlaylistsRemoteDataSource {
   Future<UserPlaylistDetailDTO> getPlaylist(String playlistId);
+  Future<List<UserPlaylistDetailDTO>> getPlaylists();
+  Future<UserPlaylistDetailDTO> createPlaylist({
+    required String name,
+    String? description,
+    required bool isPublic,
+    required bool isCollaborative,
+    String? coverPath,
+  });
+  Future<UserPlaylistDetailDTO> joinCollaborativePlaylist(String playlistId);
+  Future<UserPlaylistDetailDTO> addTrackToPlaylist(String playlistId, String trackId);
+  Future<void> removeTrackFromPlaylist(String playlistId, String trackId);
 }
 
 class UserPlaylistsRemoteDataSourceImpl implements UserPlaylistsRemoteDataSource {
@@ -151,5 +170,116 @@ class UserPlaylistsRemoteDataSourceImpl implements UserPlaylistsRemoteDataSource
       }
       rethrow;
     }
+  }
+
+  @override
+  Future<UserPlaylistDetailDTO> createPlaylist({
+    required String name,
+    String? description,
+    required bool isPublic,
+    required bool isCollaborative,
+    String? coverPath,
+  }) async {
+    final Map<String, dynamic> data = {
+      'name': name,
+      if (description != null) 'description': description,
+      'is_public': isPublic.toString(),
+      'is_collaborative': isCollaborative.toString(),
+    };
+
+    final formData = dio.FormData.fromMap(data);
+
+    if (coverPath != null && coverPath.isNotEmpty) {
+      formData.files.add(
+        MapEntry(
+          'cover',
+          await dio.MultipartFile.fromFile(coverPath),
+        ),
+      );
+    }
+
+    try {
+      final res = await _dio.post(
+        basePath,
+        data: formData,
+        options: dio.Options(headers: await _authHeader()),
+      );
+      return UserPlaylistDetailDTO.fromJson(Map<String, dynamic>.from(res.data));
+    } on dio.DioException catch (e) {
+      throw _handleDioException(e);
+    }
+  }
+
+  @override
+  Future<UserPlaylistDetailDTO> joinCollaborativePlaylist(String playlistId) async {
+    final encodedPlaylistId = Uri.encodeComponent(playlistId);
+    final endpoint = '$basePath/$encodedPlaylistId/collaborators/join';
+
+    try {
+      final res = await _dio.post(
+        endpoint,
+        options: dio.Options(headers: await _authHeader()),
+      );
+      return UserPlaylistDetailDTO.fromJson(Map<String, dynamic>.from(res.data));
+    } on dio.DioException catch (e) {
+      throw _handleDioException(e);
+    }
+  }
+
+  @override
+  Future<UserPlaylistDetailDTO> addTrackToPlaylist(String playlistId, String trackId) async {
+    final encodedPlaylistId = Uri.encodeComponent(playlistId);
+    final endpoint = '$basePath/$encodedPlaylistId/tracks';
+
+    try {
+      final res = await _dio.post(
+        endpoint,
+        data: {'track_id': trackId},
+        options: dio.Options(headers: await _authHeader()),
+      );
+      return UserPlaylistDetailDTO.fromJson(Map<String, dynamic>.from(res.data));
+    } on dio.DioException catch (e) {
+      throw _handleDioException(e);
+    }
+  }
+
+  @override
+  Future<void> removeTrackFromPlaylist(String playlistId, String trackId) async {
+    final encodedPlaylistId = Uri.encodeComponent(playlistId);
+    final encodedTrackId = Uri.encodeComponent(trackId);
+    final endpoint = '$basePath/$encodedPlaylistId/tracks/$encodedTrackId';
+
+    try {
+      await _dio.delete(
+        endpoint,
+        options: dio.Options(headers: await _authHeader()),
+      );
+    } on dio.DioException catch (e) {
+      throw _handleDioException(e);
+    }
+  }
+
+  @override
+  Future<List<UserPlaylistDetailDTO>> getPlaylists() async {
+    try {
+      final res = await _dio.get(
+        basePath,
+        options: dio.Options(headers: await _authHeader()),
+      );
+      final rawList = res.data['items'] as List<dynamic>? ?? const [];
+      return rawList
+          .map((e) => UserPlaylistDetailDTO.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } on dio.DioException catch (e) {
+      throw _handleDioException(e);
+    }
+  }
+
+  Exception _handleDioException(dio.DioException e) {
+    String message = 'An error occurred';
+    if (e.response != null) {
+      message = e.response?.data?['error'] ?? e.response?.data?['message'] ?? e.response?.statusMessage ?? message;
+    }
+    return Exception(message);
   }
 }

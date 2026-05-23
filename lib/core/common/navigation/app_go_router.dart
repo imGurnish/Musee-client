@@ -39,9 +39,10 @@ import 'package:go_router/go_router.dart';
 import 'dart:async';
 import 'package:musee/features/user_albums/presentation/pages/user_album_page.dart';
 import 'package:musee/features/user_playlists/presentation/pages/user_playlist_page.dart';
+import 'package:musee/features/user_playlists/presentation/pages/create_playlist_page.dart';
+import 'package:musee/features/user_playlists/presentation/pages/join_playlist_page.dart';
 import 'package:musee/features/search/presentation/pages/search_suggestions_page.dart';
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
-import 'package:musee/core/common/pages/coming_soon_page.dart';
 import 'package:musee/features/user_artists/presentation/pages/user_artist_page.dart';
 import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.dart';
 import 'package:musee/features/library/presentation/pages/user_library_page.dart';
@@ -201,12 +202,20 @@ class AppGoRouter {
                 GoRoute(
                   path: '/create',
                   name: 'create',
-                  builder: (context, state) =>
-                      const ComingSoonPage(featureName: 'Create'),
+                  builder: (context, state) => const CreatePlaylistPage(),
                 ),
               ],
             ),
           ],
+        ),
+
+        GoRoute(
+          path: '/playlists/join/:id',
+          name: 'join_playlist',
+          builder: (context, state) {
+            final id = state.pathParameters['id'] ?? '';
+            return JoinPlaylistPage(playlistId: id);
+          },
         ),
 
         GoRoute(

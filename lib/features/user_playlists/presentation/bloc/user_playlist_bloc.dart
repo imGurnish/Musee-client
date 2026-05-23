@@ -2,16 +2,29 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:musee/features/user_playlists/domain/entities/user_playlist.dart';
 import 'package:musee/features/user_playlists/domain/usecases/get_user_playlist.dart';
+import 'package:musee/features/user_playlists/domain/usecases/add_playlist_track.dart';
+import 'package:musee/features/user_playlists/domain/usecases/remove_playlist_track.dart';
+import 'package:musee/features/user_playlists/domain/usecases/join_playlist.dart';
 
 part 'user_playlist_event.dart';
 part 'user_playlist_state.dart';
 
 class UserPlaylistBloc extends Bloc<UserPlaylistEvent, UserPlaylistState> {
   final GetUserPlaylist _getPlaylist;
+  final AddPlaylistTrack _addTrack;
+  final RemovePlaylistTrack _removeTrack;
+  final JoinPlaylist _joinPlaylist;
 
-  UserPlaylistBloc(this._getPlaylist)
-      : super(const UserPlaylistState.initial()) {
+  UserPlaylistBloc(
+    this._getPlaylist,
+    this._addTrack,
+    this._removeTrack,
+    this._joinPlaylist,
+  ) : super(const UserPlaylistState.initial()) {
     on<UserPlaylistLoadRequested>(_onLoad);
+    on<UserPlaylistTrackAdded>(_onTrackAdded);
+    on<UserPlaylistTrackRemoved>(_onTrackRemoved);
+    on<UserPlaylistJoinRequested>(_onJoinRequested);
   }
 
   Future<void> _onLoad(
@@ -25,6 +38,55 @@ class UserPlaylistBloc extends Bloc<UserPlaylistEvent, UserPlaylistState> {
         forceRefresh: event.forceRefresh,
       );
       emit(UserPlaylistState.loaded(playlist));
+    } catch (e) {
+      emit(UserPlaylistState.error(e.toString()));
+    }
+  }
+
+  Future<void> _onTrackAdded(
+    UserPlaylistTrackAdded event,
+    Emitter<UserPlaylistState> emit,
+  ) async {
+    final currentPlaylist = state.playlist;
+    try {
+      final updated = await _addTrack(event.playlistId, event.trackId);
+      emit(UserPlaylistState.loaded(updated));
+    } catch (e) {
+      if (currentPlaylist != null) {
+        emit(UserPlaylistState(playlist: currentPlaylist, error: e.toString()));
+      } else {
+        emit(UserPlaylistState.error(e.toString()));
+      }
+    }
+  }
+
+  Future<void> _onTrackRemoved(
+    UserPlaylistTrackRemoved event,
+    Emitter<UserPlaylistState> emit,
+  ) async {
+    final currentPlaylist = state.playlist;
+    try {
+      await _removeTrack(event.playlistId, event.trackId);
+      // Reload playlist detail to fetch updated list
+      final updated = await _getPlaylist(event.playlistId, forceRefresh: true);
+      emit(UserPlaylistState.loaded(updated));
+    } catch (e) {
+      if (currentPlaylist != null) {
+        emit(UserPlaylistState(playlist: currentPlaylist, error: e.toString()));
+      } else {
+        emit(UserPlaylistState.error(e.toString()));
+      }
+    }
+  }
+
+  Future<void> _onJoinRequested(
+    UserPlaylistJoinRequested event,
+    Emitter<UserPlaylistState> emit,
+  ) async {
+    emit(const UserPlaylistState.loading());
+    try {
+      final updated = await _joinPlaylist(event.playlistId);
+      emit(UserPlaylistState.loaded(updated));
     } catch (e) {
       emit(UserPlaylistState.error(e.toString()));
     }

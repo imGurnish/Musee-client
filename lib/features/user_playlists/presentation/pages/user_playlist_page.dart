@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'dart:math';
 import 'dart:ui' show ImageFilter;
-import 'package:go_router/go_router.dart';
+import 'package:dio/dio.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:musee/features/user_playlists/presentation/bloc/user_playlist_bloc.dart';
 import 'package:musee/core/player/player_cubit.dart';
@@ -12,6 +16,7 @@ import 'package:musee/core/common/widgets/playing_bars_animation.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
+import 'package:musee/features/user_playlists/domain/entities/user_playlist.dart';
 
 class UserPlaylistPage extends StatefulWidget {
   final String playlistId;
@@ -33,6 +38,14 @@ class _UserPlaylistPageState extends State<UserPlaylistPage> {
   }
 
   @override
+  void didUpdateWidget(UserPlaylistPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playlistId != widget.playlistId) {
+      _bloc.add(UserPlaylistLoadRequested(widget.playlistId));
+    }
+  }
+
+  @override
   void dispose() {
     _bloc.close();
     super.dispose();
@@ -42,13 +55,14 @@ class _UserPlaylistPageState extends State<UserPlaylistPage> {
   Widget build(BuildContext context) {
     return BlocProvider<UserPlaylistBloc>.value(
       value: _bloc,
-      child: const _UserPlaylistView(),
+      child: _UserPlaylistView(playlistId: widget.playlistId),
     );
   }
 }
 
 class _UserPlaylistView extends StatefulWidget {
-  const _UserPlaylistView();
+  final String playlistId;
+  const _UserPlaylistView({required this.playlistId});
 
   @override
   State<_UserPlaylistView> createState() => _UserPlaylistViewState();
@@ -60,6 +74,10 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
   late final AnimationController _likeAnimController;
   String? _loadedPlaylistId;
 
+  List<UserPlaylistTrack>? _recommendedTracks;
+  bool _isLoadingRecommendations = false;
+  String? _recommendationsError;
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +85,123 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
+    _fetchRecommendations();
+  }
+
+  @override
+  void didUpdateWidget(_UserPlaylistView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playlistId != widget.playlistId) {
+      _isLiked = false;
+      _loadedPlaylistId = null;
+      _recommendedTracks = null;
+      _isLoadingRecommendations = false;
+      _recommendationsError = null;
+      _fetchRecommendations();
+    }
+  }
+
+  Future<void> _fetchRecommendations() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingRecommendations = true;
+      _recommendationsError = null;
+    });
+
+    try {
+      final dio = GetIt.I<Dio>();
+      final supabase = GetIt.I<SupabaseClient>();
+      final token = supabase.auth.currentSession?.accessToken;
+      
+      final res = await dio.get(
+        '${AppSecrets.backendUrl}/api/recommendations?resolve=true',
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+        ),
+      );
+      
+      final rawTracks = res.data['tracks'] as List<dynamic>? ?? const [];
+      var list = rawTracks.map((item) {
+        final trackArtists = (item['artists'] as List<dynamic>? ?? const [])
+            .map((a) => UserPlaylistArtist(
+                  artistId: a['artist_id'] ?? a['id'] ?? '',
+                  name: a['name'] ?? 'Unknown Artist',
+                  avatarUrl: a['avatar_url'],
+                ))
+            .toList();
+        return UserPlaylistTrack(
+          trackId: item['track_id'] ?? item['id'] ?? '',
+          title: item['title'] ?? 'Unknown Track',
+          duration: item['duration'] ?? 0,
+          isExplicit: item['is_explicit'] ?? false,
+          artists: trackArtists,
+        );
+      }).toList();
+
+      if (list.isEmpty) {
+        // Fallback 1: Trending dashboard tracks
+        final trendRes = await dio.get(
+          '${AppSecrets.backendUrl}/api/user/dashboard/trending?page=0&limit=25',
+          options: Options(
+            headers: {'Authorization': 'Bearer $token'},
+          ),
+        );
+        var fallbackTracks = <dynamic>[];
+        if (trendRes.data is List) {
+          fallbackTracks = trendRes.data as List<dynamic>;
+        } else if (trendRes.data is Map) {
+          final map = trendRes.data as Map<String, dynamic>;
+          fallbackTracks = (map['items'] ?? map['data'] ?? map['results'] ?? map['tracks']) as List<dynamic>? ?? const [];
+        }
+
+        // Fallback 2: General user tracks
+        if (fallbackTracks.isEmpty) {
+          final tracksRes = await dio.get(
+            '${AppSecrets.backendUrl}/api/user/tracks?page=0&limit=25',
+            options: Options(
+              headers: {'Authorization': 'Bearer $token'},
+            ),
+          );
+          if (tracksRes.data is List) {
+            fallbackTracks = tracksRes.data as List<dynamic>;
+          } else if (tracksRes.data is Map) {
+            final map = tracksRes.data as Map<String, dynamic>;
+            fallbackTracks = (map['items'] ?? map['data'] ?? map['results'] ?? map['tracks']) as List<dynamic>? ?? const [];
+          }
+        }
+
+        list = fallbackTracks.map((item) {
+          final trackArtists = (item['artists'] as List<dynamic>? ?? const [])
+              .map((a) => UserPlaylistArtist(
+                    artistId: a['artist_id'] ?? a['id'] ?? '',
+                    name: a['name'] ?? 'Unknown Artist',
+                    avatarUrl: a['avatar_url'],
+                  ))
+              .toList();
+          return UserPlaylistTrack(
+            trackId: item['track_id'] ?? item['id'] ?? '',
+            title: item['title'] ?? 'Unknown Track',
+            duration: item['duration'] ?? 0,
+            isExplicit: item['is_explicit'] ?? false,
+            artists: trackArtists,
+          );
+        }).toList();
+      }
+
+      if (mounted) {
+        setState(() {
+          _recommendedTracks = list;
+          _isLoadingRecommendations = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _recommendationsError = e.toString();
+          _isLoadingRecommendations = false;
+        });
+      }
+    }
   }
 
   @override
@@ -138,6 +273,10 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
               );
             }
             _loadPreference(playlist.playlistId);
+            final playlistTrackIds = playlist.tracks.map((t) => t.trackId).toSet();
+            final displayedRecommendations = _recommendedTracks
+                ?.where((t) => !playlistTrackIds.contains(t.trackId))
+                .toList() ?? [];
             final creatorName = playlist.artists.isNotEmpty
                 ? (playlist.artists.first.name ?? 'Unknown Creator')
                 : 'Unknown Creator';
@@ -206,6 +345,8 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                       totalDuration: _fmtDurationLong(totalDuration),
                       explicitCount: explicitCount,
                       isPublic: playlist.isPublic,
+                      isCollaborative: playlist.isCollaborative,
+                      collaborators: playlist.collaborators,
                     ),
                   ),
                 ),
@@ -300,6 +441,26 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                 ),
                               ),
                             ),
+                            if (playlist.isCollaborative) ...[
+                              const SizedBox(width: 12),
+                              IconButton(
+                                onPressed: () {
+                                  final inviteUrl = '${AppSecrets.backendUrl}/playlists/join/${playlist.playlistId}';
+                                  Clipboard.setData(ClipboardData(text: inviteUrl));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: const Text('Collaborator invite link copied! Share it with friends.'),
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      backgroundColor: theme.colorScheme.primary,
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.person_add_alt_1_rounded),
+                                color: theme.colorScheme.primary,
+                                tooltip: 'Invite Collaborators',
+                              ),
+                            ],
                             const Spacer(),
                             Row(
                               mainAxisSize: MainAxisSize.min,
@@ -817,6 +978,155 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                       ),
                     ),
                   ),
+
+                // ── Recommended Tracks Section ─────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Recommended',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              "Based on this playlist's vibe",
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(CupertinoIcons.refresh, size: 18),
+                          tooltip: 'Refresh Recommendations',
+                          onPressed: _fetchRecommendations,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                if (_isLoadingRecommendations)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24.0),
+                      child: Center(
+                        child: CupertinoActivityIndicator(),
+                      ),
+                    ),
+                  )
+                else if (_recommendationsError != null)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                      child: Center(
+                        child: Text(
+                          'Could not load recommendations: $_recommendationsError',
+                          style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
+                        ),
+                      ),
+                    ),
+                  )
+                else if (displayedRecommendations.isEmpty)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                      child: Center(
+                        child: Text(
+                          'No new recommendations right now. Check back later!',
+                          style: TextStyle(fontSize: 12, color: Colors.white30),
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final rec = displayedRecommendations[index];
+                        final recArtists = rec.artists.isNotEmpty
+                            ? rec.artists.map((a) => a.name ?? 'Unknown').join(', ')
+                            : 'Unknown Artist';
+
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () async {
+                              await playTrack(
+                                rec.trackId,
+                                title: rec.title,
+                                artist: recArtists,
+                                artistId: rec.artists.isNotEmpty ? rec.artists.first.artistId : null,
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.02),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white10,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Icon(CupertinoIcons.music_note, color: Colors.white30, size: 20),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          rec.title,
+                                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          recArtists,
+                                          style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(CupertinoIcons.add_circled, color: theme.colorScheme.primary),
+                                    tooltip: 'Add to Playlist',
+                                    onPressed: () {
+                                      context.read<UserPlaylistBloc>().add(
+                                        UserPlaylistTrackAdded(playlist.playlistId, rec.trackId),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      childCount: displayedRecommendations.length,
+                    ),
+                  ),
+
                 const SliverToBoxAdapter(child: SizedBox(height: 96)),
               ],
             );
@@ -866,6 +1176,8 @@ class _PlaylistHeader extends StatelessWidget {
   final String totalDuration;
   final int explicitCount;
   final bool isPublic;
+  final bool isCollaborative;
+  final List<UserPlaylistArtist> collaborators;
 
   const _PlaylistHeader({
     required this.playlistId,
@@ -877,6 +1189,8 @@ class _PlaylistHeader extends StatelessWidget {
     required this.explicitCount,
     required this.isPublic,
     required this.description,
+    required this.isCollaborative,
+    required this.collaborators,
   });
 
   @override
@@ -1001,10 +1315,19 @@ class _PlaylistHeader extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          Text(
-                            'Playlist • $creator',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.titleMedium,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Playlist • $creator',
+                                textAlign: TextAlign.center,
+                                style: theme.textTheme.titleMedium,
+                              ),
+                              if (isCollaborative && collaborators.isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                _CollaboratorAvatars(collaborators: collaborators),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 10),
                           Wrap(
@@ -1018,6 +1341,33 @@ class _PlaylistHeader extends StatelessWidget {
                                 _MetaChip(label: '$explicitCount explicit'),
                               if (isPublic)
                                 _MetaChip(label: 'Public'),
+                              if (isCollaborative)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(CupertinoIcons.person_3_fill, size: 12, color: theme.colorScheme.primary),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Collaborative',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: theme.colorScheme.primary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                             ],
                           ),
                         ],
@@ -1041,9 +1391,17 @@ class _PlaylistHeader extends StatelessWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 6),
-                                Text(
-                                  'Playlist • $creator',
-                                  style: theme.textTheme.titleLarge,
+                                Row(
+                                  children: [
+                                    Text(
+                                      'Playlist • $creator',
+                                      style: theme.textTheme.titleLarge,
+                                    ),
+                                    if (isCollaborative && collaborators.isNotEmpty) ...[
+                                      const SizedBox(width: 12),
+                                      _CollaboratorAvatars(collaborators: collaborators),
+                                    ],
+                                  ],
                                 ),
                                 const SizedBox(height: 10),
                                 Wrap(
@@ -1057,6 +1415,33 @@ class _PlaylistHeader extends StatelessWidget {
                                         label: '$explicitCount explicit',
                                       ),
                                     if (isPublic) _MetaChip(label: 'Public'),
+                                    if (isCollaborative)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(999),
+                                          border: Border.all(
+                                            color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(CupertinoIcons.person_3_fill, size: 12, color: theme.colorScheme.primary),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              'Collaborative',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                                color: theme.colorScheme.primary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ],
@@ -1069,6 +1454,50 @@ class _PlaylistHeader extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _CollaboratorAvatars extends StatelessWidget {
+  final List<UserPlaylistArtist> collaborators;
+
+  const _CollaboratorAvatars({required this.collaborators});
+
+  @override
+  Widget build(BuildContext context) {
+    if (collaborators.isEmpty) return const SizedBox.shrink();
+
+    // Show up to 4 collaborators
+    final showCount = min(4, collaborators.length);
+
+    return SizedBox(
+      height: 28,
+      width: 20.0 + (showCount * 14.0),
+      child: Stack(
+        children: List.generate(showCount, (index) {
+          final c = collaborators[index];
+          return Positioned(
+            left: index * 14.0,
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.black, width: 1.5),
+              ),
+              child: CircleAvatar(
+                radius: 11,
+                backgroundColor: Colors.grey.shade800,
+                backgroundImage: c.avatarUrl != null ? NetworkImage(c.avatarUrl!) : null,
+                child: c.avatarUrl == null
+                    ? Text(
+                        (c.name ?? '?').substring(0, 1).toUpperCase(),
+                        style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white),
+                      )
+                    : null,
+              ),
+            ),
+          );
+        }),
+      ),
     );
   }
 }
@@ -1100,15 +1529,14 @@ class _MetaChip extends StatelessWidget {
 class _ArtistChip extends StatelessWidget {
   final String name;
   final String? avatarUrl;
-  final String? artistId;
 
-  const _ArtistChip({required this.name, this.avatarUrl, this.artistId});
+  const _ArtistChip({required this.name, this.avatarUrl});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final chip = Container(
+    return Container(
       width: 84,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
@@ -1134,21 +1562,9 @@ class _ArtistChip extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: theme.textTheme.labelSmall?.copyWith(
-              decoration: artistId != null ? TextDecoration.underline : null,
-            ),
+            style: theme.textTheme.labelSmall,
           ),
         ],
-      ),
-    );
-
-    if (artistId == null) return chip;
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => context.push('/artists/$artistId'),
-        child: chip,
       ),
     );
   }
