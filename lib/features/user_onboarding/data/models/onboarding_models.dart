@@ -227,15 +227,11 @@ class LanguageModel extends Equatable {
 // Predefined languages
 final defaultLanguages = [
   const LanguageModel(code: 'en', name: 'English', nativeName: 'English'),
-  const LanguageModel(code: 'hi', name: 'Hindi', nativeName: 'हिंदी'),
-  const LanguageModel(code: 'ta', name: 'Tamil', nativeName: 'தமிழ்'),
-  const LanguageModel(code: 'te', name: 'Telugu', nativeName: 'తెలుగు'),
-  const LanguageModel(code: 'kn', name: 'Kannada', nativeName: 'ಕನ್ನಡ'),
-  const LanguageModel(code: 'ml', name: 'Malayalam', nativeName: 'മലയാളം'),
-  const LanguageModel(code: 'mr', name: 'Marathi', nativeName: 'मराठी'),
-  const LanguageModel(code: 'gu', name: 'Gujarati', nativeName: 'ગુજરાતી'),
   const LanguageModel(code: 'pa', name: 'Punjabi', nativeName: 'ਪੰਜਾਬੀ'),
-  const LanguageModel(code: 'bn', name: 'Bengali', nativeName: 'বাংলা'),
+  const LanguageModel(code: 'hi', name: 'Hindi', nativeName: 'हिंदी'),
+  const LanguageModel(code: 'hn', name: 'Haryanvi', nativeName: 'हरियाणवी'),
+  const LanguageModel(code: 'gj', name: 'Gujarati', nativeName: 'ગુજરાતી'),
+  const LanguageModel(code: 'mr', name: 'Marathi', nativeName: 'मराठी'),
 ];
 
 // Predefined genres
