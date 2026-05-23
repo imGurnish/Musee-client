@@ -8,6 +8,9 @@ import 'package:musee/core/common/cubit/app_user_cubit.dart';
 import 'package:musee/core/common/navigation/routes.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
+import 'package:musee/core/update/app_update_info.dart';
+import 'package:musee/core/update/app_update_service.dart';
+import 'package:musee/core/update/widgets/app_update_overlay.dart';
 import 'package:musee/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
@@ -17,6 +20,7 @@ import 'package:musee/features/settings/presentation/widgets/settings_tile.dart'
 import 'package:musee/features/user_onboarding/presentation/bloc/onboarding_bloc.dart';
 import 'package:musee/features/user_onboarding/presentation/pages/onboarding_page.dart';
 import 'package:musee/init_dependencies.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -28,6 +32,32 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _clearingCache = false;
+  bool _checkingForUpdate = false;
+  AppUpdateInfo? _manualUpdateInfo;
+  String? _appVersion;
+
+  final AppUpdateService _updateService = AppUpdateService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _appVersion = packageInfo.version;
+      });
+    } catch (_) {
+      // Best effort only.
+    }
+  }
 
   Future<void> _clearOfflineCache() async {
     final confirmed = await showDialog<bool>(
@@ -73,6 +103,65 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _checkForUpdatesManually() async {
+    if (_checkingForUpdate) {
+      return;
+    }
+
+    setState(() {
+      _checkingForUpdate = true;
+    });
+
+    try {
+      final updateInfo = await _updateService.checkForUpdate();
+      if (!mounted) {
+        return;
+      }
+
+      if (updateInfo == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You are already on the latest version.')),
+        );
+        return;
+      }
+
+      setState(() {
+        _manualUpdateInfo = updateInfo;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _checkingForUpdate = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildUpdateCheckFrame(Widget child) {
+    final updateInfo = _manualUpdateInfo;
+    if (updateInfo == null) {
+      return child;
+    }
+
+    return Stack(
+      children: [
+        IgnorePointer(child: child),
+        AppUpdateOverlay(
+          info: updateInfo,
+          onSkip: () {
+            if (!mounted) {
+              return;
+            }
+
+            setState(() {
+              _manualUpdateInfo = null;
+            });
+          },
+        ),
+      ],
+    );
+  }
+
   void _openOnboarding() async {
     final supabase = serviceLocator<SupabaseClient>();
     final userId = supabase.auth.currentUser?.id;
@@ -96,33 +185,35 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-      body: CustomScrollView(
-        slivers: [
-          // ─── Gradient Header ──────────────────────────────────────────
-          SliverToBoxAdapter(child: _SettingsHeader()),
+      body: _buildUpdateCheckFrame(
+        CustomScrollView(
+          slivers: [
+            // ─── Gradient Header ──────────────────────────────────────────
+            SliverToBoxAdapter(child: _SettingsHeader()),
 
-          // ─── Content ─────────────────────────────────────────────────
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                const SizedBox(height: 20),
-                _buildAccountSection(context),
-                const SizedBox(height: 24),
-                _buildAppearanceSection(context),
-                const SizedBox(height: 24),
-                _buildPlaybackSection(context),
-                const SizedBox(height: 24),
-                _buildDownloadsSection(context),
-                const SizedBox(height: 24),
-                _buildMusicPreferencesSection(context),
-                const SizedBox(height: 24),
-                _buildAboutSection(context),
-                const SizedBox(height: 16),
-              ]),
+            // ─── Content ─────────────────────────────────────────────────
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  const SizedBox(height: 20),
+                  _buildAccountSection(context),
+                  const SizedBox(height: 24),
+                  _buildAppearanceSection(context),
+                  const SizedBox(height: 24),
+                  _buildPlaybackSection(context),
+                  const SizedBox(height: 24),
+                  _buildDownloadsSection(context),
+                  const SizedBox(height: 24),
+                  _buildMusicPreferencesSection(context),
+                  const SizedBox(height: 24),
+                  _buildAboutSection(context),
+                  const SizedBox(height: 16),
+                ]),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -433,6 +524,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _buildAboutSection(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final versionLabel = _appVersion ?? '...';
+    final isReleaseUpdateCheckEnabled = !kIsWeb;
     return SettingsSection(
       title: 'About',
       icon: Icons.info_outline_rounded,
@@ -447,7 +540,7 @@ class _SettingsPageState extends State<SettingsPage> {
           icon: Icons.tag_rounded,
           iconColor: colorScheme.secondary,
           title: 'Version',
-          value: '1.0.0',
+          value: versionLabel,
         ),
         SettingsInfoTile(
           icon: Icons.phone_android_rounded,
@@ -465,6 +558,15 @@ class _SettingsPageState extends State<SettingsPage> {
               ? 'macOS'
               : 'Unknown',
         ),
+        if (isReleaseUpdateCheckEnabled)
+          SettingsActionTile(
+            icon: Icons.system_update_alt_rounded,
+            iconColor: colorScheme.primary,
+            title: 'Check for updates',
+            subtitle: 'Look up the latest GitHub release',
+            onTap: _checkForUpdatesManually,
+            isLoading: _checkingForUpdate,
+          ),
       ],
     );
   }

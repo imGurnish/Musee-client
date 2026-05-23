@@ -8,6 +8,9 @@ import 'package:hydrated_bloc/hydrated_bloc.dart';
 import 'package:musee/core/common/cubit/app_user_cubit.dart';
 import 'package:musee/core/common/navigation/app_go_router.dart';
 import 'package:musee/core/theme/app_colors.dart';
+import 'package:musee/core/update/app_update_info.dart';
+import 'package:musee/core/update/app_update_service.dart';
+import 'package:musee/core/update/widgets/app_update_overlay.dart';
 import 'package:musee/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:musee/init_dependencies.dart';
 import 'package:path_provider/path_provider.dart';
@@ -74,13 +77,18 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late final GoRouter _router;
+  late final AppUpdateService _updateService;
   bool _hasInitializedAuth = false;
   bool _logoutStopHandled = false;
+  AppUpdateInfo? _updateInfo;
+  bool _isCheckingUpdate = false;
+  bool _dismissedForSession = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _updateService = AppUpdateService();
     // Initialize router with AppUserCubit
     _router = AppGoRouter.createRouter(serviceLocator<AppUserCubit>());
 
@@ -90,6 +98,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         context.read<AuthBloc>().add(AuthUserLoggedIn());
         _hasInitializedAuth = true;
       }
+
+      unawaited(_checkForAppUpdate());
     });
   }
 
@@ -104,6 +114,54 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.detached) {
       unawaited(serviceLocator<PlayerCubit>().stopPlayback());
     }
+  }
+
+  Future<void> _checkForAppUpdate() async {
+    if (_isCheckingUpdate || _updateInfo != null) {
+      return;
+    }
+
+    _isCheckingUpdate = true;
+    try {
+      final updateInfo = await _updateService.checkForUpdate();
+      if (!mounted || updateInfo == null) {
+        return;
+      }
+
+      setState(() {
+        _updateInfo = updateInfo;
+        _dismissedForSession = false;
+      });
+    } finally {
+      _isCheckingUpdate = false;
+    }
+  }
+
+  Widget _buildAppFrame(Widget? child) {
+    final updateInfo = _updateInfo;
+    final shouldShowUpdate = updateInfo != null && !_dismissedForSession;
+
+    return Stack(
+      children: [
+        if (shouldShowUpdate && updateInfo!.isMandatory)
+          IgnorePointer(child: child ?? const SizedBox.shrink())
+        else
+          child ?? const SizedBox.shrink(),
+        if (shouldShowUpdate)
+          AppUpdateOverlay(
+            info: updateInfo!,
+            onSkip: () {
+              if (!mounted) {
+                return;
+              }
+
+              setState(() {
+                _dismissedForSession = true;
+              });
+            },
+          ),
+      ],
+    );
   }
 
   @override
@@ -139,6 +197,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             title: 'Musee',
             debugShowCheckedModeBanner: false,
             routerConfig: _router,
+            builder: (context, child) => _buildAppFrame(child),
             // --- Light Theme Definition ---
             theme: ThemeData(
               cardColor: AppColors.lightColorScheme.secondary.withAlpha(10),
