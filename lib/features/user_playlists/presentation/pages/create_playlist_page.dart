@@ -484,6 +484,7 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage>
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
+        automaticallyImplyLeading: false,
         leading: _step == 2
             ? IconButton(
                 icon: Icon(
@@ -492,13 +493,7 @@ class _CreatePlaylistPageState extends State<CreatePlaylistPage>
                 ),
                 onPressed: _goBack,
               )
-            : IconButton(
-                icon: Icon(
-                  CupertinoIcons.xmark,
-                  color: isDark ? Colors.white70 : cs.onSurface,
-                ),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
+            : null,
         // Step indicator
         title: _StepDots(step: _step),
         centerTitle: true,
