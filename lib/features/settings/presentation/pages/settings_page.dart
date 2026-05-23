@@ -408,15 +408,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   onChanged: (v) =>
                       context.read<SettingsCubit>().setAutoPlay(v),
                 ),
-                SettingsToggleTile(
-                  icon: Icons.tune_rounded,
-                  iconColor: colorScheme.primary,
-                  title: 'Normalize volume',
-                  subtitle: 'Balance volume across different tracks',
-                  value: settings.normalizeVolume,
-                  onChanged: (v) =>
-                      context.read<SettingsCubit>().setNormalizeVolume(v),
-                ),
+                // SettingsToggleTile(
+                //   icon: Icons.tune_rounded,
+                //   iconColor: colorScheme.primary,
+                //   title: 'Normalize volume',
+                //   subtitle: 'Balance volume across different tracks',
+                //   value: settings.normalizeVolume,
+                //   onChanged: (v) =>
+                //       context.read<SettingsCubit>().setNormalizeVolume(v),
+                // ),
                 SettingsToggleTile(
                   icon: Icons.explicit_outlined,
                   iconColor: Colors.orange,
