@@ -137,7 +137,7 @@ class AppUpdateService {
       final currentValue = current[i];
       final latestValue = latest[i];
       if (latestValue != currentValue) {
-        return latestValue.compareTo(currentValue);
+        return currentValue.compareTo(latestValue);
       }
     }
 
