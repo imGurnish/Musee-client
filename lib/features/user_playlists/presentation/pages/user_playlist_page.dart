@@ -78,6 +78,11 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
   bool _isLoadingRecommendations = false;
   String? _recommendationsError;
 
+  final ScrollController _scrollController = ScrollController();
+  int _recommendationsPage = 0;
+  bool _recommendationsReachedEnd = false;
+  final Set<String> _seenRecommendationTrackIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -85,6 +90,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
       vsync: this,
       duration: const Duration(milliseconds: 300),
     );
+    _scrollController.addListener(_onScroll);
     _fetchRecommendations();
   }
 
@@ -97,12 +103,34 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
       _recommendedTracks = null;
       _isLoadingRecommendations = false;
       _recommendationsError = null;
+      _recommendationsPage = 0;
+      _recommendationsReachedEnd = false;
+      _seenRecommendationTrackIds.clear();
       _fetchRecommendations();
     }
   }
 
-  Future<void> _fetchRecommendations() async {
+  void _onScroll() {
+    if (_isLoadingRecommendations || _recommendationsReachedEnd) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 300) {
+      _fetchRecommendations(loadMore: true);
+    }
+  }
+
+  Future<void> _fetchRecommendations({bool loadMore = false}) async {
     if (!mounted) return;
+    if (loadMore && (_isLoadingRecommendations || _recommendationsReachedEnd)) return;
+
+    if (!loadMore) {
+      setState(() {
+        _recommendationsPage = 0;
+        _recommendationsReachedEnd = false;
+        _recommendedTracks = null;
+        _seenRecommendationTrackIds.clear();
+      });
+    }
+
     setState(() {
       _isLoadingRecommendations = true;
       _recommendationsError = null;
@@ -113,15 +141,61 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
       final supabase = GetIt.I<SupabaseClient>();
       final token = supabase.auth.currentSession?.accessToken;
       
-      final res = await dio.get(
-        '${AppSecrets.backendUrl}/api/recommendations?resolve=true',
-        options: Options(
-          headers: {'Authorization': 'Bearer $token'},
+      final limit = 20;
+      final page = _recommendationsPage;
+
+      // 1. Fetch from made-for-you and trending dashboard feeds
+      final futures = [
+        dio.get(
+          '${AppSecrets.backendUrl}/api/user/dashboard/made-for-you?page=$page&limit=$limit',
+          options: Options(
+            headers: {'Authorization': 'Bearer $token'},
+          ),
         ),
-      );
-      
-      final rawTracks = res.data['tracks'] as List<dynamic>? ?? const [];
-      var list = rawTracks.map((item) {
+        dio.get(
+          '${AppSecrets.backendUrl}/api/user/dashboard/trending?page=$page&limit=$limit',
+          options: Options(
+            headers: {'Authorization': 'Bearer $token'},
+          ),
+        ),
+      ];
+
+      final responses = await Future.wait(futures);
+      final rawItems = <dynamic>[];
+
+      for (final r in responses) {
+        if (r.data is Map) {
+          final items = r.data['items'] as List<dynamic>? ?? const [];
+          rawItems.addAll(items);
+        } else if (r.data is List) {
+          rawItems.addAll(r.data as List<dynamic>);
+        }
+      }
+
+      var trackItemsOnly = rawItems.where((item) {
+        if (item is! Map) return false;
+        final type = item['type']?.toString().toLowerCase();
+        return type == 'track';
+      }).toList();
+
+      // 2. If we got no tracks from the dashboard endpoints, fall back to /api/user/tracks directly
+      if (trackItemsOnly.isEmpty) {
+        final tracksRes = await dio.get(
+          '${AppSecrets.backendUrl}/api/user/tracks?page=$page&limit=$limit',
+          options: Options(
+            headers: {'Authorization': 'Bearer $token'},
+          ),
+        );
+        if (tracksRes.data is List) {
+          trackItemsOnly = (tracksRes.data as List<dynamic>).whereType<Map>().toList();
+        } else if (tracksRes.data is Map) {
+          final map = tracksRes.data as Map<String, dynamic>;
+          final items = (map['items'] ?? map['data'] ?? map['results'] ?? map['tracks']) as List<dynamic>? ?? const [];
+          trackItemsOnly = items.whereType<Map>().toList();
+        }
+      }
+
+      final list = trackItemsOnly.map((item) {
         final trackArtists = (item['artists'] as List<dynamic>? ?? const [])
             .map((a) => UserPlaylistArtist(
                   artistId: a['artist_id'] ?? a['id'] ?? '',
@@ -138,60 +212,18 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
         );
       }).toList();
 
-      if (list.isEmpty) {
-        // Fallback 1: Trending dashboard tracks
-        final trendRes = await dio.get(
-          '${AppSecrets.backendUrl}/api/user/dashboard/trending?page=0&limit=25',
-          options: Options(
-            headers: {'Authorization': 'Bearer $token'},
-          ),
-        );
-        var fallbackTracks = <dynamic>[];
-        if (trendRes.data is List) {
-          fallbackTracks = trendRes.data as List<dynamic>;
-        } else if (trendRes.data is Map) {
-          final map = trendRes.data as Map<String, dynamic>;
-          fallbackTracks = (map['items'] ?? map['data'] ?? map['results'] ?? map['tracks']) as List<dynamic>? ?? const [];
-        }
-
-        // Fallback 2: General user tracks
-        if (fallbackTracks.isEmpty) {
-          final tracksRes = await dio.get(
-            '${AppSecrets.backendUrl}/api/user/tracks?page=0&limit=25',
-            options: Options(
-              headers: {'Authorization': 'Bearer $token'},
-            ),
-          );
-          if (tracksRes.data is List) {
-            fallbackTracks = tracksRes.data as List<dynamic>;
-          } else if (tracksRes.data is Map) {
-            final map = tracksRes.data as Map<String, dynamic>;
-            fallbackTracks = (map['items'] ?? map['data'] ?? map['results'] ?? map['tracks']) as List<dynamic>? ?? const [];
-          }
-        }
-
-        list = fallbackTracks.map((item) {
-          final trackArtists = (item['artists'] as List<dynamic>? ?? const [])
-              .map((a) => UserPlaylistArtist(
-                    artistId: a['artist_id'] ?? a['id'] ?? '',
-                    name: a['name'] ?? 'Unknown Artist',
-                    avatarUrl: a['avatar_url'],
-                  ))
-              .toList();
-          return UserPlaylistTrack(
-            trackId: item['track_id'] ?? item['id'] ?? '',
-            title: item['title'] ?? 'Unknown Track',
-            duration: item['duration'] ?? 0,
-            isExplicit: item['is_explicit'] ?? false,
-            artists: trackArtists,
-          );
-        }).toList();
-      }
-
       if (mounted) {
         setState(() {
-          _recommendedTracks = list;
+          final currentList = _recommendedTracks ?? <UserPlaylistTrack>[];
+          for (final track in list) {
+            if (_seenRecommendationTrackIds.add(track.trackId)) {
+              currentList.add(track);
+            }
+          }
+          _recommendedTracks = currentList;
           _isLoadingRecommendations = false;
+          _recommendationsPage++;
+          _recommendationsReachedEnd = list.isEmpty;
         });
       }
     } catch (e) {
@@ -207,6 +239,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
   @override
   void dispose() {
     _likeAnimController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -247,6 +280,193 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
     return '${hours}h ${mins}m';
   }
 
+  void _showPlaylistOptions(BuildContext pageContext, UserPlaylistDetail playlist) {
+    showModalBottomSheet(
+      context: pageContext,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit_rounded),
+                title: const Text('Edit Details'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _showEditPlaylistDialog(pageContext, playlist);
+                },
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.delete_outline_rounded,
+                  color: Colors.redAccent,
+                ),
+                title: const Text(
+                  'Delete Playlist',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _showDeleteConfirmationDialog(pageContext, playlist);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDeleteConfirmationDialog(BuildContext pageContext, UserPlaylistDetail playlist) {
+    final bloc = pageContext.read<UserPlaylistBloc>();
+    showDialog(
+      context: pageContext,
+      builder: (dialogContext) {
+        final theme = Theme.of(pageContext);
+        return AlertDialog(
+          title: const Text('Delete Playlist'),
+          content: Text('Are you sure you want to delete "${playlist.name}"? This action cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                bloc.add(UserPlaylistDeleted(playlist.playlistId));
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showEditPlaylistDialog(BuildContext pageContext, UserPlaylistDetail playlist) {
+    final nameController = TextEditingController(text: playlist.name);
+    final descController = TextEditingController(text: playlist.description ?? '');
+    bool isPublic = playlist.isPublic;
+    bool isCollaborative = playlist.isCollaborative;
+    final bloc = pageContext.read<UserPlaylistBloc>();
+
+    showDialog(
+      context: pageContext,
+      builder: (dialogContext) {
+        final theme = Theme.of(pageContext);
+        return StatefulBuilder(
+          builder: (statefulContext, setState) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  Icon(Icons.edit_note_rounded, color: theme.colorScheme.primary, size: 28),
+                  const SizedBox(width: 8),
+                  const Text('Edit Playlist Info'),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      decoration: InputDecoration(
+                        labelText: 'Playlist Name',
+                        hintText: 'Enter a name',
+                        prefixIcon: const Icon(Icons.title_rounded),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: descController,
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        labelText: 'Description',
+                        hintText: 'Describe this playlist...',
+                        prefixIcon: const Icon(Icons.description_rounded),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SwitchListTile(
+                      title: const Text('Public Playlist'),
+                      subtitle: const Text('Anyone can see and search for it'),
+                      value: isPublic,
+                      activeThumbColor: theme.colorScheme.primary,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (val) {
+                        setState(() {
+                          isPublic = val;
+                        });
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text('Collaborative'),
+                      subtitle: const Text('Allow friends to join and edit tracks'),
+                      value: isCollaborative,
+                      activeThumbColor: theme.colorScheme.primary,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (val) {
+                        setState(() {
+                          isCollaborative = val;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final name = nameController.text.trim();
+                    if (name.isEmpty) {
+                      ScaffoldMessenger.of(statefulContext).showSnackBar(
+                        const SnackBar(content: Text('Playlist name cannot be empty')),
+                      );
+                      return;
+                    }
+                    Navigator.pop(dialogContext);
+                    bloc.add(
+                      UserPlaylistUpdated(
+                        playlistId: playlist.playlistId,
+                        name: name,
+                        description: descController.text.trim(),
+                        isPublic: isPublic,
+                        isCollaborative: isCollaborative,
+                      ),
+                    );
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -256,7 +476,29 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
 
     return Scaffold(
       body: SafeArea(
-        child: BlocBuilder<UserPlaylistBloc, UserPlaylistState>(
+        child: BlocConsumer<UserPlaylistBloc, UserPlaylistState>(
+          listener: (context, state) {
+            if (state.isDeleted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Playlist deleted successfully'),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  backgroundColor: theme.colorScheme.error,
+                ),
+              );
+              Navigator.of(context).pop();
+            } else if (state.error != null && state.playlist != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error: ${state.error}'),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  backgroundColor: theme.colorScheme.error,
+                ),
+              );
+            }
+          },
           builder: (context, state) {
             if (state.isLoading && state.playlist == null) {
               return const Center(child: CircularProgressIndicator());
@@ -284,6 +526,10 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
             final totalDuration = playlist.totalDuration;
             final explicitCount = playlist.tracks.where((t) => t.isExplicit).length;
             final canPlayPlaylist = playlist.tracks.isNotEmpty;
+
+            final currentUserId = GetIt.I<SupabaseClient>().auth.currentUser?.id;
+            final isCreator = playlist.artists.isNotEmpty &&
+                playlist.artists.first.artistId == currentUserId;
 
             Future<void> playTrack(
               String trackId, {
@@ -323,6 +569,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
             }
 
             return CustomScrollView(
+              controller: _scrollController,
               slivers: [
                 SliverAppBar(
                   pinned: true,
@@ -333,6 +580,14 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  actions: [
+                    if (isCreator)
+                      IconButton(
+                        icon: const Icon(Icons.more_vert_rounded),
+                        onPressed: () => _showPlaylistOptions(context, playlist),
+                        tooltip: 'Playlist options',
+                      ),
+                  ],
                   flexibleSpace: FlexibleSpaceBar(
                     collapseMode: CollapseMode.parallax,
                     background: _PlaylistHeader(
@@ -857,6 +1112,13 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                     icon: const Icon(Icons.more_horiz_rounded),
                                     tooltip: 'More',
                                     onPressed: () async {
+                                      final supabase = GetIt.I<SupabaseClient>();
+                                      final currentUserId = supabase.auth.currentUser?.id;
+                                      final isCreator = playlist.artists.isNotEmpty &&
+                                          playlist.artists.first.artistId == currentUserId;
+                                      final isCollaborator = playlist.collaborators.any((c) => c.artistId == currentUserId);
+                                      final canRemoveTrack = isCreator || isCollaborator || playlist.isCollaborative;
+
                                       final action =
                                           await showModalBottomSheet<String>(
                                             context: context,
@@ -868,8 +1130,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                                   children: [
                                                     ListTile(
                                                       leading: const Icon(
-                                                        Icons
-                                                            .queue_music_rounded,
+                                                        Icons.queue_music_rounded,
                                                       ),
                                                       title: const Text(
                                                         'Add to queue',
@@ -893,6 +1154,23 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                                             'download',
                                                           ),
                                                     ),
+                                                    if (canRemoveTrack) ...[
+                                                      ListTile(
+                                                        leading: const Icon(
+                                                          Icons.delete_outline_rounded,
+                                                          color: Colors.redAccent,
+                                                        ),
+                                                        title: const Text(
+                                                          'Remove from playlist',
+                                                          style: TextStyle(color: Colors.redAccent),
+                                                        ),
+                                                        onTap: () =>
+                                                            Navigator.pop(
+                                                              context,
+                                                              'remove',
+                                                            ),
+                                                      ),
+                                                    ],
                                                   ],
                                                 ),
                                               );
@@ -929,6 +1207,14 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                             ),
                                           );
                                         }
+                                      } else if (action == 'remove') {
+                                        if (!context.mounted) return;
+                                        context.read<UserPlaylistBloc>().add(
+                                              UserPlaylistTrackRemoved(
+                                                playlist.playlistId,
+                                                t.trackId,
+                                              ),
+                                            );
                                       }
                                     },
                                   ),
@@ -1014,8 +1300,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                     ),
                   ),
                 ),
-
-                if (_isLoadingRecommendations)
+                if (_recommendedTracks == null && _isLoadingRecommendations)
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 24.0),
@@ -1024,7 +1309,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                       ),
                     ),
                   )
-                else if (_recommendationsError != null)
+                else if (_recommendationsError != null && (_recommendedTracks == null || _recommendedTracks!.isEmpty))
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -1048,7 +1333,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                       ),
                     ),
                   )
-                else
+                else ...[
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
@@ -1126,6 +1411,16 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                       childCount: displayedRecommendations.length,
                     ),
                   ),
+                  if (_isLoadingRecommendations)
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24.0),
+                        child: Center(
+                          child: CupertinoActivityIndicator(),
+                        ),
+                      ),
+                    ),
+                ],
 
                 const SliverToBoxAdapter(child: SizedBox(height: 96)),
               ],

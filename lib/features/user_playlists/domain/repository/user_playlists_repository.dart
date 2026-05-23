@@ -21,4 +21,15 @@ abstract interface class UserPlaylistsRepository {
   Future<UserPlaylistDetail> addTrackToPlaylist(String playlistId, String trackId);
 
   Future<void> removeTrackFromPlaylist(String playlistId, String trackId);
+
+  Future<void> deletePlaylist(String playlistId);
+
+  Future<UserPlaylistDetail> updatePlaylist({
+    required String playlistId,
+    String? name,
+    String? description,
+    bool? isPublic,
+    bool? isCollaborative,
+    String? coverPath,
+  });
 }

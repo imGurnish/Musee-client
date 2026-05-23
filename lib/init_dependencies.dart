@@ -89,6 +89,8 @@ import 'package:musee/features/user_playlists/domain/usecases/create_playlist.da
 import 'package:musee/features/user_playlists/domain/usecases/join_playlist.dart';
 import 'package:musee/features/user_playlists/domain/usecases/add_playlist_track.dart';
 import 'package:musee/features/user_playlists/domain/usecases/remove_playlist_track.dart';
+import 'package:musee/features/user_playlists/domain/usecases/delete_playlist.dart';
+import 'package:musee/features/user_playlists/domain/usecases/update_playlist.dart';
 import 'package:musee/features/user_playlists/presentation/bloc/user_playlist_bloc.dart';
 import 'package:musee/features/user__dashboard/data/datasources/user_dashboard_remote_data_source.dart';
 import 'package:musee/features/user__dashboard/data/repositories/user_dashboard_repository_impl.dart';
@@ -592,6 +594,12 @@ void _initUserPlaylists() {
     ..registerFactory(
       () => RemovePlaylistTrack(serviceLocator<UserPlaylistsRepository>()),
     )
+    ..registerFactory(
+      () => DeletePlaylist(serviceLocator<UserPlaylistsRepository>()),
+    )
+    ..registerFactory(
+      () => UpdatePlaylist(serviceLocator<UserPlaylistsRepository>()),
+    )
     // bloc
     ..registerFactory(
       () => UserPlaylistBloc(
@@ -599,6 +607,8 @@ void _initUserPlaylists() {
         serviceLocator<AddPlaylistTrack>(),
         serviceLocator<RemovePlaylistTrack>(),
         serviceLocator<JoinPlaylist>(),
+        serviceLocator<DeletePlaylist>(),
+        serviceLocator<UpdatePlaylist>(),
       ),
     );
 }

@@ -13,6 +13,8 @@ abstract class UserMediaDetailCacheService {
 
   Future<List<Map<String, dynamic>>> getAllAlbums();
   Future<List<Map<String, dynamic>>> getAllPlaylists();
+  Future<void> invalidateAlbum(String albumId);
+  Future<void> invalidatePlaylist(String playlistId);
 }
 
 class UserMediaDetailCacheServiceImpl implements UserMediaDetailCacheService {
@@ -108,5 +110,15 @@ class UserMediaDetailCacheServiceImpl implements UserMediaDetailCacheService {
         .whereType<Map>()
         .map((payload) => Map<String, dynamic>.from(payload))
         .toList();
+  }
+
+  @override
+  Future<void> invalidateAlbum(String albumId) async {
+    await _cacheBox.delete(_albumKey(albumId));
+  }
+
+  @override
+  Future<void> invalidatePlaylist(String playlistId) async {
+    await _cacheBox.delete(_playlistKey(playlistId));
   }
 }

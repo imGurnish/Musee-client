@@ -106,6 +106,34 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
     return dtos.map(_mapDtoToEntity).toList();
   }
 
+  @override
+  Future<void> deletePlaylist(String playlistId) async {
+    await _remote.deletePlaylist(playlistId);
+    await _detailCache.invalidatePlaylist(playlistId);
+  }
+
+  @override
+  Future<UserPlaylistDetail> updatePlaylist({
+    required String playlistId,
+    String? name,
+    String? description,
+    bool? isPublic,
+    bool? isCollaborative,
+    String? coverPath,
+  }) async {
+    final dto = await _remote.updatePlaylist(
+      playlistId: playlistId,
+      name: name,
+      description: description,
+      isPublic: isPublic,
+      isCollaborative: isCollaborative,
+      coverPath: coverPath,
+    );
+    final detail = _mapDtoToEntity(dto);
+    await _detailCache.cachePlaylist(detail.playlistId, _playlistToCachePayload(detail));
+    return detail;
+  }
+
   bool _isExpired(Map<String, dynamic> payload) {
     final cachedAtIso = payload['cached_at']?.toString();
     if (cachedAtIso == null || cachedAtIso.isEmpty) return true;

@@ -116,6 +116,15 @@ abstract interface class UserPlaylistsRemoteDataSource {
   Future<UserPlaylistDetailDTO> joinCollaborativePlaylist(String playlistId);
   Future<UserPlaylistDetailDTO> addTrackToPlaylist(String playlistId, String trackId);
   Future<void> removeTrackFromPlaylist(String playlistId, String trackId);
+  Future<void> deletePlaylist(String playlistId);
+  Future<UserPlaylistDetailDTO> updatePlaylist({
+    required String playlistId,
+    String? name,
+    String? description,
+    bool? isPublic,
+    bool? isCollaborative,
+    String? coverPath,
+  });
 }
 
 class UserPlaylistsRemoteDataSourceImpl implements UserPlaylistsRemoteDataSource {
@@ -270,6 +279,63 @@ class UserPlaylistsRemoteDataSourceImpl implements UserPlaylistsRemoteDataSource
       return rawList
           .map((e) => UserPlaylistDetailDTO.fromJson(Map<String, dynamic>.from(e)))
           .toList();
+    } on dio.DioException catch (e) {
+      throw _handleDioException(e);
+    }
+  }
+
+  @override
+  Future<void> deletePlaylist(String playlistId) async {
+    final encodedPlaylistId = Uri.encodeComponent(playlistId);
+    final endpoint = '$basePath/$encodedPlaylistId';
+
+    try {
+      await _dio.delete(
+        endpoint,
+        options: dio.Options(headers: await _authHeader()),
+      );
+    } on dio.DioException catch (e) {
+      throw _handleDioException(e);
+    }
+  }
+
+  @override
+  Future<UserPlaylistDetailDTO> updatePlaylist({
+    required String playlistId,
+    String? name,
+    String? description,
+    bool? isPublic,
+    bool? isCollaborative,
+    String? coverPath,
+  }) async {
+    final encodedPlaylistId = Uri.encodeComponent(playlistId);
+    final endpoint = '$basePath/$encodedPlaylistId';
+
+    final Map<String, dynamic> data = {
+      if (name != null) 'name': name,
+      if (description != null) 'description': description,
+      if (isPublic != null) 'is_public': isPublic.toString(),
+      if (isCollaborative != null) 'is_collaborative': isCollaborative.toString(),
+    };
+
+    final formData = dio.FormData.fromMap(data);
+
+    if (coverPath != null && coverPath.isNotEmpty) {
+      formData.files.add(
+        MapEntry(
+          'cover',
+          await dio.MultipartFile.fromFile(coverPath),
+        ),
+      );
+    }
+
+    try {
+      final res = await _dio.patch(
+        endpoint,
+        data: formData,
+        options: dio.Options(headers: await _authHeader()),
+      );
+      return UserPlaylistDetailDTO.fromJson(Map<String, dynamic>.from(res.data));
     } on dio.DioException catch (e) {
       throw _handleDioException(e);
     }
