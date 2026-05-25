@@ -29,7 +29,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   static const int _queuePrefetchTarget = 20;
   static const int _queueMaxSize = 60;
 
-  late final AudioPlayer _player;
+  late AudioPlayer _player;
   final PlayerRepository? _repo; // optional to allow previous initialization
   final TrackCacheService? _trackCache;
   final AudioCacheService? _audioCache;
@@ -44,6 +44,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   Timer? _snapshotLogTimer;
   Timer? _playbackReassertTimer;
   Timer? _switchFailSafeTimer;
+  Timer? _unexpectedPauseTimer;
+  void Function()? onPlayerRecreated;
   DateTime? _currentTrackStartedAt;
   String? _currentTrackIdForLogging;
   String? _lastPublishedTrackKey;
@@ -271,6 +273,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         final playing = ps.playing;
         if (playing) {
           _userPaused = false;
+          _unexpectedPauseTimer?.cancel();
         }
         final buffering =
             ps.processingState == ProcessingState.loading ||
@@ -286,6 +289,33 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         // Auto-advance when current track completes
         if (ps.processingState == ProcessingState.completed && !_isTrackSwitchInProgress && !_isAdvancingNext) {
           unawaited(_playNextInternal());
+        }
+
+        // Sudden unexpected pause recovery
+        if (!playing && !_userPaused &&
+            ps.processingState != ProcessingState.completed &&
+            ps.processingState != ProcessingState.idle &&
+            ps.processingState != ProcessingState.loading) {
+          if (kDebugMode) {
+            debugPrint('[PlayerCubit] Unexpected pause detected. Scheduling auto-resume in 500ms...');
+          }
+          _unexpectedPauseTimer?.cancel();
+          _unexpectedPauseTimer = Timer(const Duration(milliseconds: 500), () async {
+            if (!_userPaused && !_player.playing &&
+                _player.processingState != ProcessingState.completed &&
+                _player.processingState != ProcessingState.idle) {
+              if (kDebugMode) {
+                debugPrint('[PlayerCubit] Auto-resuming after unexpected pause.');
+              }
+              try {
+                await _audioOperationHandler.executeAudioOperation(() => _player.play());
+              } catch (e) {
+                if (kDebugMode) {
+                  debugPrint('[PlayerCubit] Failed to auto-resume playback: $e');
+                }
+              }
+            }
+          });
         }
       },
       onError: (e) {
@@ -534,6 +564,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     final switchToken = ++_trackSwitchToken;
     _playbackReassertTimer?.cancel();
+    _unexpectedPauseTimer?.cancel();
     _isTrackSwitchInProgress = true;
     _armSwitchFailSafe(switchToken);
 
@@ -569,14 +600,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       await _stopPlaybackForTrackSwitch();
       await _ensurePlatformAudio();
 
-      await _audioOperationHandler.executeAudioOperation(
-        () => _player.setAudioSource(
-          AudioSource.uri(
-            toUri(track.url),
-            headers: headers.isEmpty ? null : headers,
-          ),
-          initialPosition: const Duration(milliseconds: 50),
+      await _loadAudioSourceWithRetry(
+        AudioSource.uri(
+          toUri(track.url),
+          headers: headers.isEmpty ? null : headers,
         ),
+        initialPosition: const Duration(milliseconds: 50),
       );
 
       if (_userPaused) {
@@ -677,14 +706,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         await _stopPlaybackForTrackSwitch();
         await _ensurePlatformAudio();
 
-        await _audioOperationHandler.executeAudioOperation(
-          () => _player.setAudioSource(
-            AudioSource.uri(
-              toUri(refreshedTrack.url),
-              headers: headers.isEmpty ? null : headers,
-            ),
-            initialPosition: const Duration(milliseconds: 50),
+        await _loadAudioSourceWithRetry(
+          AudioSource.uri(
+            toUri(refreshedTrack.url),
+            headers: headers.isEmpty ? null : headers,
           ),
+          initialPosition: const Duration(milliseconds: 50),
         );
 
         if (_userPaused) {
@@ -1096,6 +1123,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _userPaused = true;
     _playbackReassertTimer?.cancel();
     _switchFailSafeTimer?.cancel();
+    _unexpectedPauseTimer?.cancel();
 
     try {
       if (_platformAudioInitialized) {
@@ -1193,6 +1221,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   Future<void> _playNextInternal({bool userInitiated = false}) async {
     _userPaused = false;
+    _unexpectedPauseTimer?.cancel();
     if (_isAdvancingNext) return;
     _isAdvancingNext = true;
     emit(
@@ -1392,11 +1421,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       await _stopPlaybackForTrackSwitch();
       await _ensurePlatformAudio();
 
-      await _audioOperationHandler.executeAudioOperation(
-        () => _player.setAudioSource(
-          AudioSource.uri(uri),
-          initialPosition: const Duration(milliseconds: 50),
-        ),
+      await _loadAudioSourceWithRetry(
+        AudioSource.uri(uri),
+        initialPosition: const Duration(milliseconds: 50),
       );
 
       if (_userPaused) {
@@ -1488,11 +1515,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         await _stopPlaybackForTrackSwitch();
         await _ensurePlatformAudio();
 
-        await _audioOperationHandler.executeAudioOperation(
-          () => _player.setAudioSource(
-            AudioSource.uri(refreshedUri),
-            initialPosition: const Duration(milliseconds: 50),
-          ),
+        await _loadAudioSourceWithRetry(
+          AudioSource.uri(refreshedUri),
+          initialPosition: const Duration(milliseconds: 50),
         );
 
         if (_userPaused) {
@@ -1573,7 +1598,13 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (_userPaused) return false;
       if (_player.playing) return true;
 
-      await _audioOperationHandler.executeAudioOperation(() => _player.play());
+      try {
+        await _audioOperationHandler.executeAudioOperation(() => _player.play());
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] play() failed during ensurePlaybackStarted attempt $attempt: $e');
+        }
+      }
 
       if (_userPaused) {
         await _player.pause();
@@ -1593,7 +1624,69 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       }
     }
 
+    if (!_player.playing) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Playback reassertion failed to start. Recreating player to auto-heal...');
+      }
+      await _recreateAudioPlayer();
+    }
+
     return _player.playing;
+  }
+
+  Future<void> _loadAudioSourceWithRetry(AudioSource source, {Duration initialPosition = const Duration(milliseconds: 50)}) async {
+    int attempts = 0;
+    const int maxAttempts = 3;
+    while (attempts < maxAttempts) {
+      try {
+        attempts++;
+        await _audioOperationHandler.executeAudioOperation(
+          () => _player.setAudioSource(
+            source,
+            initialPosition: initialPosition,
+          ),
+        );
+        return;
+      } catch (e) {
+        if (attempts >= maxAttempts) {
+          if (kDebugMode) {
+            debugPrint('[PlayerCubit] All setAudioSource attempts failed. Recreating player for recovery...');
+          }
+          await _recreateAudioPlayer();
+          rethrow;
+        }
+        final delayMs = attempts * 1000;
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] setAudioSource failed (attempt $attempts/$maxAttempts): $e. Retrying in ${delayMs}ms...');
+        }
+        await Future.delayed(Duration(milliseconds: delayMs));
+      }
+    }
+  }
+
+  Future<void> _recreateAudioPlayer() async {
+    if (kDebugMode) {
+      debugPrint('[PlayerCubit] Critical player error/deadlock suspected. Recreating AudioPlayer...');
+    }
+    _playbackReassertTimer?.cancel();
+    _switchFailSafeTimer?.cancel();
+    _unexpectedPauseTimer?.cancel();
+
+    await _positionSub?.cancel();
+    await _durationSub?.cancel();
+    await _playerStateSub?.cancel();
+
+    try {
+      await _player.dispose();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Failed to dispose stuck player (safe to ignore): $e');
+      }
+    }
+
+    _platformAudioInitialized = false;
+    await _ensurePlatformAudio();
+    onPlayerRecreated?.call();
   }
 
   void _schedulePlaybackReassertion(int switchToken) {
@@ -1714,16 +1807,19 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (_player.playing) {
       _userPaused = true;
       _playbackReassertTimer?.cancel();
+      _unexpectedPauseTimer?.cancel();
       await _player.pause();
       return;
     } else {
       if (_isTrackSwitchInProgress) {
         _userPaused = true;
         _playbackReassertTimer?.cancel();
+        _unexpectedPauseTimer?.cancel();
         return;
       }
       if (state.track == null) return;
       _userPaused = false;
+      _unexpectedPauseTimer?.cancel();
       await _audioOperationHandler.executeAudioOperation(() => _player.play());
     }
   }
@@ -1735,6 +1831,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (state.track == null) return;
     if (_player.playing) return;
     _userPaused = false;
+    _unexpectedPauseTimer?.cancel();
     await _audioOperationHandler.executeAudioOperation(() => _player.play());
   }
 
@@ -1965,6 +2062,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _snapshotLogTimer?.cancel();
     _playbackReassertTimer?.cancel();
     _switchFailSafeTimer?.cancel();
+    _unexpectedPauseTimer?.cancel();
     await _positionSub?.cancel();
     await _durationSub?.cancel();
     await _playerStateSub?.cancel();

@@ -1387,13 +1387,32 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                           ],
                                         ),
                                         const SizedBox(height: 2),
-                                        Text(
-                                          '$artists • ${_fmtDuration(t.duration)}',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style:
-                                              theme.textTheme.bodySmall,
-                                        ),
+                                        if (t.isSyncing)
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Flexible(
+                                                child: Text(
+                                                  artists,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: theme.textTheme.bodySmall,
+                                                ),
+                                              ),
+                                              Text(
+                                                ' • ',
+                                                style: theme.textTheme.bodySmall,
+                                              ),
+                                              const _TrackDurationShimmer(width: 32),
+                                            ],
+                                          )
+                                        else
+                                          Text(
+                                            '$artists • ${_fmtDuration(t.duration)}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: theme.textTheme.bodySmall,
+                                          ),
                                         if (playlist.isTrackCached(t.trackId) ||
                                             playlist.isTrackOffline(
                                               t.trackId,
@@ -1940,7 +1959,8 @@ class _TrackSyncingShimmerState extends State<_TrackSyncingShimmer>
 }
 
 class _TrackDurationShimmer extends StatefulWidget {
-  const _TrackDurationShimmer();
+  final double width;
+  const _TrackDurationShimmer({this.width = 150});
 
   @override
   State<_TrackDurationShimmer> createState() => _TrackDurationShimmerState();
@@ -1970,7 +1990,7 @@ class _TrackDurationShimmerState extends State<_TrackDurationShimmer>
     final cs = Theme.of(context).colorScheme;
     return SizedBox(
       height: 14,
-      width: 150,
+      width: widget.width,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(999),
         child: AnimatedBuilder(

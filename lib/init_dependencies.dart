@@ -282,6 +282,12 @@ Future<void> initDependencies() async {
   applyEqualizerSettings(serviceLocator<SettingsCubit>().state);
   syncSettingsToPlayer(serviceLocator<SettingsCubit>().state);
 
+  // Re-apply settings if the player has to auto-heal/recreate itself on network failures
+  serviceLocator<PlayerCubit>().onPlayerRecreated = () {
+    applyEqualizerSettings(serviceLocator<SettingsCubit>().state);
+    syncSettingsToPlayer(serviceLocator<SettingsCubit>().state);
+  };
+
   //auth
   _initAuth();
   // admin users
