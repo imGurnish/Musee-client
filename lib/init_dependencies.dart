@@ -267,11 +267,20 @@ Future<void> initDependencies() async {
     }
   }
 
-  // Bridge: when EQ settings change → push immediately to the player.
-  serviceLocator<SettingsCubit>().stream.listen(applyEqualizerSettings);
+  void syncSettingsToPlayer(SettingsState s) {
+    final player = serviceLocator<PlayerCubit>();
+    player.setRecommendationAutoFill(s.recommendationAutoFillEnabled);
+  }
 
-  // Apply persisted EQ settings immediately on startup.
+  // Bridge: when settings change → push immediately to the player.
+  serviceLocator<SettingsCubit>().stream.listen((s) {
+    applyEqualizerSettings(s);
+    syncSettingsToPlayer(s);
+  });
+
+  // Apply persisted settings immediately on startup.
   applyEqualizerSettings(serviceLocator<SettingsCubit>().state);
+  syncSettingsToPlayer(serviceLocator<SettingsCubit>().state);
 
   //auth
   _initAuth();

@@ -395,7 +395,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   value: playerState.recommendationAutoFillEnabled,
                   onChanged: (v) =>
                       context
-                          .read<PlayerCubit>()
+                          .read<SettingsCubit>()
                           .setRecommendationAutoFill(v),
                 ),
                 SettingsToggleTile(

@@ -15,6 +15,7 @@ class SettingsState extends Equatable {
   final bool crossfadeEnabled;
   final bool showExplicitContent;
   final bool normalizeVolume;
+  final bool recommendationAutoFillEnabled;
 
   // ─── Equalizer & Sound ───────────────────────────────────────────────────
   /// Whether the equalizer is globally enabled or bypassed.
@@ -37,6 +38,7 @@ class SettingsState extends Equatable {
     this.crossfadeEnabled = false,
     this.showExplicitContent = true,
     this.normalizeVolume = false,
+    this.recommendationAutoFillEnabled = false,
     this.equalizerEnabled = true,
     this.equalizerPreset = 'normal',
     this.equalizerBands = const [0.0, 0.0, 0.0, 0.0, 0.0],
@@ -53,6 +55,7 @@ class SettingsState extends Equatable {
     bool? crossfadeEnabled,
     bool? showExplicitContent,
     bool? normalizeVolume,
+    bool? recommendationAutoFillEnabled,
     bool? equalizerEnabled,
     String? equalizerPreset,
     List<double>? equalizerBands,
@@ -68,6 +71,8 @@ class SettingsState extends Equatable {
       crossfadeEnabled: crossfadeEnabled ?? this.crossfadeEnabled,
       showExplicitContent: showExplicitContent ?? this.showExplicitContent,
       normalizeVolume: normalizeVolume ?? this.normalizeVolume,
+      recommendationAutoFillEnabled:
+          recommendationAutoFillEnabled ?? this.recommendationAutoFillEnabled,
       equalizerEnabled: equalizerEnabled ?? this.equalizerEnabled,
       equalizerPreset: equalizerPreset ?? this.equalizerPreset,
       equalizerBands: equalizerBands ?? this.equalizerBands,
@@ -86,6 +91,7 @@ class SettingsState extends Equatable {
       'crossfadeEnabled': crossfadeEnabled,
       'showExplicitContent': showExplicitContent,
       'normalizeVolume': normalizeVolume,
+      'recommendationAutoFillEnabled': recommendationAutoFillEnabled,
       'equalizerEnabled': equalizerEnabled,
       'equalizerPreset': equalizerPreset,
       'equalizerBands': equalizerBands,
@@ -113,6 +119,7 @@ class SettingsState extends Equatable {
       crossfadeEnabled: json['crossfadeEnabled'] as bool? ?? false,
       showExplicitContent: json['showExplicitContent'] as bool? ?? true,
       normalizeVolume: json['normalizeVolume'] as bool? ?? false,
+      recommendationAutoFillEnabled: json['recommendationAutoFillEnabled'] as bool? ?? false,
       equalizerEnabled: json['equalizerEnabled'] as bool? ?? true,
       equalizerPreset: preset,
       equalizerBands: parseBands(json['equalizerBands']) ,
@@ -131,6 +138,7 @@ class SettingsState extends Equatable {
     crossfadeEnabled,
     showExplicitContent,
     normalizeVolume,
+    recommendationAutoFillEnabled,
     equalizerEnabled,
     equalizerPreset,
     equalizerBands,

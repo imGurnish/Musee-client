@@ -38,6 +38,10 @@ class SettingsCubit extends HydratedCubit<SettingsState> {
     emit(state.copyWith(normalizeVolume: value));
   }
 
+  void setRecommendationAutoFill(bool value) {
+    emit(state.copyWith(recommendationAutoFillEnabled: value));
+  }
+
   // ─── Equalizer & Sound ────────────────────────────────────────────────────────
 
   /// Enable or disable the equalizer globally.

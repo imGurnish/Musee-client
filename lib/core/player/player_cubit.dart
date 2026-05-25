@@ -121,7 +121,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (_repo == null || state.queue.isEmpty || state.currentIndex < 0) return false;
 
     final sourceQueueLength = _currentSourceQueueLength();
-    if (sourceQueueLength <= 0) return false;
+    if (sourceQueueLength <= 0) {
+      return state.currentIndex >= state.queue.length - 1;
+    }
 
     return state.currentIndex >= sourceQueueLength - 1;
   }
