@@ -644,7 +644,10 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(_fmt(pos), style: theme.textTheme.labelMedium),
-                  Text(_fmt(dur), style: theme.textTheme.labelMedium),
+                  Text(
+                    state.duration.inMilliseconds > 0 ? _fmt(state.duration) : '--:--',
+                    style: theme.textTheme.labelMedium,
+                  ),
                 ],
               ),
 

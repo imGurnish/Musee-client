@@ -274,8 +274,10 @@ Future<void> initDependencies() async {
 
   // Bridge: when settings change → push immediately to the player.
   serviceLocator<SettingsCubit>().stream.listen((s) {
-    applyEqualizerSettings(s);
-    syncSettingsToPlayer(s);
+    Future.microtask(() {
+      applyEqualizerSettings(s);
+      syncSettingsToPlayer(s);
+    });
   });
 
   // Apply persisted settings immediately on startup.
@@ -284,8 +286,10 @@ Future<void> initDependencies() async {
 
   // Re-apply settings if the player has to auto-heal/recreate itself on network failures
   serviceLocator<PlayerCubit>().onPlayerRecreated = () {
-    applyEqualizerSettings(serviceLocator<SettingsCubit>().state);
-    syncSettingsToPlayer(serviceLocator<SettingsCubit>().state);
+    Future.microtask(() {
+      applyEqualizerSettings(serviceLocator<SettingsCubit>().state);
+      syncSettingsToPlayer(serviceLocator<SettingsCubit>().state);
+    });
   };
 
   //auth

@@ -1677,7 +1677,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     await _playerStateSub?.cancel();
 
     try {
-      await _player.dispose();
+      // Use a timeout to prevent the dispose call from hanging Dart thread indefinitely if the native player is deadlocked
+      await _player.dispose().timeout(const Duration(milliseconds: 500), onTimeout: () {
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] AudioPlayer.dispose() timed out (ignoring to prevent thread hang).');
+        }
+      });
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[PlayerCubit] Failed to dispose stuck player (safe to ignore): $e');
