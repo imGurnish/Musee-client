@@ -358,87 +358,92 @@ class _SettingsPageState extends State<SettingsPage> {
     final colorScheme = Theme.of(context).colorScheme;
     return BlocBuilder<SettingsCubit, SettingsState>(
       builder: (context, settings) {
-        return BlocBuilder<PlayerCubit, PlayerViewState>(
-          builder: (context, playerState) {
-            return SettingsSection(
-              title: 'Playback',
-              icon: Icons.play_circle_outline_rounded,
-              children: [
-                SettingsToggleTile(
-                  icon: Icons.shuffle_rounded,
-                  iconColor: colorScheme.primary,
-                  title: 'Shuffle',
-                  subtitle: 'Randomise track order in queue',
-                  value: playerState.shuffleEnabled,
-                  onChanged: (v) =>
-                      context.read<PlayerCubit>().toggleShuffle(),
-                ),
-                SettingsSegmentedTile<PlayerRepeatMode>(
-                  icon: Icons.repeat_rounded,
-                  iconColor: colorScheme.secondary,
-                  title: 'Repeat mode',
-                  value: playerState.repeatMode,
-                  options: const [
-                    (PlayerRepeatMode.off, 'Off'),
-                    (PlayerRepeatMode.all, 'All'),
-                    (PlayerRepeatMode.one, 'One'),
+        return SettingsSection(
+          title: 'Playback',
+          icon: Icons.play_circle_outline_rounded,
+          children: [
+            BlocBuilder<PlayerCubit, PlayerViewState>(
+              builder: (context, playerState) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SettingsToggleTile(
+                      icon: Icons.shuffle_rounded,
+                      iconColor: colorScheme.primary,
+                      title: 'Shuffle',
+                      subtitle: 'Randomise track order in queue',
+                      value: playerState.shuffleEnabled,
+                      onChanged: (v) =>
+                          context.read<PlayerCubit>().toggleShuffle(),
+                    ),
+                    SettingsSegmentedTile<PlayerRepeatMode>(
+                      icon: Icons.repeat_rounded,
+                      iconColor: colorScheme.secondary,
+                      title: 'Repeat mode',
+                      value: playerState.repeatMode,
+                      options: const [
+                        (PlayerRepeatMode.off, 'Off'),
+                        (PlayerRepeatMode.all, 'All'),
+                        (PlayerRepeatMode.one, 'One'),
+                      ],
+                      onChanged: (v) =>
+                          context.read<PlayerCubit>().setRepeatMode(v),
+                    ),
                   ],
-                  onChanged: (v) =>
-                      context.read<PlayerCubit>().setRepeatMode(v),
-                ),
-                SettingsToggleTile(
-                  icon: Icons.auto_awesome_rounded,
-                  iconColor: colorScheme.tertiary,
-                  title: 'Auto-fill recommendations',
-                  subtitle:
-                      'Automatically add recommended tracks when queue is low',
-                  value: playerState.recommendationAutoFillEnabled,
-                  onChanged: (v) =>
-                      context
-                          .read<SettingsCubit>()
-                          .setRecommendationAutoFill(v),
-                ),
-                SettingsToggleTile(
-                  icon: Icons.play_arrow_rounded,
-                  iconColor: Colors.green,
-                  title: 'Autoplay',
-                  subtitle:
-                      'Automatically start playing when a track is selected',
-                  value: settings.autoPlayEnabled,
-                  onChanged: (v) =>
-                      context.read<SettingsCubit>().setAutoPlay(v),
-                ),
-                // SettingsToggleTile(
-                //   icon: Icons.tune_rounded,
-                //   iconColor: colorScheme.primary,
-                //   title: 'Normalize volume',
-                //   subtitle: 'Balance volume across different tracks',
-                //   value: settings.normalizeVolume,
-                //   onChanged: (v) =>
-                //       context.read<SettingsCubit>().setNormalizeVolume(v),
-                // ),
-                SettingsToggleTile(
-                  icon: Icons.explicit_outlined,
-                  iconColor: Colors.orange,
-                  title: 'Show explicit content',
-                  subtitle: 'Allow tracks marked as explicit',
-                  value: settings.showExplicitContent,
-                  onChanged: (v) =>
-                      context
-                          .read<SettingsCubit>()
-                          .setShowExplicitContent(v),
-                ),
-                if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
-                  SettingsNavTile(
-                    icon: Icons.equalizer_rounded,
-                    iconColor: colorScheme.primary,
-                    title: 'Equalizer & Sound',
-                    subtitle: 'EQ presets, bass & surround enhancement',
-                    onTap: () => context.push(Routes.equalizer),
-                  ),
-              ],
-            );
-          },
+                );
+              },
+            ),
+            SettingsToggleTile(
+              icon: Icons.auto_awesome_rounded,
+              iconColor: colorScheme.tertiary,
+              title: 'Auto-fill recommendations',
+              subtitle:
+                  'Automatically add recommended tracks when queue is low',
+              value: settings.recommendationAutoFillEnabled,
+              onChanged: (v) =>
+                  context
+                      .read<SettingsCubit>()
+                      .setRecommendationAutoFill(v),
+            ),
+            SettingsToggleTile(
+              icon: Icons.play_arrow_rounded,
+              iconColor: Colors.green,
+              title: 'Autoplay',
+              subtitle:
+                  'Automatically start playing when a track is selected',
+              value: settings.autoPlayEnabled,
+              onChanged: (v) =>
+                  context.read<SettingsCubit>().setAutoPlay(v),
+            ),
+            // SettingsToggleTile(
+            //   icon: Icons.tune_rounded,
+            //   iconColor: colorScheme.primary,
+            //   title: 'Normalize volume',
+            //   subtitle: 'Balance volume across different tracks',
+            //   value: settings.normalizeVolume,
+            //   onChanged: (v) =>
+            //       context.read<SettingsCubit>().setNormalizeVolume(v),
+            // ),
+            SettingsToggleTile(
+              icon: Icons.explicit_outlined,
+              iconColor: Colors.orange,
+              title: 'Show explicit content',
+              subtitle: 'Allow tracks marked as explicit',
+              value: settings.showExplicitContent,
+              onChanged: (v) =>
+                  context
+                      .read<SettingsCubit>()
+                      .setShowExplicitContent(v),
+            ),
+            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+              SettingsNavTile(
+                icon: Icons.equalizer_rounded,
+                iconColor: colorScheme.primary,
+                title: 'Equalizer & Sound',
+                subtitle: 'EQ presets, bass & surround enhancement',
+                onTap: () => context.push(Routes.equalizer),
+              ),
+          ],
         );
       },
     );

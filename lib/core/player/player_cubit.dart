@@ -56,6 +56,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   bool _platformAudioInitialized = false;
   final _random = math.Random();
   final _audioOperationHandler = WindowsAudioOperationHandler();
+  Future<void>? _activeLoadFuture;
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
@@ -177,6 +178,15 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   Future<void> _stopPlaybackForTrackSwitch() async {
     _playbackReassertTimer?.cancel();
+    final activeLoad = _activeLoadFuture;
+    if (activeLoad != null) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Waiting for active setAudioSource to complete before stopping...');
+      }
+      try {
+        await activeLoad;
+      } catch (_) {}
+    }
     try {
       if (_platformAudioInitialized) {
         await _player.stop();
@@ -227,6 +237,38 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     try {
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
+
+      // Listen to incoming calls, navigation sounds, or other audio players taking focus.
+      session.interruptionEventStream.listen((event) async {
+        if (event.begin) {
+          if (kDebugMode) {
+            debugPrint('[PlayerCubit] Audio session interruption began. Pausing...');
+          }
+          _userPaused = true;
+          _unexpectedPauseTimer?.cancel();
+          _playbackReassertTimer?.cancel();
+          try {
+            if (_platformAudioInitialized) {
+              await _player.pause();
+            }
+          } catch (_) {}
+        }
+      });
+
+      // Listen to headphone unplug events to immediately pause playback instead of blasting over speaker.
+      session.becomingNoisyEventStream.listen((_) async {
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] Audio becoming noisy (headphones unplugged). Pausing...');
+        }
+        _userPaused = true;
+        _unexpectedPauseTimer?.cancel();
+        _playbackReassertTimer?.cancel();
+        try {
+          if (_platformAudioInitialized) {
+            await _player.pause();
+          }
+        } catch (_) {}
+      });
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[PlayerCubit] AudioSession config error (non-fatal): $e');
@@ -290,33 +332,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         if (ps.processingState == ProcessingState.completed && !_isTrackSwitchInProgress && !_isAdvancingNext) {
           unawaited(_playNextInternal());
         }
-
-        // Sudden unexpected pause recovery
-        if (!playing && !_userPaused &&
-            ps.processingState != ProcessingState.completed &&
-            ps.processingState != ProcessingState.idle &&
-            ps.processingState != ProcessingState.loading) {
-          if (kDebugMode) {
-            debugPrint('[PlayerCubit] Unexpected pause detected. Scheduling auto-resume in 500ms...');
-          }
-          _unexpectedPauseTimer?.cancel();
-          _unexpectedPauseTimer = Timer(const Duration(milliseconds: 500), () async {
-            if (!_userPaused && !_player.playing &&
-                _player.processingState != ProcessingState.completed &&
-                _player.processingState != ProcessingState.idle) {
-              if (kDebugMode) {
-                debugPrint('[PlayerCubit] Auto-resuming after unexpected pause.');
-              }
-              try {
-                await _audioOperationHandler.executeAudioOperation(() => _player.play());
-              } catch (e) {
-                if (kDebugMode) {
-                  debugPrint('[PlayerCubit] Failed to auto-resume playback: $e');
-                }
-              }
-            }
-          });
-        }
       },
       onError: (e) {
         // Suppress platform channel threading errors from just_audio_windows
@@ -344,6 +359,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           try {
             _userPaused = true;
             _playbackReassertTimer?.cancel();
+            _unexpectedPauseTimer?.cancel();
             if (_platformAudioInitialized) {
               await _player.pause();
             }
@@ -432,13 +448,24 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (!forceRefresh &&
         cachedTrack?.streamingUrl != null &&
         cachedTrack!.streamingUrl!.trim().isNotEmpty) {
-      // NOTE: We could add expiry check here if needed
-      if (kDebugMode) {
-        debugPrint(
-          '[PlayerCubit] Using cached streaming URL for track: $trackId',
-        );
+      
+      final cacheAge = DateTime.now().difference(cachedTrack.cachedAt);
+      // CDN streaming URLs from remote APIs typically expire within 30-60 minutes.
+      // We enforce a strict, safe 20-minute maximum age for cached URLs.
+      if (cacheAge < const Duration(minutes: 20)) {
+        if (kDebugMode) {
+          debugPrint(
+            '[PlayerCubit] Using valid cached streaming URL (age: ${cacheAge.inMinutes}m) for track: $trackId',
+          );
+        }
+        return cachedTrack.streamingUrl;
+      } else {
+        if (kDebugMode) {
+          debugPrint(
+            '[PlayerCubit] Cached streaming URL expired (age: ${cacheAge.inMinutes}m). Requesting fresh URL for: $trackId',
+          );
+        }
       }
-      return cachedTrack.streamingUrl;
     }
 
     // 3. Fetch from MusicProviderRegistry (Backend or External)
@@ -605,6 +632,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           toUri(track.url),
           headers: headers.isEmpty ? null : headers,
         ),
+        switchToken: switchToken,
         initialPosition: const Duration(milliseconds: 50),
       );
 
@@ -711,6 +739,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
             toUri(refreshedTrack.url),
             headers: headers.isEmpty ? null : headers,
           ),
+          switchToken: switchToken,
           initialPosition: const Duration(milliseconds: 50),
         );
 
@@ -1423,6 +1452,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
       await _loadAudioSourceWithRetry(
         AudioSource.uri(uri),
+        switchToken: switchToken,
         initialPosition: const Duration(milliseconds: 50),
       );
 
@@ -1517,6 +1547,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
         await _loadAudioSourceWithRetry(
           AudioSource.uri(refreshedUri),
+          switchToken: switchToken,
           initialPosition: const Duration(milliseconds: 50),
         );
 
@@ -1634,20 +1665,38 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     return _player.playing;
   }
 
-  Future<void> _loadAudioSourceWithRetry(AudioSource source, {Duration initialPosition = const Duration(milliseconds: 50)}) async {
+  Future<void> _loadAudioSourceWithRetry(
+    AudioSource source, {
+    required int switchToken,
+    Duration initialPosition = const Duration(milliseconds: 50),
+  }) async {
     int attempts = 0;
     const int maxAttempts = 3;
     while (attempts < maxAttempts) {
+      if (switchToken != _trackSwitchToken) {
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] _loadAudioSourceWithRetry aborted before load attempt ${attempts + 1} due to stale token: $switchToken');
+        }
+        return;
+      }
       try {
         attempts++;
-        await _audioOperationHandler.executeAudioOperation(
+        final loadFuture = _audioOperationHandler.executeAudioOperation(
           () => _player.setAudioSource(
             source,
             initialPosition: initialPosition,
-          ),
+          ).timeout(const Duration(seconds: 8)),
         );
+        _activeLoadFuture = loadFuture;
+        await loadFuture;
         return;
       } catch (e) {
+        if (switchToken != _trackSwitchToken) {
+          if (kDebugMode) {
+            debugPrint('[PlayerCubit] _loadAudioSourceWithRetry aborted after failure due to stale token: $switchToken');
+          }
+          return;
+        }
         if (attempts >= maxAttempts) {
           if (kDebugMode) {
             debugPrint('[PlayerCubit] All setAudioSource attempts failed. Recreating player for recovery...');
@@ -1660,6 +1709,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           debugPrint('[PlayerCubit] setAudioSource failed (attempt $attempts/$maxAttempts): $e. Retrying in ${delayMs}ms...');
         }
         await Future.delayed(Duration(milliseconds: delayMs));
+      } finally {
+        _activeLoadFuture = null;
       }
     }
   }
@@ -1675,6 +1726,16 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     await _positionSub?.cancel();
     await _durationSub?.cancel();
     await _playerStateSub?.cancel();
+
+    final activeLoad = _activeLoadFuture;
+    if (activeLoad != null) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Waiting for active setAudioSource to complete before recreating player...');
+      }
+      try {
+        await activeLoad.timeout(const Duration(seconds: 1));
+      } catch (_) {}
+    }
 
     try {
       // Use a timeout to prevent the dispose call from hanging Dart thread indefinitely if the native player is deadlocked
