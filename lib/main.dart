@@ -143,13 +143,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
     return Stack(
       children: [
-        if (shouldShowUpdate && updateInfo!.isMandatory)
+        if (shouldShowUpdate && updateInfo.isMandatory)
           IgnorePointer(child: child ?? const SizedBox.shrink())
         else
           child ?? const SizedBox.shrink(),
         if (shouldShowUpdate)
           AppUpdateOverlay(
-            info: updateInfo!,
+            info: updateInfo,
             onSkip: () {
               if (!mounted) {
                 return;

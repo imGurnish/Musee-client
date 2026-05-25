@@ -531,8 +531,8 @@ class _AdminAlbumsPageState extends State<AdminAlbumsPage> {
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             color: album.isPublished
-                                ? Colors.green.withOpacity(0.15)
-                                : Colors.orange.withOpacity(0.15),
+                                ? Colors.green.withValues(alpha: 0.15)
+                                : Colors.orange.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(

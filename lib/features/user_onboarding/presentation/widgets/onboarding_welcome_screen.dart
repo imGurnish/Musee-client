@@ -27,7 +27,7 @@ class OnboardingWelcomeScreen extends StatelessWidget {
               height: isMobile ? 120 : 160,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
               ),
               child: Center(
                 child: Text(

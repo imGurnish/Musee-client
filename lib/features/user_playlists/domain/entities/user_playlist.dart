@@ -81,6 +81,7 @@ class UserPlaylistTrack extends Equatable {
   final String title;
   final int duration; // seconds
   final bool isExplicit;
+  final bool isSyncing;
   final String? coverUrl;
   final List<UserPlaylistArtist> artists;
 
@@ -89,10 +90,11 @@ class UserPlaylistTrack extends Equatable {
     required this.title,
     required this.duration,
     required this.isExplicit,
+    this.isSyncing = false,
     this.coverUrl,
     required this.artists,
   });
 
   @override
-  List<Object?> get props => [trackId, title, duration, isExplicit, coverUrl, artists];
+  List<Object?> get props => [trackId, title, duration, isExplicit, isSyncing, coverUrl, artists];
 }

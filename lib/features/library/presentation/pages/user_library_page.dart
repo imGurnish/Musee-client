@@ -23,7 +23,8 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
 
   void _refreshPlaylists() {
     setState(() {
-      _playlistsFuture = serviceLocator<UserPlaylistsRepository>().getPlaylists();
+      _playlistsFuture = serviceLocator<UserPlaylistsRepository>()
+          .getPlaylists();
     });
   }
 
@@ -58,7 +59,9 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
           await _playlistsFuture.catchError((_) => <UserPlaylistDetail>[]);
         },
         child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: [
             // ── Downloads ───────────────────────────────────────────
@@ -81,10 +84,7 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
               onTap: () => context.push('/library/liked-songs'),
               icon: CupertinoIcons.heart_fill,
               gradient: LinearGradient(
-                colors: [
-                  const Color(0xFF4A148C),
-                  cs.primary,
-                ],
+                colors: [const Color(0xFF4A148C), cs.primary],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -96,7 +96,10 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
 
             // ── User Playlists Section Header ────────────────────────
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 8.0,
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -117,7 +120,10 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
                     icon: const Icon(CupertinoIcons.plus, size: 14),
                     label: const Text('Create', style: TextStyle(fontSize: 12)),
                     style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
@@ -132,9 +138,7 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Padding(
                     padding: EdgeInsets.symmetric(vertical: 32.0),
-                    child: Center(
-                      child: CupertinoActivityIndicator(),
-                    ),
+                    child: Center(child: CupertinoActivityIndicator()),
                   );
                 }
 
@@ -144,17 +148,30 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
                     child: Center(
                       child: Column(
                         children: [
-                          Icon(CupertinoIcons.exclamationmark_triangle, size: 36, color: cs.error),
+                          Icon(
+                            CupertinoIcons.exclamationmark_triangle,
+                            size: 36,
+                            color: cs.error,
+                          ),
                           const SizedBox(height: 12),
                           Text(
                             'Failed to load playlists',
-                            style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: cs.onSurface,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            snapshot.error.toString().replaceAll('Exception: ', ''),
+                            snapshot.error.toString().replaceAll(
+                              'Exception: ',
+                              '',
+                            ),
                             textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: cs.onSurfaceVariant,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           ElevatedButton(
@@ -170,19 +187,26 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
                 final playlists = snapshot.data ?? [];
                 if (playlists.isEmpty) {
                   return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 48.0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24.0,
+                      vertical: 48.0,
+                    ),
                     child: Center(
                       child: Column(
                         children: [
                           Icon(
                             CupertinoIcons.music_note_list,
                             size: 48,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+                            color: theme.colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.4),
                           ),
                           const SizedBox(height: 16),
                           const Text(
                             'No playlists yet',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
                           const SizedBox(height: 6),
                           Text(
@@ -190,7 +214,8 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 12,
-                              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                              color: theme.colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.6),
                             ),
                           ),
                           const SizedBox(height: 20),
@@ -214,16 +239,22 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
                   itemCount: playlists.length,
                   itemBuilder: (context, index) {
                     final playlist = playlists[index];
+                    final trackCount = playlist.totalTracks > 0
+                        ? playlist.totalTracks
+                        : playlist.tracks.length;
                     final creatorName = playlist.artists.isNotEmpty
                         ? (playlist.artists.first.name ?? 'Unknown')
                         : 'Unknown';
 
                     return ListTile(
                       onTap: () async {
-                        await context.push('/playlists/${playlist.playlistId}');
-                        _refreshPlaylists();
+                        final result = await context.push('/playlists/${playlist.playlistId}');
+                        if (result == true) _refreshPlaylists();
                       },
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
                       leading: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
@@ -234,7 +265,7 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
                               ? Image.network(
                                   playlist.coverUrl!,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => const Icon(
+                                  errorBuilder: (_, _, _) => const Icon(
                                     CupertinoIcons.music_note_list,
                                     size: 24,
                                     color: Colors.white30,
@@ -252,7 +283,10 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
                           Expanded(
                             child: Text(
                               playlist.name,
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -260,19 +294,30 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
                           if (playlist.isCollaborative) ...[
                             const SizedBox(width: 6),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF1DB954).withValues(alpha: 0.15),
+                                color: const Color(
+                                  0xFF1DB954,
+                                ).withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(4),
                                 border: Border.all(
-                                  color: const Color(0xFF1DB954).withValues(alpha: 0.3),
+                                  color: const Color(
+                                    0xFF1DB954,
+                                  ).withValues(alpha: 0.3),
                                   width: 1,
                                 ),
                               ),
                               child: const Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(CupertinoIcons.person_3_fill, size: 10, color: Color(0xFF1DB954)),
+                                  Icon(
+                                    CupertinoIcons.person_3_fill,
+                                    size: 10,
+                                    color: Color(0xFF1DB954),
+                                  ),
                                   SizedBox(width: 3),
                                   Text(
                                     'COLLAB',
@@ -291,16 +336,20 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
                       subtitle: Padding(
                         padding: const EdgeInsets.only(top: 4.0),
                         child: Text(
-                          '${playlist.totalTracks} tracks • By $creatorName',
+                          '$trackCount tracks • By $creatorName',
                           style: TextStyle(
                             fontSize: 12,
-                            color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+                            color: theme.colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.7),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      trailing: const Icon(CupertinoIcons.chevron_right, size: 16),
+                      trailing: const Icon(
+                        CupertinoIcons.chevron_right,
+                        size: 16,
+                      ),
                     );
                   },
                 );
@@ -348,7 +397,12 @@ class _LibraryTile extends StatelessWidget {
         padding: const EdgeInsets.only(top: 4.0),
         child: Text(
           subtitle,
-          style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+          style: TextStyle(
+            fontSize: 12,
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+          ),
         ),
       ),
       trailing: const Icon(CupertinoIcons.chevron_right, size: 16),

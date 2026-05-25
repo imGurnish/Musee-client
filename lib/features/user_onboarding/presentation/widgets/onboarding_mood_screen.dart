@@ -83,7 +83,7 @@ class OnboardingMoodScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                   ),
                   child: Row(
                     children: [
@@ -138,7 +138,7 @@ class OnboardingMoodScreen extends StatelessWidget {
             width: isSelected ? 2 : 1,
           ),
           color: isSelected
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.05)
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05)
               : Colors.transparent,
         ),
         child: Row(

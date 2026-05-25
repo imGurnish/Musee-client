@@ -14,7 +14,8 @@ class JoinPlaylistPage extends StatefulWidget {
   State<JoinPlaylistPage> createState() => _JoinPlaylistPageState();
 }
 
-class _JoinPlaylistPageState extends State<JoinPlaylistPage> with SingleTickerProviderStateMixin {
+class _JoinPlaylistPageState extends State<JoinPlaylistPage>
+    with SingleTickerProviderStateMixin {
   late final UserPlaylistBloc _bloc;
   late final AnimationController _animController;
   late final Animation<double> _scaleAnim;
@@ -81,7 +82,10 @@ class _JoinPlaylistPageState extends State<JoinPlaylistPage> with SingleTickerPr
                       return Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const CupertinoActivityIndicator(radius: 20, color: Color(0xFF1DB954)),
+                          const CupertinoActivityIndicator(
+                            radius: 20,
+                            color: Color(0xFF1DB954),
+                          ),
                           const SizedBox(height: 24),
                           Text(
                             'Joining playlist collaboration...',
@@ -140,13 +144,16 @@ class _JoinPlaylistPageState extends State<JoinPlaylistPage> with SingleTickerPr
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1.5),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.1),
+              width: 1.5,
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.3),
                 blurRadius: 30,
                 offset: const Offset(0, 15),
-              )
+              ),
             ],
           ),
           child: Column(
@@ -159,7 +166,10 @@ class _JoinPlaylistPageState extends State<JoinPlaylistPage> with SingleTickerPr
                 decoration: BoxDecoration(
                   color: const Color(0xFF1DB954).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF1DB954).withValues(alpha: 0.4), width: 2),
+                  border: Border.all(
+                    color: const Color(0xFF1DB954).withValues(alpha: 0.4),
+                    width: 2,
+                  ),
                 ),
                 child: const Icon(
                   CupertinoIcons.checkmark_seal_fill,
@@ -195,7 +205,10 @@ class _JoinPlaylistPageState extends State<JoinPlaylistPage> with SingleTickerPr
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.03),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.05), width: 1),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    width: 1,
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -208,14 +221,20 @@ class _JoinPlaylistPageState extends State<JoinPlaylistPage> with SingleTickerPr
                             ? Image.network(
                                 playlist.coverUrl!,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
+                                errorBuilder: (_, _, _) => Container(
                                   color: Colors.white10,
-                                  child: const Icon(CupertinoIcons.music_note_list, color: Colors.white54),
+                                  child: const Icon(
+                                    CupertinoIcons.music_note_list,
+                                    color: Colors.white54,
+                                  ),
                                 ),
                               )
                             : Container(
                                 color: Colors.white10,
-                                child: const Icon(CupertinoIcons.music_note_list, color: Colors.white54),
+                                child: const Icon(
+                                  CupertinoIcons.music_note_list,
+                                  color: Colors.white54,
+                                ),
                               ),
                       ),
                     ),
@@ -246,7 +265,7 @@ class _JoinPlaylistPageState extends State<JoinPlaylistPage> with SingleTickerPr
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${playlist.totalTracks} tracks • ${playlist.isPublic ? "Public" : "Private"}',
+                            '${(playlist.totalTracks > 0 ? playlist.totalTracks : playlist.tracks.length)} tracks • ${playlist.isPublic ? "Public" : "Private"}',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.white.withValues(alpha: 0.4),
@@ -266,9 +285,15 @@ class _JoinPlaylistPageState extends State<JoinPlaylistPage> with SingleTickerPr
                 height: 52,
                 child: ElevatedButton.icon(
                   onPressed: () {
-                    context.pushReplacement('/playlists/${playlist.playlistId}');
+                    context.pushReplacement(
+                      '/playlists/${playlist.playlistId}',
+                    );
                   },
-                  icon: const Icon(CupertinoIcons.play_circle_fill, color: Colors.black, size: 20),
+                  icon: const Icon(
+                    CupertinoIcons.play_circle_fill,
+                    color: Colors.black,
+                    size: 20,
+                  ),
                   label: const Text(
                     'Open Playlist',
                     style: TextStyle(
@@ -279,7 +304,9 @@ class _JoinPlaylistPageState extends State<JoinPlaylistPage> with SingleTickerPr
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(26),
+                    ),
                   ),
                 ),
               ),
@@ -300,7 +327,10 @@ class _JoinPlaylistPageState extends State<JoinPlaylistPage> with SingleTickerPr
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1.5),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.1),
+              width: 1.5,
+            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -346,11 +376,16 @@ class _JoinPlaylistPageState extends State<JoinPlaylistPage> with SingleTickerPr
                   },
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.white30),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
                   ),
                   child: const Text(
                     'Go to Library',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),

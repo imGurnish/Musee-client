@@ -73,6 +73,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
   bool _isLiked = false;
   late final AnimationController _likeAnimController;
   String? _loadedPlaylistId;
+  bool _hasChanges = false;
 
   List<UserPlaylistTrack>? _recommendedTracks;
   bool _isLoadingRecommendations = false;
@@ -787,7 +788,15 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
     final downloadManager = context.read<DownloadManager>();
 
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        try {
+          Navigator.of(context).pop(_hasChanges);
+        } catch (_) {}
+      },
+      child: Scaffold(
       body: SafeArea(
         child: BlocConsumer<UserPlaylistBloc, UserPlaylistState>(
           listener: (context, state) {
@@ -1226,9 +1235,20 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                           color: theme.colorScheme.surfaceContainerHighest
                               .withValues(alpha: 0.55),
                           borderRadius: BorderRadius.circular(18),
-                          child: InkWell(
+                          child: Stack(
+                            children: [
+                              if (t.isSyncing)
+                                Positioned.fill(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(18),
+                                    child: const _TrackSyncingShimmer(),
+                                  ),
+                                ),
+                              InkWell(
                             borderRadius: BorderRadius.circular(18),
-                            onTap: () async {
+                            onTap: t.isSyncing
+                                ? null
+                                : () async {
                               // Replace queue with all playlist tracks starting from this one
                               final queueItems = playlist.tracks
                                   .skip(index)
@@ -1387,7 +1407,9 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                       Icons.play_arrow_rounded,
                                     ),
                                     tooltip: 'Play',
-                                    onPressed: () async {
+                                    onPressed: t.isSyncing
+                                        ? null
+                                        : () async {
                                       // Replace queue with all playlist tracks starting from this one
                                       final queueItems = playlist.tracks
                                           .skip(index)
@@ -1427,7 +1449,9 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                   IconButton(
                                     icon: const Icon(Icons.more_horiz_rounded),
                                     tooltip: 'More',
-                                    onPressed: () async {
+                                    onPressed: t.isSyncing
+                                        ? null
+                                        : () async {
                                       final supabase = GetIt.I<SupabaseClient>();
                                       final currentUserId = supabase.auth.currentUser?.id;
                                       final isCreator = playlist.artists.isNotEmpty &&
@@ -1525,6 +1549,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                         }
                                       } else if (action == 'remove') {
                                         if (!context.mounted) return;
+                                        setState(() => _hasChanges = true);
                                         context.read<UserPlaylistBloc>().add(
                                               UserPlaylistTrackRemoved(
                                                 playlist.playlistId,
@@ -1537,6 +1562,8 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                 ],
                               ),
                             ),
+                          ),
+                            ],
                           ),
                         ),
                       );
@@ -1733,6 +1760,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                     icon: Icon(CupertinoIcons.add_circled, color: theme.colorScheme.primary),
                                     tooltip: 'Add to Playlist',
                                     onPressed: () {
+                                      setState(() => _hasChanges = true);
                                       context.read<UserPlaylistBloc>().add(
                                         UserPlaylistTrackAdded(playlist.playlistId, rec.trackId),
                                       );
@@ -1764,6 +1792,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
           },
         ),
       ),
+    )
     );
   }
 
@@ -1811,6 +1840,62 @@ class _TrackStatusChip extends StatelessWidget {
         icon,
         size: 13,
         color: foregroundColor ?? theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+class _TrackSyncingShimmer extends StatefulWidget {
+  const _TrackSyncingShimmer();
+
+  @override
+  State<_TrackSyncingShimmer> createState() => _TrackSyncingShimmerState();
+}
+
+class _TrackSyncingShimmerState extends State<_TrackSyncingShimmer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1300),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          final t = _controller.value;
+          final start = Alignment(-1.6 + (3.2 * t), 0);
+          final end = Alignment(-0.4 + (3.2 * t), 0);
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: start,
+                end: end,
+                colors: [
+                  cs.primary.withValues(alpha: 0.00),
+                  cs.primary.withValues(alpha: 0.10),
+                  cs.primary.withValues(alpha: 0.00),
+                ],
+                stops: const [0.2, 0.5, 0.8],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

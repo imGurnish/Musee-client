@@ -38,7 +38,7 @@ class UsersList extends StatelessWidget {
           margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: accentColor.withOpacity(selected ? 0.45 : 0.30)),
+            side: BorderSide(color: accentColor.withValues(alpha: selected ? 0.45 : 0.30)),
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -75,7 +75,7 @@ class UsersList extends StatelessWidget {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: accentColor.withOpacity(0.7),
+                              color: accentColor.withValues(alpha: 0.7),
                             ),
                           ),
                           child: CircleAvatar(
@@ -179,10 +179,10 @@ class UsersList extends StatelessWidget {
                                     : Icons.sell_outlined,
                                 label: u.subscriptionType.value,
                                 backgroundColor: subIsPremium
-                                    ? Colors.green.withOpacity(0.15)
+                                    ? Colors.green.withValues(alpha: 0.15)
                                     : subIsTrial
-                                    ? Colors.blue.withOpacity(0.15)
-                                    : Colors.orange.withOpacity(0.15),
+                                    ? Colors.blue.withValues(alpha: 0.15)
+                                    : Colors.orange.withValues(alpha: 0.15),
                                 foregroundColor: subIsPremium
                                     ? Colors.green[700]
                                     : subIsTrial

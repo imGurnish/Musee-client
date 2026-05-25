@@ -195,7 +195,7 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
         border: Border.all(
           color: Theme.of(context).colorScheme.primary,
           width: 1,
@@ -246,7 +246,7 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
             width: isSelected ? 2 : 1,
           ),
           color: isSelected
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.05)
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05)
               : Colors.transparent,
         ),
         child: Row(

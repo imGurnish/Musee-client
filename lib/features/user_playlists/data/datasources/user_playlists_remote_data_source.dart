@@ -112,6 +112,7 @@ class UserPlaylistTrackDTO {
 }
 
 abstract interface class UserPlaylistsRemoteDataSource {
+  Future<UserPlaylistTrackDTO> getTrackById(String trackId);
   Future<UserPlaylistDetailDTO> getPlaylist(String playlistId);
   Future<List<UserPlaylistDetailDTO>> getPlaylists();
   Future<UserPlaylistDetailDTO> createPlaylist({
@@ -159,6 +160,22 @@ class UserPlaylistsRemoteDataSourceImpl implements UserPlaylistsRemoteDataSource
       throw StateError('Missing Supabase access token for user API request');
     }
     return {'Authorization': 'Bearer $token'};
+  }
+
+  @override
+  Future<UserPlaylistTrackDTO> getTrackById(String trackId) async {
+    final encodedTrackId = Uri.encodeComponent(trackId);
+    final endpoint = '${AppSecrets.backendUrl}/api/user/tracks/$encodedTrackId';
+
+    try {
+      final res = await _dio.get(
+        endpoint,
+        options: dio.Options(headers: await _authHeader()),
+      );
+      return UserPlaylistTrackDTO.fromJson(Map<String, dynamic>.from(res.data));
+    } on dio.DioException catch (e) {
+      throw _handleDioException(e);
+    }
   }
 
   @override

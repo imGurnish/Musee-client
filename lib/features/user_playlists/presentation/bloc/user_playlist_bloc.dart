@@ -59,6 +59,85 @@ class UserPlaylistBloc extends Bloc<UserPlaylistEvent, UserPlaylistState> {
     try {
       final updated = await _addTrack(event.playlistId, event.trackId);
       emit(UserPlaylistState.loaded(updated));
+
+      // Reconcile optimistic placeholders with authoritative server payload.
+      try {
+        var reconciled = _preservePendingAddedTrack(
+          optimistic: updated,
+          refreshed: await _getPlaylist(
+            event.playlistId,
+            forceRefresh: true,
+          ),
+          addedTrackId: event.trackId,
+        );
+        emit(UserPlaylistState.loaded(reconciled));
+
+        // If backend/cache is briefly stale, retry a few times so sync shimmer
+        // does not get stuck indefinitely.
+        if (_isTrackStillSyncing(reconciled, event.trackId)) {
+          for (var i = 0; i < 3; i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 900));
+            final refreshed = await _getPlaylist(
+              event.playlistId,
+              forceRefresh: true,
+            );
+            reconciled = _preservePendingAddedTrack(
+              optimistic: updated,
+              refreshed: refreshed,
+              addedTrackId: event.trackId,
+            );
+            emit(UserPlaylistState.loaded(reconciled));
+            if (!_isTrackStillSyncing(reconciled, event.trackId)) break;
+          }
+        }
+
+        // Final safeguard: if track exists but backend still reports stale
+        // syncing state, clear only the visual sync flag to avoid permanent shimmer.
+        if (_isTrackStillSyncing(reconciled, event.trackId)) {
+          final normalizedTracks = reconciled.tracks
+              .map(
+                (t) => t.trackId == event.trackId
+                    ? UserPlaylistTrack(
+                        trackId: t.trackId,
+                        title: t.title,
+                        duration: t.duration,
+                        isExplicit: t.isExplicit,
+                        isSyncing: false,
+                        coverUrl: t.coverUrl,
+                        artists: t.artists,
+                      )
+                    : t,
+              )
+              .toList(growable: false);
+
+          final normalizedDuration = normalizedTracks.fold<int>(
+            0,
+            (sum, t) => sum + t.duration,
+          );
+
+          emit(
+            UserPlaylistState.loaded(
+              UserPlaylistDetail(
+                playlistId: reconciled.playlistId,
+                name: reconciled.name,
+                coverUrl: reconciled.coverUrl,
+                description: reconciled.description,
+                artists: reconciled.artists,
+                tracks: normalizedTracks,
+                isPublic: reconciled.isPublic,
+                isCollaborative: reconciled.isCollaborative,
+                collaborators: reconciled.collaborators,
+                totalTracks: normalizedTracks.length,
+                totalDuration: normalizedDuration,
+                createdAt: reconciled.createdAt,
+                isFromCache: reconciled.isFromCache,
+                cachedTrackIds: reconciled.cachedTrackIds,
+                offlineTrackIds: reconciled.offlineTrackIds,
+              ),
+            ),
+          );
+        }
+      } catch (_) {}
     } catch (e) {
       if (currentPlaylist != null) {
         emit(UserPlaylistState(playlist: currentPlaylist, error: e.toString()));
@@ -68,6 +147,55 @@ class UserPlaylistBloc extends Bloc<UserPlaylistEvent, UserPlaylistState> {
     }
   }
 
+  bool _isTrackStillSyncing(UserPlaylistDetail playlist, String trackId) {
+    for (final t in playlist.tracks) {
+      if (t.trackId == trackId) return t.isSyncing;
+    }
+    return false;
+  }
+
+  UserPlaylistDetail _preservePendingAddedTrack({
+    required UserPlaylistDetail optimistic,
+    required UserPlaylistDetail refreshed,
+    required String addedTrackId,
+  }) {
+    if (refreshed.tracks.any((t) => t.trackId == addedTrackId)) {
+      return refreshed;
+    }
+
+    final pending = optimistic.tracks.where((t) => t.trackId == addedTrackId);
+    if (pending.isEmpty) {
+      return refreshed;
+    }
+
+    final mergedTracks = List<UserPlaylistTrack>.from(refreshed.tracks)
+      ..addAll(
+        pending.where(
+          (t) => !refreshed.tracks.any((r) => r.trackId == t.trackId),
+        ),
+      );
+
+    final mergedDuration = mergedTracks.fold<int>(0, (sum, t) => sum + t.duration);
+
+    return UserPlaylistDetail(
+      playlistId: refreshed.playlistId,
+      name: refreshed.name,
+      coverUrl: refreshed.coverUrl,
+      description: refreshed.description,
+      artists: refreshed.artists,
+      tracks: mergedTracks,
+      isPublic: refreshed.isPublic,
+      isCollaborative: refreshed.isCollaborative,
+      collaborators: refreshed.collaborators,
+      totalTracks: mergedTracks.length,
+      totalDuration: mergedDuration,
+      createdAt: refreshed.createdAt,
+      isFromCache: refreshed.isFromCache,
+      cachedTrackIds: refreshed.cachedTrackIds,
+      offlineTrackIds: refreshed.offlineTrackIds,
+    );
+  }
+
   Future<void> _onTrackRemoved(
     UserPlaylistTrackRemoved event,
     Emitter<UserPlaylistState> emit,
@@ -75,8 +203,8 @@ class UserPlaylistBloc extends Bloc<UserPlaylistEvent, UserPlaylistState> {
     final currentPlaylist = state.playlist;
     try {
       await _removeTrack(event.playlistId, event.trackId);
-      // Reload playlist detail to fetch updated list
-      final updated = await _getPlaylist(event.playlistId, forceRefresh: true);
+      // Load cached/merged playlist immediately (repository will reconcile in background)
+      final updated = await _getPlaylist(event.playlistId, forceRefresh: false);
       emit(UserPlaylistState.loaded(updated));
     } catch (e) {
       if (currentPlaylist != null) {

@@ -79,7 +79,7 @@ class OnboardingGenreScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                   ),
                   child: Row(
                     children: [
@@ -133,7 +133,7 @@ class OnboardingGenreScreen extends StatelessWidget {
             width: isSelected ? 2 : 1,
           ),
           color: isSelected
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
               : Colors.transparent,
         ),
         child: Row(

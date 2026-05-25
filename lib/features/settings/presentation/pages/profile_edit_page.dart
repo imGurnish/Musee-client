@@ -444,7 +444,7 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
                               ? Image.network(
                                   widget.user.avatarUrl,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) =>
+                                  errorBuilder: (_, _, _) =>
                                       _avatarFallback(
                                           colorScheme, widget.user.name),
                                 )

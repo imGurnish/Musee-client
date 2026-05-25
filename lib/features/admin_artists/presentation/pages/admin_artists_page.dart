@@ -727,7 +727,7 @@ class _ArtistCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          border: Border.all(color: accentColor.withOpacity(selected ? 0.45 : 0.30)),
+          border: Border.all(color: accentColor.withValues(alpha: selected ? 0.45 : 0.30)),
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -748,7 +748,7 @@ class _ArtistCard extends StatelessWidget {
                   padding: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: accentColor.withOpacity(0.7)),
+                    border: Border.all(color: accentColor.withValues(alpha: 0.7)),
                   ),
                   child: CircleAvatar(
                     radius: isLargeScreen ? 26 : 24,

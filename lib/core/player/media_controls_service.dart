@@ -1,9 +1,6 @@
 import 'dart:async';
 
 import 'package:audio_service/audio_service.dart';
-import 'package:musee/core/platform/platform_io_stub.dart'
-  if (dart.library.io) 'package:musee/core/platform/platform_io_native.dart'
-  as platform_io;
 
 class MediaControlCallbacks {
   final Future<void> Function() onPlay;

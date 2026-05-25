@@ -101,7 +101,7 @@ class OnboardingLanguageScreen extends StatelessWidget {
             width: isSelected ? 2 : 1,
           ),
           color: isSelected
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)
               : Colors.transparent,
         ),
         child: Material(

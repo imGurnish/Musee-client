@@ -115,9 +115,9 @@ class OnboardingRandomnessScreen extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                 border: Border.all(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
                 ),
               ),
               child: Row(
@@ -205,7 +205,7 @@ class OnboardingRandomnessScreen extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
       ),
       child: Text(
         label,
