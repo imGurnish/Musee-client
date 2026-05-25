@@ -1302,37 +1302,64 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                     builder: (context, state) {
                                       final isActive = state.track?.trackId == t.trackId;
                                       final isPlaying = isActive && state.playing;
-                                      return Container(
-                                        width: 34,
-                                        height: 34,
-                                        alignment: Alignment.center,
+
+                                      final coverWidget = Container(
+                                        width: 38,
+                                        height: 38,
                                         decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: isActive
-                                              ? theme.colorScheme.primary
-                                              : theme.colorScheme.primaryContainer,
+                                          borderRadius: BorderRadius.circular(6),
+                                          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
                                         ),
-                                        child: isActive
-                                            ? Center(
-                                                child: PlayingBarsAnimation(
-                                                  width: 14,
-                                                  height: 14,
-                                                  barCount: 3,
-                                                  barWidth: 2,
-                                                  gap: 1.5,
-                                                  color: theme.colorScheme.onPrimary,
-                                                  isPlaying: isPlaying,
+                                        clipBehavior: Clip.antiAlias,
+                                        child: t.coverUrl != null && t.coverUrl!.isNotEmpty
+                                            ? Image.network(
+                                                t.coverUrl!,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (context, error, stackTrace) => Center(
+                                                  child: Icon(
+                                                    Icons.music_note_rounded,
+                                                    size: 18,
+                                                    color: theme.colorScheme.onPrimaryContainer,
+                                                  ),
                                                 ),
                                               )
-                                            : Text(
-                                                '${index + 1}',
-                                                style: theme.textTheme.labelMedium
-                                                    ?.copyWith(
-                                                      fontWeight: FontWeight.w700,
-                                                      color: theme.colorScheme
-                                                          .onPrimaryContainer,
-                                                    ),
+                                            : Center(
+                                                child: Icon(
+                                                  Icons.music_note_rounded,
+                                                  size: 18,
+                                                  color: theme.colorScheme.onPrimaryContainer,
+                                                ),
                                               ),
+                                      );
+
+                                      return SizedBox(
+                                        width: 38,
+                                        height: 38,
+                                        child: Stack(
+                                          children: [
+                                            coverWidget,
+                                            if (isActive)
+                                              Positioned.fill(
+                                                child: Container(
+                                                  decoration: BoxDecoration(
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    color: Colors.black.withValues(alpha: 0.5),
+                                                  ),
+                                                  child: Center(
+                                                    child: PlayingBarsAnimation(
+                                                      width: 14,
+                                                      height: 14,
+                                                      barCount: 3,
+                                                      barWidth: 2,
+                                                      gap: 1.5,
+                                                      color: Colors.white,
+                                                      isPlaying: isPlaying,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
                                       );
                                     },
                                   ),

@@ -468,7 +468,7 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
           ..artistName = track.artists
               .map((a) => a.name ?? 'Unknown')
               .join(', ')
-          ..albumCoverUrl = detail.coverUrl
+          ..albumCoverUrl = track.coverUrl ?? detail.coverUrl
           ..cachedAt = DateTime.now(),
       );
     }
@@ -560,6 +560,7 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
               'duration': t.duration,
               'is_explicit': t.isExplicit,
               'is_syncing': t.isSyncing,
+              'cover_url': t.coverUrl,
               'artists': t.artists
                   .map(
                     (a) => {
