@@ -58,6 +58,74 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
 
+  String? _currentSourceId() {
+    final track = state.track;
+    if (track?.playlistId != null && track!.playlistId!.isNotEmpty) {
+      return track.playlistId;
+    }
+    if (track?.albumId != null && track!.albumId!.isNotEmpty) {
+      return track.albumId;
+    }
+    return null;
+  }
+
+  bool _queueItemMatchesCurrentSource(QueueItem item) {
+    final track = state.track;
+    if (track?.playlistId != null && track!.playlistId!.isNotEmpty) {
+      return item.playlistId == track.playlistId;
+    }
+    if (track?.albumId != null && track!.albumId!.isNotEmpty) {
+      return item.albumId == track.albumId;
+    }
+    return false;
+  }
+
+  int _currentSourceQueueLength() {
+    final sourceId = _currentSourceId();
+    if (sourceId == null || state.queue.isEmpty) return 0;
+
+    var length = 0;
+    for (final item in state.queue) {
+      if (_queueItemMatchesCurrentSource(item)) {
+        length += 1;
+      } else {
+        break;
+      }
+    }
+    return length;
+  }
+
+  List<QueueItem> _mergeQueueArtwork(List<QueueItem> items) {
+    if (state.queue.isEmpty) return items;
+
+    final existingByTrackId = <String, QueueItem>{
+      for (final item in state.queue) item.trackId: item,
+    };
+
+    return items.map((item) {
+      final existing = existingByTrackId[item.trackId];
+      if (existing == null) return item;
+      return item.copyWith(
+        album: existing.album ?? item.album,
+        imageUrl: existing.imageUrl ?? item.imageUrl,
+        localImagePath: existing.localImagePath ?? item.localImagePath,
+        artistId: existing.artistId ?? item.artistId,
+        albumId: existing.albumId ?? item.albumId,
+        playlistId: existing.playlistId ?? item.playlistId,
+      );
+    }).toList(growable: false);
+  }
+
+  bool _shouldAutofillRecommendations() {
+    if (!state.recommendationAutoFillEnabled) return false;
+    if (_repo == null || state.queue.isEmpty || state.currentIndex < 0) return false;
+
+    final sourceQueueLength = _currentSourceQueueLength();
+    if (sourceQueueLength <= 0) return false;
+
+    return state.currentIndex >= sourceQueueLength - 1;
+  }
+
   // ─── Equalizer ──────────────────────────────────────────────────────────────────
   late final EqualizerController _equalizerController;
 
@@ -343,21 +411,28 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     // 3. Fetch from MusicProviderRegistry (Backend or External)
     if (_musicProviderRegistry != null) {
-      try {
-        final url = await _musicProviderRegistry
-          .getStreamUrl(trackId)
-          .timeout(const Duration(seconds: 8));
+      for (var attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          final url = await _musicProviderRegistry
+            .getStreamUrl(trackId)
+            .timeout(const Duration(seconds: 8));
 
-        if (url != null && url.trim().isNotEmpty) {
-          // 4. Cache metadata and streaming URL (and download image)
-          // Run in background so playback start is not blocked.
-          unawaited(_cacheTrackMetadata(trackId, url));
+          if (url != null && url.trim().isNotEmpty) {
+            // 4. Cache metadata and streaming URL (and download image)
+            // Run in background so playback start is not blocked.
+            unawaited(_cacheTrackMetadata(trackId, url));
 
-          return url;
-        }
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('[PlayerCubit] Error fetching stream URL: $e');
+            return url;
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            debugPrint('[PlayerCubit] Error fetching stream URL (attempt $attempt): $e');
+          }
+
+          if (attempt < 3) {
+            await Future<void>.delayed(Duration(milliseconds: 250 * attempt));
+            continue;
+          }
         }
       }
     }
@@ -691,6 +766,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     String? artistId,
     String? albumId,
     String? playlistId,
+    bool disableQueueOverwrite = false,
   }) async {
     _userPaused = false;
     if (state.track?.trackId != null && state.track?.trackId != trackId) {
@@ -736,7 +812,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     await _ensurePlatformAudio();
 
     final repo = _repo;
-    if (repo != null) {
+    if (repo != null && !disableQueueOverwrite) {
       unawaited(() async {
         try {
           final expanded = await repo.playQueueFrom(
@@ -745,10 +821,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
             metadata: {
               if (title != null && title.isNotEmpty) 'title': title,
               if (artist != null && artist.isNotEmpty) 'artist': artist,
+              if (album != null && album.isNotEmpty) 'album': album,
               if (imageUrl != null && imageUrl.isNotEmpty) 'cover_url': imageUrl,
+              if (artistId != null && artistId.isNotEmpty) 'artist_id': artistId,
+              if (albumId != null && albumId.isNotEmpty) 'album_id': albumId,
+              if (playlistId != null && playlistId.isNotEmpty) 'playlist_id': playlistId,
             },
           );
-          final items = await _mapToQueueItems(expanded);
+          final items = _mergeQueueArtwork(await _mapToQueueItems(expanded));
           int newIndex = items.indexWhere((q) => q.trackId == trackId);
           if (newIndex < 0 && items.isNotEmpty) {
             final fallback = QueueItem(
@@ -848,7 +928,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         state.copyWith(
           queue: items,
           currentIndex: _sanitizeIndex(state.currentIndex, items.length),
-          recommendationAutoFillEnabled: false,
         ),
       );
       await _refreshQueueIfNeeded();
@@ -866,6 +945,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       unawaited(_refreshQueueIfNeeded());
     }
 
+    final localTrack = localIdx >= 0 ? state.queue[localIdx] : null;
+
     final repo = _repo;
     if (repo != null) {
       unawaited(() async {
@@ -873,8 +954,17 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           final expanded = await repo.playQueueFrom(
             trackId: trackId,
             expand: true,
+            metadata: {
+              if (localTrack?.title.isNotEmpty == true) 'title': localTrack!.title,
+              if (localTrack?.artist.isNotEmpty == true) 'artist': localTrack!.artist,
+              if (localTrack?.album != null) 'album': localTrack!.album,
+              if (localTrack?.imageUrl != null) 'cover_url': localTrack!.imageUrl,
+              if (localTrack?.artistId != null) 'artist_id': localTrack!.artistId,
+              if (localTrack?.albumId != null) 'album_id': localTrack!.albumId,
+              if (localTrack?.playlistId != null) 'playlist_id': localTrack!.playlistId,
+            },
           );
-          final items = await _mapToQueueItems(expanded);
+          final items = _mergeQueueArtwork(await _mapToQueueItems(expanded));
           final currentTrackId = state.track?.trackId;
           final syncedIndex = currentTrackId == null
               ? -1
@@ -904,7 +994,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     emit(
       state.copyWith(
         queue: [...state.queue, ...items],
-        recommendationAutoFillEnabled: false,
       ),
     );
     final repo = _repo;
@@ -940,7 +1029,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       state.copyWith(
         queue: newList,
         currentIndex: _sanitizeIndex(newIndex, newList.length),
-        recommendationAutoFillEnabled: false,
       ),
     );
 
@@ -975,7 +1063,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       state.copyWith(
         queue: list,
         currentIndex: _sanitizeIndex(newIndex, list.length),
-        recommendationAutoFillEnabled: false,
       ),
     );
 
@@ -992,7 +1079,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         currentIndex: -1,
         isTransitioning: false,
         resolvingUrl: false,
-        recommendationAutoFillEnabled: false,
       ),
     );
     final repo = _repo;
@@ -1046,8 +1132,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
   }
 
-  /// Replace the entire queue with new items and start playing from the first item
-  Future<void> replaceQueue(List<QueueItem> items) async {
+  /// Replace the entire queue with new items and start playing from the specified item index
+  Future<void> replaceQueue(List<QueueItem> items, {int initialIndex = 0}) async {
     if (items.isEmpty) {
       await clearQueue();
       return;
@@ -1056,10 +1142,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     emit(
       state.copyWith(
         queue: items,
-        currentIndex: 0,
+        currentIndex: _sanitizeIndex(initialIndex, items.length),
         isTransitioning: false,
         resolvingUrl: false,
-        recommendationAutoFillEnabled: false,
       ),
     );
     final repo = _repo;
@@ -1697,6 +1782,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         }
       }
     }
+
+    if (!_shouldAutofillRecommendations()) return;
 
     final refreshedRemaining = state.queue.length - (state.currentIndex + 1);
     final refreshedNeeded = _queuePrefetchTarget - refreshedRemaining;

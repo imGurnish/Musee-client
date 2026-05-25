@@ -161,6 +161,30 @@ class _UserAlbumViewState extends State<_UserAlbumView>
               String? artistId,
             }) async {
               if (!context.mounted) return;
+
+              final queueItems = album.tracks.map((track) {
+                final trackArtists = track.artists.isNotEmpty
+                    ? track.artists.map((a) => a.name ?? 'Unknown Artist').join(', ')
+                    : primaryArtist;
+                return QueueItem(
+                  trackId: track.trackId,
+                  title: track.title,
+                  artist: trackArtists,
+                  album: album.title,
+                  imageUrl: album.coverUrl,
+                  durationSeconds: track.duration,
+                  albumId: album.albumId,
+                );
+              }).toList();
+
+              final clickedIndex = queueItems.indexWhere((q) => q.trackId == trackId);
+              await playerCubit.replaceQueue(
+                queueItems,
+                initialIndex: clickedIndex >= 0 ? clickedIndex : 0,
+              );
+
+              if (!context.mounted) return;
+
               // Don't pre-fetch URL — showPlayerBottomSheet with trackId
               // (and no audioUrl) uses playTrackById which shows metadata
               // instantly while resolving the stream URL in the background.
@@ -174,6 +198,7 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                 artistId: artistId,
                 albumId: album.albumId,
                 openSheet: false,
+                disableQueueOverwrite: true,
               );
             }
 

@@ -30,6 +30,7 @@ Future<void> showPlayerBottomSheet(
   String? albumId,
   String? playlistId,
   bool openSheet = true,
+  bool disableQueueOverwrite = false,
 }) async {
   final cubit = GetIt.I<PlayerCubit>();
 
@@ -53,6 +54,7 @@ Future<void> showPlayerBottomSheet(
           artistId: artistId,
           albumId: albumId,
           playlistId: playlistId,
+          disableQueueOverwrite: disableQueueOverwrite,
         );
         return;
       }
@@ -398,7 +400,7 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
             final subtitleText = artist;
             final subtitleColor =
               theme.textTheme.bodyLarge?.color?.withValues(alpha: 0.85);
-          final album = state.track?.album ?? '';
+              final sourceTitle = state.track?.album?.trim() ?? '';
           final imageUrl = state.track?.imageUrl;
           final pos = state.position;
           final dur = state.duration.inMilliseconds > 0
@@ -441,7 +443,7 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                         Text(
                           state.track?.playlistId != null
                               ? 'PLAYING FROM PLAYLIST'
-                              : album.isEmpty
+                              : sourceTitle.isEmpty
                                   ? 'NOW PLAYING'
                                   : 'PLAYING FROM ALBUM',
                           style: theme.textTheme.labelSmall?.copyWith(
@@ -454,7 +456,7 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                         const SizedBox(height: 2),
                         _buildTappableHeader(
                           context: context,
-                          text: album.isEmpty ? 'Musee' : album,
+                          text: sourceTitle.isEmpty ? 'Musee' : sourceTitle,
                           style: theme.textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),

@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
 import 'package:musee/features/user_playlists/presentation/bloc/user_playlist_bloc.dart';
+import 'package:musee/init_dependencies.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
 import 'package:musee/core/common/widgets/playing_bars_animation.dart';
@@ -33,7 +34,7 @@ class _UserPlaylistPageState extends State<UserPlaylistPage> {
   @override
   void initState() {
     super.initState();
-    _bloc = GetIt.I<UserPlaylistBloc>();
+    _bloc = serviceLocator<UserPlaylistBloc>();
     _bloc.add(UserPlaylistLoadRequested(widget.playlistId));
   }
 
@@ -860,6 +861,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
               String trackId, {
               required String title,
               required String artist,
+              String? imageUrl,
               String? artistId,
             }) async {
               if (!context.mounted) return;
@@ -871,11 +873,12 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                 title: title,
                 artist: artist,
                 album: playlist.name,
-                imageUrl: playlist.coverUrl,
+                imageUrl: imageUrl,
                 trackId: trackId,
                 artistId: artistId,
                 playlistId: playlist.playlistId,
                 openSheet: false,
+                disableQueueOverwrite: true,
               );
             }
 
@@ -968,8 +971,9 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                                 title: track.title,
                                                 artist: trackArtists,
                                                 album: playlist.name,
-                                                imageUrl: playlist.coverUrl,
+                                                imageUrl: track.coverUrl,
                                                 durationSeconds: track.duration,
+                                                playlistId: playlist.playlistId,
                                               );
                                             })
                                             .toList();
@@ -978,6 +982,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                           first.trackId,
                                           title: first.title,
                                           artist: artists,
+                                          imageUrl: first.coverUrl,
                                           artistId: firstArtist?.artistId,
                                         );
                                       }
@@ -1079,18 +1084,21 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                                     title: track.title,
                                                     artist: trackArtists,
                                                     album: playlist.name,
-                                                    imageUrl: playlist.coverUrl,
+                                                    imageUrl: track.coverUrl,
                                                     durationSeconds:
                                                         track.duration,
+                                                    playlistId: playlist.playlistId,
                                                   );
                                                 })
                                                 .toList();
+                                            final clickedIndex = playlist.tracks.indexOf(randomTrack);
                                             await playerCubit
-                                                .replaceQueue(queueItems);
+                                                .replaceQueue(queueItems, initialIndex: clickedIndex >= 0 ? clickedIndex : 0);
                                             await playTrack(
                                               randomTrack.trackId,
                                               title: randomTrack.title,
                                               artist: artists,
+                                              imageUrl: randomTrack.coverUrl,
                                               artistId: randomArtist?.artistId,
                                             );
                                           }
@@ -1127,7 +1135,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                                     title: track.title,
                                                     artist: artists,
                                                     album: playlist.name,
-                                                    imageUrl: playlist.coverUrl,
+                                                    imageUrl: track.coverUrl,
                                                     durationSeconds:
                                                         track.duration,
                                                   );
@@ -1251,7 +1259,6 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                 : () async {
                               // Replace queue with all playlist tracks starting from this one
                               final queueItems = playlist.tracks
-                                  .skip(index)
                                   .map((track) {
                                     final trackArtists =
                                         track.artists.isNotEmpty
@@ -1266,12 +1273,13 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                       title: track.title,
                                       artist: trackArtists,
                                       album: playlist.name,
-                                      imageUrl: playlist.coverUrl,
+                                      imageUrl: track.coverUrl,
                                       durationSeconds: track.duration,
+                                      playlistId: playlist.playlistId,
                                     );
                                   })
                                   .toList();
-                              await playerCubit.replaceQueue(queueItems);
+                              await playerCubit.replaceQueue(queueItems, initialIndex: index);
                               final trackArtist = t.artists.isNotEmpty
                                   ? t.artists.first
                                   : null;
@@ -1279,6 +1287,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                 t.trackId,
                                 title: t.title,
                                 artist: artists,
+                                        imageUrl: t.coverUrl,
                                 artistId: trackArtist?.artistId,
                               );
                             },
@@ -1427,7 +1436,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                               title: track.title,
                                               artist: trackArtists,
                                               album: playlist.name,
-                                              imageUrl: playlist.coverUrl,
+                                                imageUrl: track.coverUrl,
                                               durationSeconds:
                                                   track.duration,
                                             );
@@ -1442,6 +1451,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                         t.trackId,
                                         title: t.title,
                                         artist: artists,
+                                        imageUrl: t.coverUrl,
                                         artistId: trackArtist?.artistId,
                                       );
                                     },
@@ -1522,7 +1532,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                           title: t.title,
                                           artist: artists,
                                           album: playlist.name,
-                                          imageUrl: playlist.coverUrl,
+                                          imageUrl: t.coverUrl,
                                           durationSeconds: t.duration,
                                         );
                                         await playerCubit
@@ -1694,6 +1704,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                 rec.trackId,
                                 title: rec.title,
                                 artist: recArtists,
+                                imageUrl: rec.coverUrl,
                                 artistId: rec.artists.isNotEmpty ? rec.artists.first.artistId : null,
                               );
                             },
@@ -1896,6 +1907,67 @@ class _TrackSyncingShimmerState extends State<_TrackSyncingShimmer>
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _TrackDurationShimmer extends StatefulWidget {
+  const _TrackDurationShimmer();
+
+  @override
+  State<_TrackDurationShimmer> createState() => _TrackDurationShimmerState();
+}
+
+class _TrackDurationShimmerState extends State<_TrackDurationShimmer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 14,
+      width: 150,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(999),
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final t = _controller.value;
+            final start = Alignment(-1.6 + (3.2 * t), 0);
+            final end = Alignment(-0.4 + (3.2 * t), 0);
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: start,
+                  end: end,
+                  colors: [
+                    cs.primary.withValues(alpha: 0.00),
+                    cs.primary.withValues(alpha: 0.16),
+                    cs.primary.withValues(alpha: 0.00),
+                  ],
+                  stops: const [0.2, 0.5, 0.8],
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
