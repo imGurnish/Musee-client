@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -220,15 +221,24 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
       final item = queue[queueIndex];
       // Prefer local path (already on disk); fall back to network URL.
       if (item.localImagePath != null) {
-        precacheImage(
-          FileImage(File(item.localImagePath!)),
-          context,
-        );
+        try {
+          final f = File(item.localImagePath!);
+          if (f.existsSync()) {
+            precacheImage(FileImage(f), context);
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('[PlayerBottomSheet] Skipping precache for missing file ${item.localImagePath}: $e');
+          }
+        }
       } else if (item.imageUrl != null && item.imageUrl!.isNotEmpty) {
-        precacheImage(
-          NetworkImage(item.imageUrl!),
-          context,
-        );
+        try {
+          precacheImage(NetworkImage(item.imageUrl!), context);
+        } catch (e) {
+          if (kDebugMode) {
+            print('[PlayerBottomSheet] Failed to precache network image ${item.imageUrl}: $e');
+          }
+        }
       }
     }
 

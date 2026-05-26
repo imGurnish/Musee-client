@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -88,9 +89,24 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
       if (queueIndex < 0 || queueIndex >= queue.length) return;
       final item = queue[queueIndex];
       if (item.localImagePath != null) {
-        precacheImage(FileImage(File(item.localImagePath!)), context);
+        try {
+          final f = File(item.localImagePath!);
+          if (f.existsSync()) {
+            precacheImage(FileImage(f), context);
+          }
+        } catch (e) {
+          if (kDebugMode) {
+            print('[FloatingPlayer] Skipping precache for missing file ${item.localImagePath}: $e');
+          }
+        }
       } else if (item.imageUrl != null && item.imageUrl!.isNotEmpty) {
-        precacheImage(NetworkImage(item.imageUrl!), context);
+        try {
+          precacheImage(NetworkImage(item.imageUrl!), context);
+        } catch (e) {
+          if (kDebugMode) {
+            print('[FloatingPlayer] Failed to precache network image ${item.imageUrl}: $e');
+          }
+        }
       }
     }
 
@@ -422,12 +438,38 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
   }
 
   Widget _buildArtwork(String? imageUrl, String? localPath, ColorScheme color) {
-    if (localPath != null && File(localPath).existsSync()) {
-      return Image.file(File(localPath), fit: BoxFit.cover);
+    try {
+      if (localPath != null) {
+        final f = File(localPath);
+        if (f.existsSync()) return Image.file(f, fit: BoxFit.cover);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[FloatingPlayer] Error reading local artwork $localPath: $e');
+      }
     }
-    if (imageUrl != null) {
-      return Image.network(imageUrl, fit: BoxFit.cover);
+
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      return Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          // Still loading: show placeholder until fully loaded
+          return Container(
+            color: color.primaryContainer.withValues(alpha: 0.4),
+            child: const Icon(Icons.music_note, size: 28),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: color.primaryContainer.withValues(alpha: 0.4),
+            child: const Icon(Icons.music_note, size: 28),
+          );
+        },
+      );
     }
+
     return Container(
       color: color.primaryContainer.withValues(alpha: 0.4),
       child: const Icon(Icons.music_note, size: 28),

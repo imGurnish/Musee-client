@@ -150,7 +150,15 @@ class ImageCacheServiceImpl implements ImageCacheService {
     if (await _dir.exists()) {
       await for (final entity in _dir.list()) {
         if (entity is File) {
-          totalSize += await entity.length();
+          try {
+            if (await entity.exists()) {
+              totalSize += await entity.length();
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              print('[ImageCache] Skipping file when sizing ${entity.path}: $e');
+            }
+          }
         }
       }
     }
@@ -173,23 +181,41 @@ class ImageCacheServiceImpl implements ImageCacheService {
       }
     }
 
+    // Map files to (file, modified) while skipping ones that vanish or error
+    final List<MapEntry<File, DateTime>> fileWithTimes = [];
+    for (final file in files) {
+      try {
+        if (!await file.exists()) continue;
+        final stat = await file.stat();
+        fileWithTimes.add(MapEntry(file, stat.modified));
+      } catch (e) {
+        if (kDebugMode) {
+          print('[ImageCache] Skipping file when statting ${file.path}: $e');
+        }
+      }
+    }
+
     // Sort by modification time (oldest first) for LRU eviction
-    files.sort((a, b) {
-      final aStat = a.statSync();
-      final bStat = b.statSync();
-      return aStat.modified.compareTo(bStat.modified);
-    });
+    fileWithTimes.sort((a, b) => a.value.compareTo(b.value));
 
     int freedBytes = 0;
     final targetFree = currentSize - maxImageCacheSizeBytes;
 
-    for (final file in files) {
+    for (final entry in fileWithTimes) {
       if (freedBytes >= targetFree) break;
-      final size = await file.length();
-      await file.delete();
-      freedBytes += size;
-      if (kDebugMode) {
-        print('[ImageCache] Evicted: ${file.path}');
+      final file = entry.key;
+      try {
+        if (!await file.exists()) continue;
+        final size = await file.length();
+        await file.delete();
+        freedBytes += size;
+        if (kDebugMode) {
+          print('[ImageCache] Evicted: ${file.path}');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('[ImageCache] Failed to evict ${file.path}: $e');
+        }
       }
     }
   }
