@@ -29,10 +29,14 @@ abstract class ConnectivityService {
 
 /// Implementation using connectivity_plus package
 class ConnectivityServiceImpl implements ConnectivityService {
+  static const Duration _fallbackPollInterval = Duration(seconds: 5);
+
   final Connectivity _connectivity;
   final StreamController<ConnectivityStatus> _statusController =
       StreamController<ConnectivityStatus>.broadcast();
   StreamSubscription<List<ConnectivityResult>>? _subscription;
+  Timer? _fallbackPollTimer;
+  bool _usingFallbackPolling = false;
   ConnectivityStatus _currentStatus = ConnectivityStatus.unknown;
 
   ConnectivityServiceImpl({Connectivity? connectivity})
@@ -44,28 +48,59 @@ class ConnectivityServiceImpl implements ConnectivityService {
   bool get isOnline => currentStatus == ConnectivityStatus.online;
 
   void _init() {
-    // Listen to connectivity changes
-    _subscription = _connectivity.onConnectivityChanged.listen(
-      (results) {
-        final status = _mapResults(results);
-        if (status != _currentStatus) {
-          _currentStatus = status;
-          _statusController.add(status);
-
-          if (kDebugMode) {
-            print('[ConnectivityService] Status changed: $status');
-          }
-        }
-      },
-      onError: (error) {
-        if (kDebugMode) {
-          print('[ConnectivityService] Error: $error');
-        }
-      },
-    );
+    _startConnectivityListener();
 
     // Initial check
-    checkConnectivity();
+    unawaited(checkConnectivity());
+  }
+
+  void _startConnectivityListener() {
+    try {
+      // Listen to connectivity changes.
+      _subscription = _connectivity.onConnectivityChanged.listen(
+        (results) {
+          final status = _mapResults(results);
+          if (status != _currentStatus) {
+            _currentStatus = status;
+            _statusController.add(status);
+
+            if (kDebugMode) {
+              debugPrint('[ConnectivityService] Status changed: $status');
+            }
+          }
+        },
+        onError: (error) {
+          if (kDebugMode) {
+            debugPrint('[ConnectivityService] Stream error: $error');
+          }
+          _startFallbackPolling();
+        },
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[ConnectivityService] Listener startup failed: $e');
+      }
+      _startFallbackPolling();
+    }
+  }
+
+  void _startFallbackPolling() {
+    if (_usingFallbackPolling) return;
+
+    _usingFallbackPolling = true;
+    unawaited(_subscription?.cancel() ?? Future<void>.value());
+    _subscription = null;
+
+    _fallbackPollTimer = Timer.periodic(_fallbackPollInterval, (_) {
+      unawaited(checkConnectivity());
+    });
+
+    if (kDebugMode) {
+      debugPrint(
+        '[ConnectivityService] Using fallback polling mode '
+        '(${_fallbackPollInterval.inSeconds}s interval)',
+      );
+    }
   }
 
   @override
@@ -88,7 +123,7 @@ class ConnectivityServiceImpl implements ConnectivityService {
       return status == ConnectivityStatus.online;
     } catch (e) {
       if (kDebugMode) {
-        print('[ConnectivityService] Check error: $e');
+        debugPrint('[ConnectivityService] Check error: $e');
       }
       return false;
     }
@@ -110,6 +145,7 @@ class ConnectivityServiceImpl implements ConnectivityService {
   @override
   void dispose() {
     _subscription?.cancel();
+    _fallbackPollTimer?.cancel();
     _statusController.close();
   }
 }

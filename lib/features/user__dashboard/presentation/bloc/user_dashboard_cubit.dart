@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:musee/core/error/app_errors.dart';
 import 'package:musee/features/user__dashboard/domain/entities/dashboard_album.dart';
 import 'package:musee/features/user__dashboard/data/services/user_dashboard_cache_service.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_albums_for_you.dart';
@@ -13,6 +14,7 @@ class UserDashboardState extends Equatable {
   final bool loadingMadeForYou;
   final bool loadingTrending;
   final bool loadingAlbumsForYou;
+  final bool hasRetryableError;
   final List<DashboardItem> madeForYou;
   final List<DashboardItem> trending;
   final List<DashboardItem> albumsForYou;
@@ -37,6 +39,7 @@ class UserDashboardState extends Equatable {
     this.loadingMadeForYou = false,
     this.loadingTrending = false,
     this.loadingAlbumsForYou = false,
+    this.hasRetryableError = false,
     this.madeForYou = const [],
     this.trending = const [],
     this.albumsForYou = const [],
@@ -54,6 +57,7 @@ class UserDashboardState extends Equatable {
     bool? loadingMadeForYou,
     bool? loadingTrending,
     bool? loadingAlbumsForYou,
+    bool? hasRetryableError,
     List<DashboardItem>? madeForYou,
     List<DashboardItem>? trending,
     List<DashboardItem>? albumsForYou,
@@ -70,6 +74,7 @@ class UserDashboardState extends Equatable {
       loadingMadeForYou: loadingMadeForYou ?? this.loadingMadeForYou,
       loadingTrending: loadingTrending ?? this.loadingTrending,
       loadingAlbumsForYou: loadingAlbumsForYou ?? this.loadingAlbumsForYou,
+      hasRetryableError: hasRetryableError ?? this.hasRetryableError,
       madeForYou: madeForYou ?? this.madeForYou,
       trending: trending ?? this.trending,
       albumsForYou: albumsForYou ?? this.albumsForYou,
@@ -89,6 +94,7 @@ class UserDashboardState extends Equatable {
     loadingMadeForYou,
     loadingTrending,
     loadingAlbumsForYou,
+    hasRetryableError,
     madeForYou,
     trending,
     albumsForYou,
@@ -134,6 +140,7 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
         loadingMadeForYou: !usePersistentCache,
         loadingTrending: !usePersistentCache,
         loadingAlbumsForYou: true,
+        hasRetryableError: false,
         errorMadeForYou: null,
         errorTrending: null,
         errorAlbumsForYou: null,
@@ -145,14 +152,19 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
 
     List<DashboardItem>? backendMadeForYou;
     String? madeForYouError;
+    bool hasRetryableError = false;
 
     if (usePersistentCache) {
-      backendMadeForYou = await _dashboardCache.getMadeForYou(
-        page: page,
-        limit: limit,
-        ttl: _madeForYouCacheTtl,
-      );
-    } else {}
+      try {
+        backendMadeForYou = await _dashboardCache.getMadeForYou(
+          page: page,
+          limit: limit,
+          ttl: _madeForYouCacheTtl,
+        );
+      } catch (_) {
+        backendMadeForYou = null;
+      }
+    }
 
     if (backendMadeForYou == null) {
       try {
@@ -167,18 +179,24 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
           items: backendMadeForYou,
         );
       } catch (e) {
-        madeForYouError = e.toString();
+        final appError = e.toAppError();
+        madeForYouError = appError.userMessage;
+        hasRetryableError = hasRetryableError || appError.isRetryable;
       }
     }
 
     List<DashboardItem>? trending;
     String? trendingError;
     if (usePersistentCache) {
-      trending = await _dashboardCache.getTrending(
-        page: page,
-        limit: limit,
-        ttl: _madeForYouCacheTtl,
-      );
+      try {
+        trending = await _dashboardCache.getTrending(
+          page: page,
+          limit: limit,
+          ttl: _madeForYouCacheTtl,
+        );
+      } catch (_) {
+        trending = null;
+      }
     }
 
     if (trending == null) {
@@ -191,7 +209,9 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
           items: trending,
         );
       } catch (e) {
-        trendingError = e.toString();
+        final appError = e.toAppError();
+        trendingError = appError.userMessage;
+        hasRetryableError = hasRetryableError || appError.isRetryable;
       }
     }
 
@@ -203,7 +223,9 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
           .where((item) => item.type == DashboardItemType.album)
           .toList();
     } catch (e) {
-      albumsForYouError = e.toString();
+      final appError = e.toAppError();
+      albumsForYouError = appError.userMessage;
+      hasRetryableError = hasRetryableError || appError.isRetryable;
     }
 
     final effectiveBackendMadeForYou =
@@ -231,6 +253,7 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
         loadingMadeForYou: false,
         loadingTrending: false,
         loadingAlbumsForYou: false,
+        hasRetryableError: hasRetryableError,
         madeForYou: mixedMadeForYou.isNotEmpty
             ? mixedMadeForYou
             : decoratedMadeForYou,
@@ -406,6 +429,15 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
       return _decorateWithCacheState(unique);
     } catch (_) {
       return _decorateWithCacheState(state.albumsForYou);
+    }
+  }
+
+  Future<bool> pingBackend() async {
+    try {
+      await _listTrending(page: 0, limit: 1);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 }

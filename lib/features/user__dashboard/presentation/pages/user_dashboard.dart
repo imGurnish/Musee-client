@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -9,15 +10,18 @@ import 'package:musee/features/user__dashboard/presentation/widgets/section_head
 import 'package:go_router/go_router.dart';
 import 'package:musee/core/common/navigation/routes.dart';
 import 'package:musee/core/common/entities/user.dart';
+import 'package:musee/core/common/services/connectivity_service.dart';
 import 'package:musee/features/user__dashboard/presentation/bloc/user_dashboard_cubit.dart';
 import 'package:get_it/get_it.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:musee/features/user__dashboard/domain/entities/dashboard_album.dart'; // contains DashboardItem
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
+import 'package:musee/core/common/widgets/retrying_network_image.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
 import 'package:musee/core/common/widgets/playing_bars_animation.dart';
+import 'package:musee/core/error/error_widgets.dart';
 import 'package:musee/features/user_onboarding/presentation/bloc/onboarding_bloc.dart';
 import 'package:musee/features/user_onboarding/presentation/pages/onboarding_page.dart';
 import 'package:musee/init_dependencies.dart';
@@ -32,17 +36,41 @@ class UserDashboard extends StatefulWidget {
 class _UserDashboardState extends State<UserDashboard> {
   bool _hasCheckedOnboarding = false;
   bool _isShowingOnboarding = false;
+  bool _awaitingBackendRecovery = false;
+  bool _isRecoveringBackend = false;
+  late final UserDashboardCubit _dashboardCubit;
+  late final ConnectivityService _connectivityService;
+  Timer? _backendRecoveryTimer;
+  StreamSubscription<ConnectivityStatus>? _connectivitySubscription;
 
   @override
   void initState() {
     super.initState();
+    _dashboardCubit = GetIt.I<UserDashboardCubit>()..load(limit: 32);
+    _connectivityService = serviceLocator<ConnectivityService>();
     if (kDebugMode) {
       debugPrint("UserDashboard initialized");
     }
 
+    _connectivitySubscription = _connectivityService.statusStream.listen((
+      status,
+    ) {
+      if (status == ConnectivityStatus.online && _awaitingBackendRecovery) {
+        unawaited(_attemptBackendRecovery());
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkAndShowOnboardingIfMissing();
     });
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    _backendRecoveryTimer?.cancel();
+    _dashboardCubit.close();
+    super.dispose();
   }
 
   Future<void> _checkAndShowOnboardingIfMissing() async {
@@ -83,6 +111,53 @@ class _UserDashboardState extends State<UserDashboard> {
       }
     } catch (_) {
       return;
+    }
+  }
+
+  bool _isRetryableError(String? message) {
+    if (message == null) return false;
+    final normalized = message.toLowerCase();
+    return normalized.contains('no internet') ||
+        normalized.contains('check your network') ||
+        normalized.contains('unable to connect') ||
+        normalized.contains('server error') ||
+        normalized.contains('please try again later') ||
+        normalized.contains('something went wrong');
+  }
+
+  void _startBackendRecoveryMonitor() {
+    if (_awaitingBackendRecovery) return;
+    _awaitingBackendRecovery = true;
+    _backendRecoveryTimer ??= Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => unawaited(_attemptBackendRecovery()),
+    );
+    unawaited(_attemptBackendRecovery());
+  }
+
+  Future<void> _attemptBackendRecovery() async {
+    if (_isRecoveringBackend || !mounted || !_awaitingBackendRecovery) return;
+
+    _isRecoveringBackend = true;
+    try {
+      final isOnline = await _connectivityService.checkConnectivity();
+      if (!isOnline) return;
+
+      final backendReachable = await _dashboardCubit.pingBackend();
+      if (!backendReachable) return;
+
+      if (!mounted) return;
+
+      _awaitingBackendRecovery = false;
+      _backendRecoveryTimer?.cancel();
+      _backendRecoveryTimer = null;
+      ErrorSnackbar.showMessage(
+        context,
+        'Back online. Refreshing...',
+      );
+      await _dashboardCubit.load(forceRefresh: true);
+    } finally {
+      _isRecoveringBackend = false;
     }
   }
 
@@ -261,7 +336,7 @@ class _UserDashboardState extends State<UserDashboard> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => BlocProvider.value(
-          value: context.read<UserDashboardCubit>(),
+          value: _dashboardCubit,
           child: _SuggestedTracksPage(initialTracks: initialTracks),
         ),
       ),
@@ -274,7 +349,7 @@ class _UserDashboardState extends State<UserDashboard> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => BlocProvider.value(
-          value: context.read<UserDashboardCubit>(),
+          value: _dashboardCubit,
           child: _SuggestedAlbumsPage(initialAlbums: albums),
         ),
       ),
@@ -294,12 +369,12 @@ class _UserDashboardState extends State<UserDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider<UserDashboardCubit>(
-      create: (_) => GetIt.I<UserDashboardCubit>()..load(limit: 32),
+    return BlocProvider<UserDashboardCubit>.value(
+      value: _dashboardCubit,
       child: BlocListener<PlayerCubit, PlayerViewState>(
         listener: (context, playerState) {
           if (playerState.track?.trackId != null) {
-            context.read<UserDashboardCubit>().refreshRecentlyPlayed();
+            _dashboardCubit.refreshRecentlyPlayed();
           }
         },
         listenWhen: (previous, current) {
@@ -312,245 +387,297 @@ class _UserDashboardState extends State<UserDashboard> {
                 final width = constraints.maxWidth;
                 final isCompact = width < 700;
 
-                return BlocBuilder<UserDashboardCubit, UserDashboardState>(
-                  builder: (context, state) {
-                    final suggestedTrackItems = _collectUniqueItems(
-                      state,
-                      type: DashboardItemType.track,
-                      limit: 12,
-                    ).map((item) => _toMediaItem(context, item)).toList();
+                return BlocListener<UserDashboardCubit, UserDashboardState>(
+                  listenWhen: (previous, current) {
+                    return previous.errorMadeForYou !=
+                            current.errorMadeForYou ||
+                        previous.errorTrending != current.errorTrending ||
+                        previous.errorAlbumsForYou != current.errorAlbumsForYou;
+                  },
+                  listener: (context, state) {
+                    final message =
+                        state.errorMadeForYou ??
+                        state.errorTrending ??
+                        state.errorAlbumsForYou;
+                    if (message == null) return;
+                    if (state.hasRetryableError) {
+                      _startBackendRecoveryMonitor();
+                      ErrorSnackbar.showMessage(
+                        context,
+                        _isRetryableError(message)
+                            ? 'Connection issue. Reconnecting...'
+                            : 'Temporary issue. Reconnecting...',
+                      );
+                      return;
+                    }
+                    ErrorSnackbar.showMessage(context, message);
+                  },
+                  child: BlocBuilder<UserDashboardCubit, UserDashboardState>(
+                    builder: (context, state) {
+                      final suggestedTrackItems = _collectUniqueItems(
+                        state,
+                        type: DashboardItemType.track,
+                        limit: 12,
+                      ).map((item) => _toMediaItem(context, item)).toList();
 
-                    final albumsForYouItems = state.albumsForYou
-                        .map((item) => _toMediaItem(context, item))
-                        .toList();
+                      final albumsForYouItems = state.albumsForYou
+                          .map((item) => _toMediaItem(context, item))
+                          .toList();
 
-                    final playlistItems = _collectUniqueItems(
-                      state,
-                      type: DashboardItemType.playlist,
-                      limit: 8,
-                    ).map((item) => _toMediaItem(context, item)).toList();
+                      final playlistItems = _collectUniqueItems(
+                        state,
+                        type: DashboardItemType.playlist,
+                        limit: 8,
+                      ).map((item) => _toMediaItem(context, item)).toList();
 
-                    final trendingItems = _collectUniqueItems(
-                      state,
-                      limit: 10,
-                    ).map((item) => _toMediaItem(context, item)).toList();
+                      final trendingItems = _collectUniqueItems(
+                        state,
+                        limit: 10,
+                      ).map((item) => _toMediaItem(context, item)).toList();
 
-                    final topArtists = _collectTopArtists(state, limit: 10);
-                    return RefreshIndicator(
-                      onRefresh: () => context.read<UserDashboardCubit>().load(
-                        forceRefresh: true,
-                      ),
-                      child: CustomScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        slivers: [
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                              child: _HeaderBar(),
-                            ),
-                          ),
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16.0,
-                              ),
-                              child: _HeroBanner(),
-                            ),
-                          ),
-                          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                          if (state.recentlyPlayed.isNotEmpty)
+                      final topArtists = _collectTopArtists(state, limit: 10);
+                      return RefreshIndicator(
+                        onRefresh: () =>
+                            _dashboardCubit.load(forceRefresh: true),
+                        child: CustomScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          slivers: [
                             SliverToBoxAdapter(
-                              child: HorizontalMediaSection(
-                                title: 'Recently played',
-                                items: state.recentlyPlayed
-                                    .map(
-                                      (t) => MediaItem(
-                                        id: t.trackId,
-                                        title: t.title,
-                                        subtitle: t.artistName,
-                                        imageUrl: t.albumCoverUrl,
-                                        localImagePath: t.localImagePath,
-                                        icon: Icons.music_note,
-                                        mediaTypeLabel: 'Track',
-                                        isCached: true,
-                                        onTap: () {
-                                          showPlayerBottomSheet(
-                                            context,
-                                            trackId: t.trackId,
-                                            title: t.title,
-                                            artist: t.artistName,
-                                            imageUrl: t.albumCoverUrl,
-                                            localImagePath: t.localImagePath,
-                                            openSheet: false,
-                                          );
-                                        },
-                                      ),
-                                    )
-                                    .toList(),
-                                cardWidth: isCompact ? 132 : 148,
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  8,
+                                ),
+                                child: _HeaderBar(),
                               ),
                             ),
-                          const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                          SliverToBoxAdapter(
-                            child: SectionHeader(
-                              title: 'Suggested tracks',
-                              onSeeAll: () =>
-                                  _openSuggestedTracks(context, state),
-                            ),
-                          ),
-                          if (state.loadingMadeForYou &&
-                              suggestedTrackItems.isEmpty)
                             SliverToBoxAdapter(
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16.0,
                                 ),
-                                child: _HorizontalSectionSkeleton(
+                                child: _HeroBanner(),
+                              ),
+                            ),
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: 16),
+                            ),
+                            if (state.recentlyPlayed.isNotEmpty)
+                              SliverToBoxAdapter(
+                                child: HorizontalMediaSection(
+                                  title: 'Recently played',
+                                  items: state.recentlyPlayed
+                                      .map(
+                                        (t) => MediaItem(
+                                          id: t.trackId,
+                                          title: t.title,
+                                          subtitle: t.artistName,
+                                          imageUrl: t.albumCoverUrl,
+                                          localImagePath: t.localImagePath,
+                                          icon: Icons.music_note,
+                                          mediaTypeLabel: 'Track',
+                                          isCached: true,
+                                          onTap: () {
+                                            showPlayerBottomSheet(
+                                              context,
+                                              trackId: t.trackId,
+                                              title: t.title,
+                                              artist: t.artistName,
+                                              imageUrl: t.albumCoverUrl,
+                                              localImagePath: t.localImagePath,
+                                              openSheet: false,
+                                            );
+                                          },
+                                        ),
+                                      )
+                                      .toList(),
                                   cardWidth: isCompact ? 132 : 148,
                                 ),
                               ),
-                            )
-                          else if (state.errorMadeForYou != null &&
-                              suggestedTrackItems.isEmpty)
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: 8),
+                            ),
                             SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Text(
-                                  'Failed to load: ${state.errorMadeForYou}',
-                                ),
-                              ),
-                            )
-                          else
-                            SliverToBoxAdapter(
-                              child: HorizontalMediaSection(
-                                title: '',
-                                items: suggestedTrackItems,
-                                cardWidth: isCompact ? 132 : 148,
+                              child: SectionHeader(
+                                title: 'Suggested tracks',
+                                onSeeAll: () =>
+                                    _openSuggestedTracks(context, state),
                               ),
                             ),
+                            if (state.loadingMadeForYou &&
+                                suggestedTrackItems.isEmpty)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16.0,
+                                  ),
+                                  child: _HorizontalSectionSkeleton(
+                                    cardWidth: isCompact ? 132 : 148,
+                                  ),
+                                ),
+                              )
+                            else if (state.errorMadeForYou != null &&
+                                suggestedTrackItems.isEmpty)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: _SectionError(
+                                    message: state.errorMadeForYou!,
+                                    onRetry: state.hasRetryableError
+                                        ? null
+                                        : () => context
+                                              .read<UserDashboardCubit>()
+                                              .load(forceRefresh: true),
+                                  ),
+                                ),
+                              )
+                            else
+                              SliverToBoxAdapter(
+                                child: HorizontalMediaSection(
+                                  title: '',
+                                  items: suggestedTrackItems,
+                                  cardWidth: isCompact ? 132 : 148,
+                                ),
+                              ),
 
-                          SliverToBoxAdapter(
-                            child: SizedBox(height: isCompact ? 10 : 14),
-                          ),
-                          SliverToBoxAdapter(
-                            child: SectionHeader(
-                              title: 'Trending picks',
-                              onSeeAll: () =>
-                                  _openTrendingPicks(context, state),
-                            ),
-                          ),
-                          if (state.loadingTrending)
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16.0,
-                                ),
-                                child: const _CompactFeedSkeleton(),
-                              ),
-                            )
-                          else if (state.errorTrending != null)
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Text(
-                                  'Failed to load: ${state.errorTrending}',
-                                ),
-                              ),
-                            )
-                          else
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                ),
-                                child: _CompactFeedSection(
-                                  items: trendingItems,
-                                ),
-                              ),
-                            ),
-
-                          SliverToBoxAdapter(
-                            child: SizedBox(height: isCompact ? 10 : 14),
-                          ),
-                          SliverToBoxAdapter(
-                            child: SectionHeader(
-                              title: 'Albums for you',
-                              onSeeAll: () => _openAlbumsForYou(context, state),
-                            ),
-                          ),
-                          if (state.loadingAlbumsForYou &&
-                              albumsForYouItems.isEmpty)
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16.0,
-                                ),
-                                child: _HorizontalSectionSkeleton(
-                                  cardWidth: isCompact ? 128 : 142,
-                                ),
-                              ),
-                            )
-                          else if (state.errorAlbumsForYou != null &&
-                              albumsForYouItems.isEmpty)
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16.0),
-                                child: Text(
-                                  'Failed to load: ${state.errorAlbumsForYou}',
-                                ),
-                              ),
-                            )
-                          else
-                            SliverToBoxAdapter(
-                              child: HorizontalMediaSection(
-                                title: '',
-                                items: albumsForYouItems,
-                                cardWidth: isCompact ? 128 : 142,
-                              ),
-                            ),
-
-                          if (playlistItems.isNotEmpty)
                             SliverToBoxAdapter(
                               child: SizedBox(height: isCompact ? 10 : 14),
                             ),
-                          if (playlistItems.isNotEmpty)
                             SliverToBoxAdapter(
-                              child: const SectionHeader(
-                                title: 'Playlists to try',
+                              child: SectionHeader(
+                                title: 'Trending picks',
+                                onSeeAll: () =>
+                                    _openTrendingPicks(context, state),
                               ),
                             ),
-                          if (playlistItems.isNotEmpty)
-                            SliverToBoxAdapter(
-                              child: HorizontalMediaSection(
-                                title: '',
-                                items: playlistItems,
-                                cardWidth: isCompact ? 128 : 142,
-                              ),
-                            ),
-
-                          if (topArtists.isNotEmpty)
-                            SliverToBoxAdapter(
-                              child: const SectionHeader(
-                                title: 'Artists to explore',
-                              ),
-                            ),
-                          if (topArtists.isNotEmpty)
-                            SliverToBoxAdapter(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
+                            if (state.loadingTrending)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16.0,
+                                  ),
+                                  child: const _CompactFeedSkeleton(),
                                 ),
-                                child: _ArtistPillsSection(artists: topArtists),
+                              )
+                            else if (state.errorTrending != null)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: _SectionError(
+                                    message: state.errorTrending!,
+                                    onRetry: state.hasRetryableError
+                                        ? null
+                                        : () => context
+                                              .read<UserDashboardCubit>()
+                                              .load(forceRefresh: true),
+                                  ),
+                                ),
+                              )
+                            else
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  child: _CompactFeedSection(
+                                    items: trendingItems,
+                                  ),
+                                ),
+                              ),
+
+                            SliverToBoxAdapter(
+                              child: SizedBox(height: isCompact ? 10 : 14),
+                            ),
+                            SliverToBoxAdapter(
+                              child: SectionHeader(
+                                title: 'Albums for you',
+                                onSeeAll: () =>
+                                    _openAlbumsForYou(context, state),
                               ),
                             ),
+                            if (state.loadingAlbumsForYou &&
+                                albumsForYouItems.isEmpty)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16.0,
+                                  ),
+                                  child: _HorizontalSectionSkeleton(
+                                    cardWidth: isCompact ? 128 : 142,
+                                  ),
+                                ),
+                              )
+                            else if (state.errorAlbumsForYou != null &&
+                                albumsForYouItems.isEmpty)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: _SectionError(
+                                    message: state.errorAlbumsForYou!,
+                                    onRetry: state.hasRetryableError
+                                        ? null
+                                        : () => context
+                                              .read<UserDashboardCubit>()
+                                              .load(forceRefresh: true),
+                                  ),
+                                ),
+                              )
+                            else
+                              SliverToBoxAdapter(
+                                child: HorizontalMediaSection(
+                                  title: '',
+                                  items: albumsForYouItems,
+                                  cardWidth: isCompact ? 128 : 142,
+                                ),
+                              ),
 
-                          SliverToBoxAdapter(
-                            child: SizedBox(height: isCompact ? 24 : 32),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                            if (playlistItems.isNotEmpty)
+                              SliverToBoxAdapter(
+                                child: SizedBox(height: isCompact ? 10 : 14),
+                              ),
+                            if (playlistItems.isNotEmpty)
+                              SliverToBoxAdapter(
+                                child: const SectionHeader(
+                                  title: 'Playlists to try',
+                                ),
+                              ),
+                            if (playlistItems.isNotEmpty)
+                              SliverToBoxAdapter(
+                                child: HorizontalMediaSection(
+                                  title: '',
+                                  items: playlistItems,
+                                  cardWidth: isCompact ? 128 : 142,
+                                ),
+                              ),
+
+                            if (topArtists.isNotEmpty)
+                              SliverToBoxAdapter(
+                                child: const SectionHeader(
+                                  title: 'Artists to explore',
+                                ),
+                              ),
+                            if (topArtists.isNotEmpty)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  child: _ArtistPillsSection(
+                                    artists: topArtists,
+                                  ),
+                                ),
+                              ),
+
+                            SliverToBoxAdapter(
+                              child: SizedBox(height: isCompact ? 24 : 32),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 );
               },
             ),
@@ -620,8 +747,9 @@ class _HeaderBar extends StatelessWidget {
         BlocBuilder<AppUserCubit, AppUserState>(
           builder: (context, state) {
             final name = state is AppUserLoggedIn ? state.user.name : '';
-            final avatarUrl =
-                state is AppUserLoggedIn ? state.user.avatarUrl : '';
+            final avatarUrl = state is AppUserLoggedIn
+                ? state.user.avatarUrl
+                : '';
             return Tooltip(
               message: 'Settings',
               child: InkWell(
@@ -629,19 +757,21 @@ class _HeaderBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
                 child: CircleAvatar(
                   radius: 18,
-                  backgroundColor:
-                      Theme.of(context).colorScheme.primaryContainer,
-                  backgroundImage:
-                      avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer,
+                  backgroundImage: avatarUrl.isNotEmpty
+                      ? NetworkImage(avatarUrl)
+                      : null,
                   child: avatarUrl.isEmpty
                       ? Text(
                           name.isNotEmpty ? name[0].toUpperCase() : '?',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onPrimaryContainer,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onPrimaryContainer,
                           ),
                         )
                       : null,
@@ -827,14 +957,19 @@ class _TrendingImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme;
     Widget img;
-    if (item.localImagePath != null && File(item.localImagePath!).existsSync()) {
+    if (item.localImagePath != null &&
+        File(item.localImagePath!).existsSync()) {
       img = Image.file(
         File(item.localImagePath!),
         fit: BoxFit.cover,
         errorBuilder: (_, _, _) => _fallback(color),
       );
     } else if (item.imageUrl != null && item.imageUrl!.isNotEmpty) {
-      img = Image.network(item.imageUrl!, fit: BoxFit.cover);
+      img = RetryingNetworkImage(
+        url: item.imageUrl!,
+        fit: BoxFit.cover,
+        fallback: _fallback(color),
+      );
     } else {
       img = _fallback(color);
     }
@@ -1368,7 +1503,11 @@ class _AlbumGridImage extends StatelessWidget {
       );
     }
     if (item.coverUrl != null && item.coverUrl!.isNotEmpty) {
-      return Image.network(item.coverUrl!, fit: BoxFit.cover);
+      return RetryingNetworkImage(
+        url: item.coverUrl!,
+        fit: BoxFit.cover,
+        fallback: _fallback(color),
+      );
     }
     return _fallback(color);
   }
@@ -1381,6 +1520,43 @@ class _AlbumGridImage extends StatelessWidget {
         Icons.album_rounded,
         size: 48,
         color: color.onPrimaryContainer,
+      ),
+    );
+  }
+}
+
+class _SectionError extends StatelessWidget {
+  final String message;
+  final VoidCallback? onRetry;
+
+  const _SectionError({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.errorContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_rounded, color: theme.colorScheme.error),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onErrorContainer,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          if (onRetry != null)
+            FilledButton.tonal(onPressed: onRetry, child: const Text('Retry')),
+        ],
       ),
     );
   }

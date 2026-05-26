@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart' as dio;
+import 'package:musee/core/common/mixins/refreshable_page_mixin.dart';
 import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:musee/features/user__dashboard/domain/entities/dashboard_album.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as supa;
@@ -135,19 +136,51 @@ class UserDashboardRemoteDataSourceImpl
     return {'Authorization': 'Bearer $token'};
   }
 
+  bool _shouldRetry(dio.DioException error) {
+    switch (error.type) {
+      case dio.DioExceptionType.connectionTimeout:
+      case dio.DioExceptionType.sendTimeout:
+      case dio.DioExceptionType.receiveTimeout:
+      case dio.DioExceptionType.connectionError:
+        return true;
+      case dio.DioExceptionType.badResponse:
+        final statusCode = error.response?.statusCode;
+        return statusCode != null && (statusCode >= 500 || statusCode == 429);
+      default:
+        return false;
+    }
+  }
+
+  Future<PagedDashboardItemsDTO> _getPaged(
+    String path, {
+    required int page,
+    required int limit,
+  }) async {
+    final response = await RetryHelper.retry<dio.Response>(
+      operation: () => _dio.get(
+        '$basePath/$path',
+        queryParameters: {'page': page, 'limit': limit},
+        options: dio.Options(headers: _authHeader()),
+      ),
+      config: const RetryConfig(
+        maxAttempts: 3,
+        initialDelay: Duration(milliseconds: 400),
+        maxDelay: Duration(seconds: 3),
+      ),
+      shouldRetry: (error) => error is dio.DioException && _shouldRetry(error),
+    );
+
+    return PagedDashboardItemsDTO.fromJson(
+      Map<String, dynamic>.from(response.data as Map),
+    );
+  }
+
   @override
   Future<PagedDashboardItemsDTO> getMadeForYou({
     int page = 0,
     int limit = 20,
   }) async {
-    final res = await _dio.get(
-      '$basePath/made-for-you',
-      queryParameters: {'page': page, 'limit': limit},
-      options: dio.Options(headers: _authHeader()),
-    );
-    return PagedDashboardItemsDTO.fromJson(
-      Map<String, dynamic>.from(res.data as Map),
-    );
+    return _getPaged('made-for-you', page: page, limit: limit);
   }
 
   @override
@@ -155,14 +188,7 @@ class UserDashboardRemoteDataSourceImpl
     int page = 0,
     int limit = 20,
   }) async {
-    final res = await _dio.get(
-      '$basePath/albums-for-you',
-      queryParameters: {'page': page, 'limit': limit},
-      options: dio.Options(headers: _authHeader()),
-    );
-    return PagedDashboardItemsDTO.fromJson(
-      Map<String, dynamic>.from(res.data as Map),
-    );
+    return _getPaged('albums-for-you', page: page, limit: limit);
   }
 
   @override
@@ -170,13 +196,6 @@ class UserDashboardRemoteDataSourceImpl
     int page = 0,
     int limit = 20,
   }) async {
-    final res = await _dio.get(
-      '$basePath/trending',
-      queryParameters: {'page': page, 'limit': limit},
-      options: dio.Options(headers: _authHeader()),
-    );
-    return PagedDashboardItemsDTO.fromJson(
-      Map<String, dynamic>.from(res.data as Map),
-    );
+    return _getPaged('trending', page: page, limit: limit);
   }
 }

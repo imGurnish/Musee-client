@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:musee/core/common/widgets/retrying_network_image.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
 import 'package:musee/core/common/widgets/playing_bars_animation.dart';
@@ -83,15 +84,22 @@ class MediaCard extends StatelessWidget {
                                 child: Center(
                                   child: ClipOval(
                                     child: BackdropFilter(
-                                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                      filter: ImageFilter.blur(
+                                        sigmaX: 8,
+                                        sigmaY: 8,
+                                      ),
                                       child: Container(
                                         width: 48,
                                         height: 48,
                                         decoration: BoxDecoration(
-                                          color: Colors.black.withValues(alpha: 0.4),
+                                          color: Colors.black.withValues(
+                                            alpha: 0.4,
+                                          ),
                                           shape: BoxShape.circle,
                                           border: Border.all(
-                                            color: Colors.white.withValues(alpha: 0.15),
+                                            color: Colors.white.withValues(
+                                              alpha: 0.15,
+                                            ),
                                             width: 1,
                                           ),
                                         ),
@@ -186,7 +194,14 @@ class MediaCard extends StatelessWidget {
 
   Widget _buildNetworkOrPlaceholder(ColorScheme color) {
     if (imageUrl != null && imageUrl!.isNotEmpty) {
-      return Image.network(imageUrl!, fit: BoxFit.cover);
+      return RetryingNetworkImage(
+        url: imageUrl!,
+        fit: BoxFit.cover,
+        fallback: Container(
+          color: color.primaryContainer.withValues(alpha: 0.4),
+          child: Center(child: Icon(fallbackIcon, size: 36)),
+        ),
+      );
     }
     return Container(
       color: color.primaryContainer.withValues(alpha: 0.4),
