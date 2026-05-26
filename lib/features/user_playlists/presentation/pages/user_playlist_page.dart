@@ -3,9 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
+import 'package:flutter_bloc/flutter_bloc.dart' as _bloc_for_admin_check;
+import 'package:musee/core/common/cubit/app_user_cubit.dart';
 import 'dart:math';
 import 'dart:ui' show ImageFilter;
 import 'package:dio/dio.dart';
+import 'package:musee/core/common/entities/user.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
@@ -854,8 +857,18 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
             // Show menu if: user is in artists list, OR the playlist has no
             // artists yet (newly-created empty playlist always belongs to creator).
             final isCreator = currentUserId != null &&
-                (playlist.artists.isEmpty ||
-                    playlist.artists.first.artistId == currentUserId);
+              (playlist.artists.isEmpty ||
+                playlist.artists.first.artistId == currentUserId);
+
+            // Check if current user is a collaborator
+            final isCollaborator = currentUserId != null &&
+              playlist.collaborators.any((c) => c.artistId == currentUserId);
+
+            // Check admin via AppUserCubit (global app user state)
+            final appState = context.read<AppUserCubit>().state;
+            final isAdmin = appState is AppUserLoggedIn && appState.user.userType == UserType.admin;
+
+            final canModifyPlaylist = isCreator || isCollaborator || playlist.isCollaborative || isAdmin;
 
             Future<void> playTrack(
               String trackId, {
@@ -1664,79 +1677,81 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                     ),
                   ),
 
-                // ── Recommended Tracks Section ─────────────────────
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Recommended',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: -0.3,
+                // ── Recommended Tracks Section (only visible to creators/collaborators/admins/collaborative playlists)
+                if (canModifyPlaylist) ...[
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Recommended',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: -0.3,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              "Based on this playlist's vibe",
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                              const SizedBox(height: 2),
+                              Text(
+                                "Based on this playlist's vibe",
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          icon: const Icon(CupertinoIcons.refresh, size: 18),
-                          tooltip: 'Refresh Recommendations',
-                          onPressed: _fetchRecommendations,
-                        ),
-                      ],
+                            ],
+                          ),
+                          IconButton(
+                            icon: const Icon(CupertinoIcons.refresh, size: 18),
+                            tooltip: 'Refresh Recommendations',
+                            onPressed: _fetchRecommendations,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                if (_recommendedTracks == null && _isLoadingRecommendations)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24.0),
-                      child: Center(
-                        child: CupertinoActivityIndicator(),
-                      ),
-                    ),
-                  )
-                else if (_recommendationsError != null && (_recommendedTracks == null || _recommendedTracks!.isEmpty))
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                      child: Center(
-                        child: Text(
-                          'Could not load recommendations: $_recommendationsError',
-                          style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
+
+                  if (_recommendedTracks == null && _isLoadingRecommendations)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24.0),
+                        child: Center(
+                          child: CupertinoActivityIndicator(),
                         ),
                       ),
-                    ),
-                  )
-                else if (displayedRecommendations.isEmpty)
-                  const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                      child: Center(
-                        child: Text(
-                          'No new recommendations right now. Check back later!',
-                          style: TextStyle(fontSize: 12, color: Colors.white30),
+                    )
+                  else if (_recommendationsError != null && (_recommendedTracks == null || _recommendedTracks!.isEmpty))
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                        child: Center(
+                          child: Text(
+                            'Could not load recommendations: $_recommendationsError',
+                            style: TextStyle(fontSize: 12, color: theme.colorScheme.error),
+                          ),
                         ),
                       ),
-                    ),
-                  )
-                else ...[
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final rec = displayedRecommendations[index];
+                    )
+                  else if (displayedRecommendations.isEmpty)
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                        child: Center(
+                          child: Text(
+                            'No new recommendations right now. Check back later!',
+                            style: TextStyle(fontSize: 12, color: Colors.white30),
+                          ),
+                        ),
+                      ),
+                    )
+                  else ...[
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final rec = displayedRecommendations[index];
                         final recArtists = rec.artists.isNotEmpty
                             ? rec.artists.map((a) => a.name ?? 'Unknown').join(', ')
                             : 'Unknown Artist';
@@ -1817,6 +1832,19 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                     icon: Icon(CupertinoIcons.add_circled, color: theme.colorScheme.primary),
                                     tooltip: 'Add to Playlist',
                                     onPressed: () {
+                                      final currentUserId = GetIt.I<SupabaseClient>().auth.currentUser?.id;
+                                      final isCollaborator = currentUserId != null && playlist.collaborators.any((c) => c.artistId == currentUserId);
+                                      final canModify = isCreator || isCollaborator || playlist.isCollaborative;
+
+                                      if (!canModify) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('You must be the creator or a collaborator to add tracks to this playlist'),
+                                          ),
+                                        );
+                                        return;
+                                      }
+
                                       setState(() => _hasChanges = true);
                                       context.read<UserPlaylistBloc>().add(
                                         UserPlaylistTrackAdded(playlist.playlistId, rec.trackId),
@@ -1845,7 +1873,9 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
 
                 const SliverToBoxAdapter(child: SizedBox(height: 96)),
               ],
+              ]
             );
+            
           },
         ),
       ),
