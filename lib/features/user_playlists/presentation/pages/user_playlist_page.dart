@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
-import 'package:flutter_bloc/flutter_bloc.dart' as _bloc_for_admin_check;
 import 'package:musee/core/common/cubit/app_user_cubit.dart';
 import 'dart:math';
 import 'dart:ui' show ImageFilter;

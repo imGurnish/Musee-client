@@ -711,7 +711,7 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                                           ),
                                         );
                                       }
-                                    } else if (action == 'playlist') {
+                                    } else if (action == 'playlist' && context.mounted) {
                                       await showAddToPlaylistSheet(
                                         context,
                                         trackId: t.trackId,

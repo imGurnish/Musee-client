@@ -387,7 +387,7 @@ class _AdminImportPageState extends State<AdminImportPage> {
 
           if (state is AdminImportSuccess) {
             Future.microtask(() {
-              Navigator.pop(dialogContext);
+              if(context.mounted) Navigator.pop(dialogContext);
               _showImportSuccessDialog(state);
             });
             return const SizedBox.shrink();
@@ -395,7 +395,7 @@ class _AdminImportPageState extends State<AdminImportPage> {
 
           if (state is AdminImportError) {
             Future.microtask(() {
-              Navigator.pop(dialogContext);
+              if(context.mounted) Navigator.pop(dialogContext);
               _showImportErrorDialog(state);
             });
             return const SizedBox.shrink();
