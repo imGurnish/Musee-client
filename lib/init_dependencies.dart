@@ -120,6 +120,7 @@ import 'package:musee/features/listening_history/data/repositories/listening_his
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
+import 'package:musee/core/cache/services/media_cache_meta_service.dart';
 import 'package:musee/core/cache/services/user_media_detail_cache_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:musee/features/admin_external_import/data/jiosaavn_api_client.dart';
@@ -207,6 +208,14 @@ Future<void> initDependencies() async {
   await userMediaDetailCacheService.init();
   serviceLocator.registerLazySingleton<UserMediaDetailCacheService>(
     () => userMediaDetailCacheService,
+  );
+
+  final mediaCacheMetaService = MediaCacheMetaServiceImpl(
+    serviceLocator<SupabaseClient>(),
+  );
+  await mediaCacheMetaService.init();
+  serviceLocator.registerLazySingleton<MediaCacheMetaService>(
+    () => mediaCacheMetaService,
   );
 
   // Download Manager
@@ -569,6 +578,7 @@ void _initUserAlbums() {
         serviceLocator<TrackCacheService>(),
         serviceLocator<ConnectivityService>(),
         serviceLocator<UserMediaDetailCacheService>(),
+        serviceLocator<MediaCacheMetaService>(),
       ),
     )
     // use cases
@@ -595,6 +605,7 @@ void _initUserPlaylists() {
         serviceLocator<TrackCacheService>(),
         serviceLocator<ConnectivityService>(),
         serviceLocator<UserMediaDetailCacheService>(),
+        serviceLocator<MediaCacheMetaService>(),
       ),
     )
     // use cases

@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'package:musee/core/cache/cache_config.dart';
+import 'package:musee/core/cache/models/cache_entity_type.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
+import 'package:musee/core/cache/services/media_cache_meta_service.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/user_media_detail_cache_service.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';
@@ -12,14 +15,14 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
   final TrackCacheService _trackCache;
   final ConnectivityService _connectivity;
   final UserMediaDetailCacheService _detailCache;
-
-  static const Duration _detailTtl = Duration(hours: 6);
+  final MediaCacheMetaService _cacheMeta;
 
   UserPlaylistsRepositoryImpl(
     this._remote,
     this._trackCache,
     this._connectivity,
     this._detailCache,
+    this._cacheMeta,
   );
 
   @override
@@ -27,13 +30,22 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
     String playlistId, {
     bool forceRefresh = false,
   }) async {
+    final recordKey = _cacheMeta.buildRecordKey(
+      entityType: CacheEntityType.playlist,
+      entityId: playlistId,
+    );
+
     final cachedPayload = await _detailCache.getPlaylist(playlistId);
-    if (!forceRefresh && cachedPayload != null && !_isExpired(cachedPayload)) {
+    if (!forceRefresh &&
+        cachedPayload != null &&
+        !(await _isExpired(recordKey, cachedPayload))) {
+      await _cacheMeta.markAccessed(recordKey);
       return _playlistFromCachePayload(cachedPayload);
     }
 
     final isOnline = await _connectivity.checkConnectivity();
     if (!isOnline && cachedPayload != null) {
+      await _cacheMeta.markAccessed(recordKey);
       return _playlistFromCachePayload(cachedPayload);
     }
 
@@ -45,10 +57,15 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
         playlistId,
         _playlistToCachePayload(detail),
       );
+      await _cacheMeta.upsertMeta(
+        recordKey: recordKey,
+        entityType: CacheEntityType.playlist,
+      );
       await _seedTrackMetadata(detail);
       return _withTrackCacheFlags(detail, isFromCache: false);
     } catch (_) {
       if (cachedPayload != null) {
+        await _cacheMeta.markAccessed(recordKey);
         return _playlistFromCachePayload(cachedPayload);
       }
 
@@ -82,6 +99,13 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
       detail.playlistId,
       _playlistToCachePayload(detail),
     );
+    await _cacheMeta.upsertMeta(
+      recordKey: _cacheMeta.buildRecordKey(
+        entityType: CacheEntityType.playlist,
+        entityId: detail.playlistId,
+      ),
+      entityType: CacheEntityType.playlist,
+    );
     return detail;
   }
 
@@ -94,6 +118,13 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
     await _detailCache.cachePlaylist(
       detail.playlistId,
       _playlistToCachePayload(detail),
+    );
+    await _cacheMeta.upsertMeta(
+      recordKey: _cacheMeta.buildRecordKey(
+        entityType: CacheEntityType.playlist,
+        entityId: detail.playlistId,
+      ),
+      entityType: CacheEntityType.playlist,
     );
     return detail;
   }
@@ -153,6 +184,12 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
         );
 
         await _detailCache.cachePlaylist(optimistic.playlistId, _playlistToCachePayload(optimistic));
+        await _cacheMeta.markSyncPending(
+          _cacheMeta.buildRecordKey(
+            entityType: CacheEntityType.playlist,
+            entityId: optimistic.playlistId,
+          ),
+        );
         unawaited(_seedTrackMetadata(optimistic));
       } catch (_) {}
     }
@@ -163,6 +200,12 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
         final dto = await _remote.addTrackToPlaylist(playlistId, trackId);
         final detail = _mapDtoToEntity(dto);
         await _detailCache.cachePlaylist(detail.playlistId, _playlistToCachePayload(detail));
+        await _cacheMeta.markSynced(
+          _cacheMeta.buildRecordKey(
+            entityType: CacheEntityType.playlist,
+            entityId: detail.playlistId,
+          ),
+        );
       } catch (_) {
         try {
           final isOnline = await _connectivity.checkConnectivity();
@@ -209,6 +252,12 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
           createdAt: cachedDetail.createdAt,
         );
         await _detailCache.cachePlaylist(updated.playlistId, _playlistToCachePayload(updated));
+        await _cacheMeta.markSyncPending(
+          _cacheMeta.buildRecordKey(
+            entityType: CacheEntityType.playlist,
+            entityId: updated.playlistId,
+          ),
+        );
       } catch (_) {}
     }
 
@@ -272,6 +321,12 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
   Future<void> deletePlaylist(String playlistId) async {
     await _remote.deletePlaylist(playlistId);
     await _detailCache.invalidatePlaylist(playlistId);
+    await _cacheMeta.invalidate(
+      _cacheMeta.buildRecordKey(
+        entityType: CacheEntityType.playlist,
+        entityId: playlistId,
+      ),
+    );
   }
 
   @override
@@ -296,17 +351,29 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
       detail.playlistId,
       _playlistToCachePayload(detail),
     );
+    await _cacheMeta.upsertMeta(
+      recordKey: _cacheMeta.buildRecordKey(
+        entityType: CacheEntityType.playlist,
+        entityId: detail.playlistId,
+      ),
+      entityType: CacheEntityType.playlist,
+    );
     return detail;
   }
 
-  bool _isExpired(Map<String, dynamic> payload) {
+  Future<bool> _isExpired(String recordKey, Map<String, dynamic> payload) async {
+    final existingMeta = await _cacheMeta.getMeta(recordKey);
+    if (existingMeta != null) {
+      return _cacheMeta.isExpired(recordKey);
+    }
+
     final cachedAtIso = payload['cached_at']?.toString();
     if (cachedAtIso == null || cachedAtIso.isEmpty) return true;
 
     final cachedAt = DateTime.tryParse(cachedAtIso);
     if (cachedAt == null) return true;
 
-    return DateTime.now().difference(cachedAt) >= _detailTtl;
+    return DateTime.now().difference(cachedAt) >= CacheConfig.detailPayloadMaxAge;
   }
 
   Future<UserPlaylistDetail> _playlistFromCachePayload(

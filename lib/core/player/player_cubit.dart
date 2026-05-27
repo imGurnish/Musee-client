@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
+import 'package:musee/core/cache/cache_config.dart';
 import 'package:musee/core/providers/music_provider_registry.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -452,7 +453,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       final cacheAge = DateTime.now().difference(cachedTrack.cachedAt);
       // CDN streaming URLs from remote APIs typically expire within 30-60 minutes.
       // We enforce a strict, safe 20-minute maximum age for cached URLs.
-      if (cacheAge < const Duration(minutes: 20)) {
+      if (cacheAge < CacheConfig.streamingUrlMaxAge) {
         if (kDebugMode) {
           debugPrint(
             '[PlayerCubit] Using valid cached streaming URL (age: ${cacheAge.inMinutes}m) for track: $trackId',

@@ -1,4 +1,7 @@
 import 'package:musee/core/cache/models/cached_track.dart';
+import 'package:musee/core/cache/cache_config.dart';
+import 'package:musee/core/cache/models/cache_entity_type.dart';
+import 'package:musee/core/cache/services/media_cache_meta_service.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/user_media_detail_cache_service.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';
@@ -13,8 +16,7 @@ class UserAlbumsRepositoryImpl implements UserAlbumsRepository {
   final TrackCacheService _trackCache;
   final ConnectivityService _connectivity;
   final UserMediaDetailCacheService _detailCache;
-
-  static const Duration _detailTtl = Duration(hours: 6);
+  final MediaCacheMetaService _cacheMeta;
 
   UserAlbumsRepositoryImpl(
     this._remote,
@@ -22,6 +24,7 @@ class UserAlbumsRepositoryImpl implements UserAlbumsRepository {
     this._trackCache,
     this._connectivity,
     this._detailCache,
+    this._cacheMeta,
   );
 
   @override
@@ -29,14 +32,23 @@ class UserAlbumsRepositoryImpl implements UserAlbumsRepository {
     String albumId, {
     bool forceRefresh = false,
   }) async {
+    final recordKey = _cacheMeta.buildRecordKey(
+      entityType: CacheEntityType.album,
+      entityId: albumId,
+    );
+
     final cachedPayload = await _detailCache.getAlbum(albumId);
 
-    if (!forceRefresh && cachedPayload != null && !_isExpired(cachedPayload)) {
+    if (!forceRefresh &&
+        cachedPayload != null &&
+        !(await _isExpired(recordKey, cachedPayload))) {
+      await _cacheMeta.markAccessed(recordKey);
       return _albumFromCachePayload(cachedPayload);
     }
 
     final isOnline = await _connectivity.checkConnectivity();
     if (!isOnline && cachedPayload != null) {
+      await _cacheMeta.markAccessed(recordKey);
       return _albumFromCachePayload(cachedPayload);
     }
 
@@ -88,6 +100,10 @@ class UserAlbumsRepositoryImpl implements UserAlbumsRepository {
         );
 
         await _detailCache.cacheAlbum(albumId, _albumToCachePayload(detail));
+        await _cacheMeta.upsertMeta(
+          recordKey: recordKey,
+          entityType: CacheEntityType.album,
+        );
         await _seedTrackMetadata(detail);
         return _withTrackCacheFlags(detail, isFromCache: false);
       }
@@ -129,10 +145,15 @@ class UserAlbumsRepositoryImpl implements UserAlbumsRepository {
       );
 
       await _detailCache.cacheAlbum(albumId, _albumToCachePayload(detail));
+      await _cacheMeta.upsertMeta(
+        recordKey: recordKey,
+        entityType: CacheEntityType.album,
+      );
       await _seedTrackMetadata(detail);
       return _withTrackCacheFlags(detail, isFromCache: false);
     } catch (_) {
       if (cachedPayload != null) {
+        await _cacheMeta.markAccessed(recordKey);
         return _albumFromCachePayload(cachedPayload);
       }
 
@@ -146,14 +167,19 @@ class UserAlbumsRepositoryImpl implements UserAlbumsRepository {
     }
   }
 
-  bool _isExpired(Map<String, dynamic> payload) {
+  Future<bool> _isExpired(String recordKey, Map<String, dynamic> payload) async {
+    final hasMeta = await _cacheMeta.getMeta(recordKey);
+    if (hasMeta != null) {
+      return _cacheMeta.isExpired(recordKey);
+    }
+
     final cachedAtIso = payload['cached_at']?.toString();
     if (cachedAtIso == null || cachedAtIso.isEmpty) return true;
 
     final cachedAt = DateTime.tryParse(cachedAtIso);
     if (cachedAt == null) return true;
 
-    return DateTime.now().difference(cachedAt) >= _detailTtl;
+    return DateTime.now().difference(cachedAt) >= CacheConfig.detailPayloadMaxAge;
   }
 
   Future<UserAlbumDetail> _albumFromCachePayload(
