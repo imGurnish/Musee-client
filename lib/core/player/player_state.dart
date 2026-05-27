@@ -11,6 +11,7 @@ class PlayerTrack extends Equatable {
   final String? album;
   final String? imageUrl;
   final String? localImagePath;
+  final int? durationSeconds;
   final Map<String, String>? headers;
   final String? artistId;
   final String? albumId;
@@ -24,6 +25,7 @@ class PlayerTrack extends Equatable {
     this.album,
     this.imageUrl,
     this.localImagePath,
+    this.durationSeconds,
     this.headers,
     this.artistId,
     this.albumId,
@@ -38,6 +40,7 @@ class PlayerTrack extends Equatable {
     String? album,
     String? imageUrl,
     String? localImagePath,
+    int? durationSeconds,
     Map<String, String>? headers,
     String? artistId,
     String? albumId,
@@ -50,6 +53,7 @@ class PlayerTrack extends Equatable {
     album: album ?? this.album,
     imageUrl: imageUrl ?? this.imageUrl,
     localImagePath: localImagePath ?? this.localImagePath,
+    durationSeconds: durationSeconds ?? this.durationSeconds,
     headers: headers ?? this.headers,
     artistId: artistId ?? this.artistId,
     albumId: albumId ?? this.albumId,
@@ -65,6 +69,7 @@ class PlayerTrack extends Equatable {
     album,
     imageUrl,
     localImagePath,
+    durationSeconds,
     headers,
     artistId,
     albumId,

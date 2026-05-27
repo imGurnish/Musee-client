@@ -209,7 +209,12 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
         _subscribeTrackPreference(track?.trackId);
 
         final pos = state.position;
-        final dur = state.duration;
+        final trackDuration = (track?.durationSeconds ?? 0) > 0
+          ? Duration(seconds: track!.durationSeconds!)
+          : Duration.zero;
+        final dur = state.duration.inMilliseconds > 0
+          ? state.duration
+          : trackDuration;
         final progress = (dur.inMilliseconds > 0)
             ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
             : 0.0;

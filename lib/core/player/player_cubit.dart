@@ -595,6 +595,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _isTrackSwitchInProgress = true;
     _armSwitchFailSafe(switchToken);
 
+    final provisionalDuration = (track.durationSeconds ?? 0) > 0
+        ? Duration(seconds: track.durationSeconds!)
+        : Duration.zero;
+
     emit(
       state.copyWith(
         track: track,
@@ -602,6 +606,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         resolvingUrl: false,
         isTransitioning: true,
         playing: false,
+        position: Duration.zero,
+        duration: provisionalDuration,
         clearErrorMessage: true,
       ),
     );
@@ -840,6 +846,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       } catch (_) {}
     }
 
+    final queuedIndex = state.queue.indexWhere((q) => q.trackId == trackId);
+    final queuedItem = queuedIndex >= 0 ? state.queue[queuedIndex] : null;
+
     // Emit provisional track info immediately so the UI updates the moment
     // the user taps a track — before any network call.
     final provisionalTrack = PlayerTrack(
@@ -850,6 +859,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       album: album,
       imageUrl: imageUrl,
       localImagePath: localImagePath,
+      durationSeconds: queuedItem?.durationSeconds,
       artistId: artistId,
       albumId: albumId,
       playlistId: playlistId,
@@ -862,6 +872,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         buffering: true,
         isTransitioning: true,
         playing: false,
+        position: Duration.zero,
+        duration: (queuedItem?.durationSeconds ?? 0) > 0
+            ? Duration(seconds: queuedItem!.durationSeconds!)
+            : Duration.zero,
         clearErrorMessage: true,
       ),
     );
@@ -910,17 +924,27 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           final matchedItem = newIndex >= 0 ? items[newIndex] : null;
           final patchedTrack = state.track?.trackId == trackId
               ? state.track?.copyWith(
+                  durationSeconds:
+                      matchedItem?.durationSeconds ?? state.track?.durationSeconds,
                   artistId: matchedItem?.artistId ?? artistId ?? state.track?.artistId,
                   albumId: matchedItem?.albumId ?? albumId ?? state.track?.albumId,
                   playlistId: matchedItem?.playlistId ?? playlistId ?? state.track?.playlistId,
                 )
               : state.track;
 
+          final patchedDurationSeconds = matchedItem?.durationSeconds;
+          final patchedDuration = state.duration.inMilliseconds > 0
+              ? state.duration
+              : (patchedDurationSeconds ?? 0) > 0
+                  ? Duration(seconds: patchedDurationSeconds!)
+                  : state.duration;
+
           emit(
             state.copyWith(
               queue: items,
               currentIndex: _sanitizeIndex(newIndex, items.length),
               track: patchedTrack,
+              duration: patchedDuration,
             ),
           );
         } catch (e) {
@@ -950,6 +974,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       album: album,
       imageUrl: imageUrl,
       localImagePath: localImagePath,
+      durationSeconds: queuedItem?.durationSeconds,
       artistId: artistId,
       albumId: albumId,
       playlistId: playlistId,
@@ -1056,8 +1081,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     );
     final repo = _repo;
     if (repo != null) {
+      final metadataList = items.map(_queueItemMetadata).toList(growable: false);
       unawaited(
-        repo.addToQueue(trackIds: items.map((e) => e.trackId).toList()),
+        repo.addToQueue(
+          trackIds: items.map((e) => e.trackId).toList(),
+          metadataList: metadataList,
+        ),
       );
     }
   }
@@ -1208,9 +1237,13 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     );
     final repo = _repo;
     if (repo != null) {
+      final metadataList = items.map(_queueItemMetadata).toList(growable: false);
       unawaited(repo.clearQueue());
       unawaited(
-        repo.addToQueue(trackIds: items.map((e) => e.trackId).toList()),
+        repo.addToQueue(
+          trackIds: items.map((e) => e.trackId).toList(),
+          metadataList: metadataList,
+        ),
       );
     }
   }
@@ -1380,6 +1413,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _armSwitchFailSafe(switchToken);
 
     final item = state.queue[index];
+    final provisionalDuration = (item.durationSeconds ?? 0) > 0
+      ? Duration(seconds: item.durationSeconds!)
+      : Duration.zero;
 
     // Always emit provisional track metadata from the queue item immediately
     // so the UI shows the correct title/artist/artwork before URL resolves.
@@ -1391,6 +1427,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       album: item.album,
       imageUrl: item.imageUrl,
       localImagePath: item.localImagePath,
+      durationSeconds: item.durationSeconds,
       artistId: item.artistId,
       albumId: item.albumId,
       playlistId: item.playlistId,
@@ -1403,6 +1440,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         isTransitioning: true,
         currentIndex: index,
         playing: false,
+        position: Duration.zero,
+        duration: provisionalDuration,
         clearErrorMessage: true,
       ),
     );
@@ -1437,6 +1476,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       album: item.album,
       imageUrl: item.imageUrl,
       localImagePath: item.localImagePath,
+      durationSeconds: item.durationSeconds,
       artistId: item.artistId,
       albumId: item.albumId,
       playlistId: item.playlistId,
@@ -2117,6 +2157,24 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       duration: viewState.duration,
       queueIndex: viewState.currentIndex >= 0 ? viewState.currentIndex : null,
     );
+  }
+
+  Map<String, dynamic> _queueItemMetadata(QueueItem item) {
+    return {
+      if (item.title.isNotEmpty) 'title': item.title,
+      if (item.artist.isNotEmpty) 'artist': item.artist,
+      if (item.album != null && item.album!.isNotEmpty) 'album': item.album,
+      if (item.imageUrl != null && item.imageUrl!.isNotEmpty)
+        'cover_url': item.imageUrl,
+      if (item.artistId != null && item.artistId!.isNotEmpty)
+        'artist_id': item.artistId,
+      if (item.albumId != null && item.albumId!.isNotEmpty)
+        'album_id': item.albumId,
+      if (item.playlistId != null && item.playlistId!.isNotEmpty)
+        'playlist_id': item.playlistId,
+      if (item.durationSeconds != null && item.durationSeconds! > 0)
+        'duration': item.durationSeconds,
+    };
   }
 
   @override

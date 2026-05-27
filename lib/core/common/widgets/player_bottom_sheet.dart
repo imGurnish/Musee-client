@@ -413,8 +413,14 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
               final sourceTitle = state.track?.album?.trim() ?? '';
           final imageUrl = state.track?.imageUrl;
           final pos = state.position;
-          final dur = state.duration.inMilliseconds > 0
+            final trackDuration = (state.track?.durationSeconds ?? 0) > 0
+              ? Duration(seconds: state.track!.durationSeconds!)
+              : Duration.zero;
+            final effectiveDuration = state.duration.inMilliseconds > 0
               ? state.duration
+              : trackDuration;
+            final dur = effectiveDuration.inMilliseconds > 0
+              ? effectiveDuration
               : const Duration(seconds: 1);
           final shuffleEnabled = state.shuffleEnabled;
           final repeatMode = state.repeatMode;
@@ -655,7 +661,9 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                 children: [
                   Text(_fmt(pos), style: theme.textTheme.labelMedium),
                   Text(
-                    state.duration.inMilliseconds > 0 ? _fmt(state.duration) : '--:--',
+                    effectiveDuration.inMilliseconds > 0
+                        ? _fmt(effectiveDuration)
+                        : '--:--',
                     style: theme.textTheme.labelMedium,
                   ),
                 ],
