@@ -33,13 +33,17 @@ class CachedTrackAdapter extends TypeAdapter<CachedTrack> {
       // Handle new fields with defaults for backward compatibility
       ..sourceProvider = (fields[13] as String?) ?? 'musee'
       ..localImagePath = fields[14] as String?
-      ..playCount = (fields[15] as int?) ?? 0;
+      ..playCount = (fields[15] as int?) ?? 0
+      ..hlsMasterUrl = fields[16] as String?
+      ..hlsVariantUrls = (fields[17] as Map?)?.cast<String, String>()
+      ..cachedHlsBitrate = fields[18] as int?
+      ..cachedHlsVariantUrl = fields[19] as String?;
   }
 
   @override
   void write(BinaryWriter writer, CachedTrack obj) {
     writer
-      ..writeByte(16)
+      ..writeByte(20)
       ..writeByte(0)
       ..write(obj.trackId)
       ..writeByte(1)
@@ -71,7 +75,15 @@ class CachedTrackAdapter extends TypeAdapter<CachedTrack> {
       ..writeByte(14)
       ..write(obj.localImagePath)
       ..writeByte(15)
-      ..write(obj.playCount);
+      ..write(obj.playCount)
+      ..writeByte(16)
+      ..write(obj.hlsMasterUrl)
+      ..writeByte(17)
+      ..write(obj.hlsVariantUrls)
+      ..writeByte(18)
+      ..write(obj.cachedHlsBitrate)
+      ..writeByte(19)
+      ..write(obj.cachedHlsVariantUrl);
   }
 
   @override

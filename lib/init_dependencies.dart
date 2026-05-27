@@ -248,6 +248,8 @@ Future<void> initDependencies() async {
         audioCache: serviceLocator<AudioCacheService>(),
         imageCache: serviceLocator<ImageCacheService>(),
         musicProviderRegistry: serviceLocator<MusicProviderRegistry>(),
+        connectivityService: serviceLocator<ConnectivityService>(),
+        settingsCubit: serviceLocator<SettingsCubit>(),
         listeningHistoryRepository:
             serviceLocator<ListeningHistoryRepository>(),
         supabaseClient: serviceLocator<SupabaseClient>(),

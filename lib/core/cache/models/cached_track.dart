@@ -62,6 +62,22 @@ class CachedTrack extends HiveObject {
   @HiveField(15)
   int playCount = 0;
 
+  /// Cached HLS master playlist URL, if the track is HLS-backed.
+  @HiveField(16)
+  String? hlsMasterUrl;
+
+  /// Cached HLS variant URLs keyed by bitrate string.
+  @HiveField(17)
+  Map<String, String>? hlsVariantUrls;
+
+  /// Bitrate of the currently cached HLS variant.
+  @HiveField(18)
+  int? cachedHlsBitrate;
+
+  /// Cached HLS variant playlist URL used for the local cache.
+  @HiveField(19)
+  String? cachedHlsVariantUrl;
+
   /// Whether this track is available offline (has downloaded audio)
   bool get isAvailableOffline =>
       localAudioPath != null && localAudioPath!.isNotEmpty;

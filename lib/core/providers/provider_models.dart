@@ -97,6 +97,8 @@ class ProviderTrack extends Equatable {
   final List<ProviderArtist> artists;
   final String? albumId;
   final String? albumTitle;
+  final String? hlsMasterUrl;
+  final List<ProviderAudioVariant> hlsVariants;
 
   const ProviderTrack({
     required this.id,
@@ -108,6 +110,8 @@ class ProviderTrack extends Equatable {
     this.artists = const [],
     this.albumId,
     this.albumTitle,
+    this.hlsMasterUrl,
+    this.hlsVariants = const [],
   });
 
   /// Full ID with source prefix for unique identification
@@ -129,7 +133,19 @@ class ProviderTrack extends Equatable {
     artists,
     albumId,
     albumTitle,
+    hlsMasterUrl,
+    hlsVariants,
   ];
+}
+
+class ProviderAudioVariant extends Equatable {
+  final int bitrate;
+  final String url;
+
+  const ProviderAudioVariant({required this.bitrate, required this.url});
+
+  @override
+  List<Object?> get props => [bitrate, url];
 }
 
 /// Unified playlist model from any music source

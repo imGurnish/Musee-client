@@ -9,12 +9,16 @@ import 'package:musee/features/player/domain/repository/player_repository.dart';
 import 'package:musee/features/listening_history/data/models/listening_history_models.dart';
 import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
+import 'package:musee/core/common/services/connectivity_service.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
 import 'package:musee/core/cache/cache_config.dart';
 import 'package:musee/core/providers/music_provider_registry.dart';
+import 'package:musee/core/providers/provider_models.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:musee/core/player/media_controls_service.dart';
@@ -36,6 +40,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   final AudioCacheService? _audioCache;
   final ImageCacheService? _imageCache;
   final MusicProviderRegistry? _musicProviderRegistry;
+  final ConnectivityService? _connectivityService;
+  final SettingsCubit? _settingsCubit;
   final ListeningHistoryRepository? _listeningHistoryRepository;
   final SupabaseClient? _supabaseClient;
   StreamSubscription<Duration>? _positionSub;
@@ -50,6 +56,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   DateTime? _currentTrackStartedAt;
   String? _currentTrackIdForLogging;
   String? _lastPublishedTrackKey;
+  final Set<String> _audioCacheInFlight = <String>{};
   bool _isTrackSwitchInProgress = false;
   bool _isAdvancingNext = false;
   bool _userPaused = false;
@@ -61,6 +68,134 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
+
+  ConnectivityStatus get _connectivityStatus =>
+      _connectivityService?.currentStatus ?? ConnectivityStatus.unknown;
+
+  DownloadQuality get _downloadQuality =>
+      _settingsCubit?.state.downloadQuality ?? DownloadQuality.high;
+
+  ({String url, int bitrate})? _selectCacheHlsVariant(
+    ProviderTrack providerTrack,
+    CachedTrack? existing,
+  ) {
+    if (providerTrack.hlsVariants.isEmpty) return null;
+
+    final variants = [...providerTrack.hlsVariants]
+      ..sort((a, b) => a.bitrate.compareTo(b.bitrate));
+
+    final qualityIndex = switch (_downloadQuality) {
+      DownloadQuality.low => 0,
+      DownloadQuality.medium => (variants.length - 1) ~/ 2,
+      DownloadQuality.high => variants.length - 1,
+    };
+    final target = variants[qualityIndex.clamp(0, variants.length - 1)];
+
+    final cachedBitrate = existing?.cachedHlsBitrate;
+
+    if (_connectivityStatus == ConnectivityStatus.offline &&
+        cachedBitrate != null &&
+        cachedBitrate >= target.bitrate) {
+      final cachedUrl = existing?.cachedHlsVariantUrl;
+      if (cachedUrl != null && cachedUrl.isNotEmpty) {
+        return (url: cachedUrl, bitrate: cachedBitrate);
+      }
+    }
+
+    return (url: target.url, bitrate: target.bitrate);
+  }
+
+  bool _isRemotePlayableUrl(String url) {
+    return url.startsWith('http://') || url.startsWith('https://');
+  }
+
+  Future<void> _maybeCachePlayableAudio(PlayerTrack track) async {
+    final trackId = track.trackId;
+    if (_audioCache == null || _trackCache == null || kIsWeb || trackId == null) {
+      return;
+    }
+
+    if (!_isRemotePlayableUrl(track.url)) {
+      return;
+    }
+
+    if (_audioCacheInFlight.contains(trackId)) {
+      return;
+    }
+
+    _audioCacheInFlight.add(trackId);
+    try {
+      final cachedTrack = await _trackCache.getTrack(trackId);
+      final cachedPath = await _audioCache.getLocalAudioPath(trackId);
+
+      if (_connectivityStatus == ConnectivityStatus.offline) {
+        if (cachedPath != null && cachedPath.isNotEmpty) {
+          if (kDebugMode) {
+            debugPrint('[PlayerCubit] Offline, using cached audio for $trackId: $cachedPath');
+          }
+        }
+        return;
+      }
+
+      final providerTrack = await _musicProviderRegistry?.getTrack(trackId);
+      final selectedVariant = providerTrack == null
+          ? null
+          : _selectCacheHlsVariant(providerTrack, cachedTrack);
+
+      if (selectedVariant != null) {
+        final cachedBitrate = cachedTrack?.cachedHlsBitrate;
+        if (cachedBitrate != null &&
+            cachedBitrate >= selectedVariant.bitrate &&
+            cachedPath != null &&
+            cachedPath.isNotEmpty) {
+          if (kDebugMode) {
+            debugPrint(
+              '[PlayerCubit] HLS cache already at $cachedBitrate kbps for $trackId',
+            );
+          }
+          return;
+        }
+
+        final downloadedPath = await _audioCache.downloadAndCache(
+          trackId: trackId,
+          remoteUrl: track.url,
+          trackCache: _trackCache,
+          preferredHlsUrl: selectedVariant.url,
+          preferredHlsBitrate: selectedVariant.bitrate,
+        );
+
+        if (kDebugMode) {
+          debugPrint(
+            '[PlayerCubit] HLS cache primed for $trackId at ${selectedVariant.bitrate} kbps: $downloadedPath',
+          );
+        }
+        return;
+      }
+
+      if (cachedPath != null && cachedPath.isNotEmpty) {
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] Audio already cached for $trackId: $cachedPath');
+        }
+        return;
+      }
+
+      final downloadedPath = await _audioCache.downloadAndCache(
+        trackId: trackId,
+        remoteUrl: track.url,
+        trackCache: _trackCache,
+      );
+
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Audio cache primed for $trackId: $downloadedPath');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Failed to cache audio for $trackId: $e');
+      }
+    } finally {
+      _audioCacheInFlight.remove(trackId);
+    }
+  }
 
   String? _currentSourceId() {
     final track = state.track;
@@ -205,6 +340,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     AudioCacheService? audioCache,
     ImageCacheService? imageCache,
     MusicProviderRegistry? musicProviderRegistry,
+    ConnectivityService? connectivityService,
+    SettingsCubit? settingsCubit,
      ListeningHistoryRepository? listeningHistoryRepository,
      SupabaseClient? supabaseClient,
     EqualizerController? equalizerController,
@@ -213,6 +350,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
        _audioCache = audioCache,
        _imageCache = imageCache,
        _musicProviderRegistry = musicProviderRegistry,
+       _connectivityService = connectivityService,
+       _settingsCubit = settingsCubit,
        _listeningHistoryRepository = listeningHistoryRepository,
        _supabaseClient = supabaseClient,
        super(const PlayerViewState()) {
@@ -563,12 +702,25 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         ..lastPlayedAt = DateTime.now()
         ..sourceProvider = track?.source.name ?? 'musee'
         ..playCount = playCount
-        ..localImagePath = localImagePath; // Save local path!
+        ..localImagePath = localImagePath
+        ..hlsMasterUrl = track?.hlsMasterUrl
+        ..hlsVariantUrls = track?.hlsVariants.isEmpty == true
+          ? null
+          : {
+            for (final variant in track!.hlsVariants)
+              variant.bitrate.toString(): variant.url,
+            }
+        ..cachedHlsBitrate = existing?.cachedHlsBitrate
+        ..cachedHlsVariantUrl = existing?.cachedHlsVariantUrl;
 
       if (existing != null) {
         // Preserve audio cache info
         cached.localAudioPath = existing.localAudioPath;
         cached.audioSizeBytes = existing.audioSizeBytes;
+        cached.hlsMasterUrl ??= existing.hlsMasterUrl;
+        cached.hlsVariantUrls ??= existing.hlsVariantUrls;
+        cached.cachedHlsBitrate ??= existing.cachedHlsBitrate;
+        cached.cachedHlsVariantUrl ??= existing.cachedHlsVariantUrl;
       }
 
       await _trackCache.cacheTrack(cached);
@@ -695,12 +847,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       }
 
       _markTrackSessionStart(track.trackId);
+      unawaited(_maybeCachePlayableAudio(track));
       unawaited(_refreshQueueIfNeeded());
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[PlayerCubit] Primary playTrack start failed: $e');
       }
-
       try {
         if (track.trackId == null) {
           throw StateError('Cannot refresh URL for ad-hoc track');
@@ -717,6 +869,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
         final refreshedTrack = track.copyWith(url: refreshedUrl);
         final headers = refreshedTrack.headers ?? const <String, String>{};
+  unawaited(_maybeCachePlayableAudio(refreshedTrack));
 
         Uri toUri(String inputUrl) {
           if (inputUrl.startsWith('http') || inputUrl.startsWith('https')) {

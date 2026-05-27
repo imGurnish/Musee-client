@@ -21,6 +21,8 @@ abstract class AudioCacheService {
     required String trackId,
     required String remoteUrl,
     required TrackCacheService trackCache,
+    String? preferredHlsUrl,
+    int? preferredHlsBitrate,
     void Function(int received, int total)? onProgress,
     CancelToken? cancelToken,
   });
@@ -77,11 +79,147 @@ class AudioCacheServiceImpl implements AudioCacheService {
     return normalized.contains('.m3u8');
   }
 
-  String _sanitizeSegmentName(String raw, int index) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) return 'seg_${index.toString().padLeft(5, '0')}.ts';
-    final safe = trimmed.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-    return safe.isEmpty ? 'seg_${index.toString().padLeft(5, '0')}.ts' : safe;
+  bool _isPlaylistUri(Uri uri) {
+    return uri.path.toLowerCase().endsWith('.m3u8');
+  }
+
+  bool _sameRemoteResource(Uri a, Uri b) {
+    return a.scheme == b.scheme &&
+        a.host == b.host &&
+        a.port == b.port &&
+        a.path == b.path &&
+        a.query == b.query;
+  }
+
+  List<String> _localSegmentsForUri(Uri uri, {required Uri rootUri}) {
+    if (_sameRemoteResource(uri, rootUri)) {
+      return const ['index.m3u8'];
+    }
+
+    final segments = uri.pathSegments.where((segment) => segment.isNotEmpty).toList();
+    if (segments.isEmpty) {
+      return const ['index.m3u8'];
+    }
+    return segments;
+  }
+
+  String _localPathForSegments(
+    List<String> segments, {
+    required String basePath,
+  }) {
+    return '$basePath/${segments.join('/')}';
+  }
+
+  String _relativePathBetween(List<String> fromDirSegments, List<String> toFileSegments) {
+    var sharedPrefix = 0;
+    final maxShared = fromDirSegments.length < toFileSegments.length
+        ? fromDirSegments.length
+        : toFileSegments.length;
+    while (sharedPrefix < maxShared &&
+        fromDirSegments[sharedPrefix] == toFileSegments[sharedPrefix]) {
+      sharedPrefix += 1;
+    }
+
+    final relativeParts = <String>[
+      for (var i = sharedPrefix; i < fromDirSegments.length; i += 1) '..',
+      ...toFileSegments.sublist(sharedPrefix),
+    ];
+    return relativeParts.isEmpty ? '.' : relativeParts.join('/');
+  }
+
+  Future<bool> _hasPlayableHlsCache(String trackId) async {
+    final hlsDir = Directory(_getHlsDirPath(trackId));
+    if (!await hlsDir.exists()) {
+      return false;
+    }
+
+    var hasPlaylist = false;
+    var hasMediaFile = false;
+    await for (final entity in hlsDir.list(recursive: true, followLinks: false)) {
+      if (entity is! File) {
+        continue;
+      }
+      final lowerPath = entity.path.toLowerCase();
+      if (lowerPath.endsWith('.m3u8')) {
+        hasPlaylist = true;
+      } else {
+        hasMediaFile = true;
+      }
+    }
+
+    return hasPlaylist && hasMediaFile;
+  }
+
+  Future<({String path, List<String> segments})> _cacheHlsUri({
+    required Uri uri,
+    required Uri rootUri,
+    required String basePath,
+    required Set<String> visited,
+    void Function(int received, int total)? onProgress,
+  }) async {
+    final localSegments = _localSegmentsForUri(uri, rootUri: rootUri);
+    final localPath = _localPathForSegments(localSegments, basePath: basePath);
+
+    if (!_isPlaylistUri(uri)) {
+      final file = File(localPath);
+      await file.parent.create(recursive: true);
+      await _dio.download(
+        uri.toString(),
+        localPath,
+        cancelToken: null,
+        options: Options(responseType: ResponseType.bytes, followRedirects: true),
+      );
+      return (path: localPath, segments: localSegments);
+    }
+
+    final cacheKey = uri.toString();
+    if (visited.contains(cacheKey) && await File(localPath).exists()) {
+      return (path: localPath, segments: localSegments);
+    }
+    visited.add(cacheKey);
+
+    final playlistFile = File(localPath);
+    await playlistFile.parent.create(recursive: true);
+
+    final playlistResp = await _dio.get<String>(
+      uri.toString(),
+      options: Options(responseType: ResponseType.plain, followRedirects: true),
+    );
+
+    final rawPlaylist = playlistResp.data ?? '';
+    if (rawPlaylist.trim().isEmpty) {
+      throw StateError('Empty HLS playlist');
+    }
+
+    final rewritten = <String>[];
+    final lines = rawPlaylist.split('\n');
+    final playlistDirSegments = localSegments.isEmpty
+        ? const <String>[]
+        : localSegments.take(localSegments.length - 1).toList(growable: false);
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed.startsWith('#')) {
+        rewritten.add(line);
+        continue;
+      }
+
+      final childUri = uri.resolve(trimmed);
+      final childCache = await _cacheHlsUri(
+        uri: childUri,
+        rootUri: rootUri,
+        basePath: basePath,
+        visited: visited,
+        onProgress: onProgress,
+      );
+
+      rewritten.add(
+        _relativePathBetween(playlistDirSegments, childCache.segments),
+      );
+    }
+
+    await playlistFile.writeAsString('${rewritten.join('\n')}\n');
+    return (path: localPath, segments: localSegments);
   }
 
   Future<int> _dirSizeBytes(Directory dir) async {
@@ -99,6 +237,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
     required String trackId,
     required String remoteUrl,
     required TrackCacheService trackCache,
+    int? preferredHlsBitrate,
     void Function(int received, int total)? onProgress,
     CancelToken? cancelToken,
   }) async {
@@ -109,63 +248,23 @@ class AudioCacheServiceImpl implements AudioCacheService {
     await hlsDir.create(recursive: true);
 
     try {
-      final playlistResp = await _dio.get<String>(
-        remoteUrl,
-        cancelToken: cancelToken,
-        options: Options(responseType: ResponseType.plain, followRedirects: true),
+      final rootUri = Uri.parse(remoteUrl);
+      final cachedRoot = await _cacheHlsUri(
+        uri: rootUri,
+        rootUri: rootUri,
+        basePath: hlsDir.path,
+        visited: <String>{},
+        onProgress: onProgress,
       );
 
-      final rawPlaylist = playlistResp.data ?? '';
-      if (rawPlaylist.trim().isEmpty) {
-        throw StateError('Empty HLS playlist');
-      }
-
-      final sourceUri = Uri.parse(remoteUrl);
-      final lines = rawPlaylist.split('\n');
-      final rewritten = <String>[];
-      final segmentEntries = <({int lineIndex, String segmentRef})>[];
-
-      for (final line in lines) {
-        final trimmed = line.trim();
-        if (trimmed.isEmpty || trimmed.startsWith('#')) {
-          rewritten.add(line);
-          continue;
-        }
-        final rewrittenIndex = rewritten.length;
-        segmentEntries.add((lineIndex: rewrittenIndex, segmentRef: trimmed));
-        rewritten.add(trimmed);
-      }
-
-      final totalSegments = segmentEntries.length;
-      for (var i = 0; i < segmentEntries.length; i++) {
-        final segRef = segmentEntries[i].segmentRef;
-        final segUri = sourceUri.resolve(segRef);
-        final fileName = _sanitizeSegmentName(
-          segUri.pathSegments.isNotEmpty ? segUri.pathSegments.last : '',
-          i,
-        );
-
-        final localPath = '${hlsDir.path}/$fileName';
-        await _dio.download(
-          segUri.toString(),
-          localPath,
-          cancelToken: cancelToken,
-          options: Options(responseType: ResponseType.bytes, followRedirects: true),
-        );
-
-        rewritten[segmentEntries[i].lineIndex] = fileName;
-
-        onProgress?.call(i + 1, totalSegments == 0 ? 1 : totalSegments);
-      }
-
-      final playlistLocalPath = '${hlsDir.path}/index.m3u8';
-      final playlistFile = File(playlistLocalPath);
-      await playlistFile.writeAsString('${rewritten.join('\n')}\n');
+      final playlistLocalPath = cachedRoot.path;
 
       final track = await trackCache.getTrack(trackId);
       if (track != null) {
         track.localAudioPath = playlistLocalPath;
         track.audioSizeBytes = await _dirSizeBytes(hlsDir);
+        track.cachedHlsVariantUrl = remoteUrl;
+        track.cachedHlsBitrate = preferredHlsBitrate ?? track.cachedHlsBitrate;
         await trackCache.cacheTrack(track);
       }
 
@@ -183,7 +282,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
     if (kIsWeb) return null;
 
     final hlsPlaylist = File('${_getHlsDirPath(trackId)}/index.m3u8');
-    if (await hlsPlaylist.exists()) {
+    if (await hlsPlaylist.exists() && await _hasPlayableHlsCache(trackId)) {
       return hlsPlaylist.path;
     }
 
@@ -202,16 +301,52 @@ class AudioCacheServiceImpl implements AudioCacheService {
     required String trackId,
     required String remoteUrl,
     required TrackCacheService trackCache,
+    String? preferredHlsUrl,
+    int? preferredHlsBitrate,
     void Function(int received, int total)? onProgress,
     CancelToken? cancelToken,
   }) async {
     if (kIsWeb) return null;
     try {
+      final existingLocalPath = await getLocalAudioPath(trackId);
+      final existingTrack = await trackCache.getTrack(trackId);
+
+      if (existingLocalPath != null &&
+          existingTrack?.cachedHlsBitrate != null &&
+          preferredHlsBitrate != null &&
+          existingTrack!.cachedHlsBitrate! >= preferredHlsBitrate) {
+        return existingLocalPath;
+      }
+
+      if (existingLocalPath != null) {
+        if (preferredHlsBitrate != null &&
+            existingTrack?.cachedHlsBitrate != null &&
+            existingTrack!.cachedHlsBitrate! < preferredHlsBitrate) {
+          final hlsDir = Directory(_getHlsDirPath(trackId));
+          if (await hlsDir.exists()) {
+            await hlsDir.delete(recursive: true);
+          }
+        } else {
+          if (existingTrack != null && existingTrack.localAudioPath != existingLocalPath) {
+            existingTrack.localAudioPath = existingLocalPath;
+            await trackCache.cacheTrack(existingTrack);
+          }
+          return existingLocalPath;
+        }
+      }
+
+      final hlsDir = Directory(_getHlsDirPath(trackId));
+      if (await hlsDir.exists()) {
+        await hlsDir.delete(recursive: true);
+      }
+
       if (_isLikelyHlsPlaylistUrl(remoteUrl)) {
+        final hlsUrl = preferredHlsUrl ?? remoteUrl;
         return await _downloadAndCacheHls(
           trackId: trackId,
-          remoteUrl: remoteUrl,
+          remoteUrl: hlsUrl,
           trackCache: trackCache,
+          preferredHlsBitrate: preferredHlsBitrate,
           onProgress: onProgress,
           cancelToken: cancelToken,
         );

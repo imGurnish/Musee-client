@@ -324,6 +324,19 @@ class MuseeServerProvider implements MusicProvider {
         .toList();
 
     final album = json['album'] as Map<String, dynamic>?;
+    final hls = json['hls'] as Map<String, dynamic>?;
+    final hlsVariants = (hls?['variants'] as List?)
+        ?.whereType<Map>()
+        .map((variant) {
+          final m = variant.cast<String, dynamic>();
+          final bitrate = (m['bitrate'] as num?)?.toInt() ?? 0;
+          final url = m['url']?.toString() ?? '';
+          if (bitrate <= 0 || url.isEmpty) return null;
+          return ProviderAudioVariant(bitrate: bitrate, url: url);
+        })
+        .whereType<ProviderAudioVariant>()
+        .toList(growable: false) ??
+        const [];
 
     return ProviderTrack(
       id: trackId,
@@ -336,6 +349,8 @@ class MuseeServerProvider implements MusicProvider {
       artists: artists,
       albumId: album?['album_id']?.toString(),
       albumTitle: album?['title']?.toString(),
+      hlsMasterUrl: hls?['master']?.toString(),
+      hlsVariants: hlsVariants,
     );
   }
 
