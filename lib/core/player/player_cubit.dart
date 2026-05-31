@@ -9,16 +9,11 @@ import 'package:musee/features/player/domain/repository/player_repository.dart';
 import 'package:musee/features/listening_history/data/models/listening_history_models.dart';
 import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
-import 'package:musee/core/common/services/connectivity_service.dart';
-import 'package:musee/core/cache/services/track_cache_service.dart';
-import 'package:musee/core/cache/services/audio_cache_service.dart';
-import 'package:musee/core/cache/models/cached_track.dart';
-import 'package:musee/core/cache/cache_config.dart';
+
 import 'package:musee/core/providers/music_provider_registry.dart';
-import 'package:musee/core/providers/provider_models.dart';
-import 'package:musee/core/cache/services/image_cache_service.dart';
-import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
-import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
+
+
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'package:musee/core/player/media_controls_service.dart';
@@ -35,13 +30,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   static const int _queueMaxSize = 60;
 
   late AudioPlayer _player;
-  final PlayerRepository? _repo; // optional to allow previous initialization
-  final TrackCacheService? _trackCache;
-  final AudioCacheService? _audioCache;
-  final ImageCacheService? _imageCache;
+  final PlayerRepository? _repo;
   final MusicProviderRegistry? _musicProviderRegistry;
-  final ConnectivityService? _connectivityService;
-  final SettingsCubit? _settingsCubit;
   final ListeningHistoryRepository? _listeningHistoryRepository;
   final SupabaseClient? _supabaseClient;
   StreamSubscription<Duration>? _positionSub;
@@ -52,11 +42,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   Timer? _playbackReassertTimer;
   Timer? _switchFailSafeTimer;
   Timer? _unexpectedPauseTimer;
-  void Function()? onPlayerRecreated;
   DateTime? _currentTrackStartedAt;
   String? _currentTrackIdForLogging;
   String? _lastPublishedTrackKey;
-  final Set<String> _audioCacheInFlight = <String>{};
   bool _isTrackSwitchInProgress = false;
   bool _isAdvancingNext = false;
   bool _userPaused = false;
@@ -69,133 +57,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
 
-  ConnectivityStatus get _connectivityStatus =>
-      _connectivityService?.currentStatus ?? ConnectivityStatus.unknown;
-
-  DownloadQuality get _downloadQuality =>
-      _settingsCubit?.state.downloadQuality ?? DownloadQuality.high;
-
-  ({String url, int bitrate})? _selectCacheHlsVariant(
-    ProviderTrack providerTrack,
-    CachedTrack? existing,
-  ) {
-    if (providerTrack.hlsVariants.isEmpty) return null;
-
-    final variants = [...providerTrack.hlsVariants]
-      ..sort((a, b) => a.bitrate.compareTo(b.bitrate));
-
-    final qualityIndex = switch (_downloadQuality) {
-      DownloadQuality.low => 0,
-      DownloadQuality.medium => (variants.length - 1) ~/ 2,
-      DownloadQuality.high => variants.length - 1,
-    };
-    final target = variants[qualityIndex.clamp(0, variants.length - 1)];
-
-    final cachedBitrate = existing?.cachedHlsBitrate;
-
-    if (_connectivityStatus == ConnectivityStatus.offline &&
-        cachedBitrate != null &&
-        cachedBitrate >= target.bitrate) {
-      final cachedUrl = existing?.cachedHlsVariantUrl;
-      if (cachedUrl != null && cachedUrl.isNotEmpty) {
-        return (url: cachedUrl, bitrate: cachedBitrate);
-      }
-    }
-
-    return (url: target.url, bitrate: target.bitrate);
-  }
-
-  bool _isRemotePlayableUrl(String url) {
-    return url.startsWith('http://') || url.startsWith('https://');
-  }
-
-  Future<void> _maybeCachePlayableAudio(PlayerTrack track) async {
-    final trackId = track.trackId;
-    if (_audioCache == null || _trackCache == null || kIsWeb || trackId == null) {
-      return;
-    }
-
-    if (!_isRemotePlayableUrl(track.url)) {
-      return;
-    }
-
-    if (_audioCacheInFlight.contains(trackId)) {
-      return;
-    }
-
-    _audioCacheInFlight.add(trackId);
-    try {
-      final cachedTrack = await _trackCache.getTrack(trackId);
-      final cachedPath = await _audioCache.getLocalAudioPath(trackId);
-
-      if (_connectivityStatus == ConnectivityStatus.offline) {
-        if (cachedPath != null && cachedPath.isNotEmpty) {
-          if (kDebugMode) {
-            debugPrint('[PlayerCubit] Offline, using cached audio for $trackId: $cachedPath');
-          }
-        }
-        return;
-      }
-
-      final providerTrack = await _musicProviderRegistry?.getTrack(trackId);
-      final selectedVariant = providerTrack == null
-          ? null
-          : _selectCacheHlsVariant(providerTrack, cachedTrack);
-
-      if (selectedVariant != null) {
-        final cachedBitrate = cachedTrack?.cachedHlsBitrate;
-        if (cachedBitrate != null &&
-            cachedBitrate >= selectedVariant.bitrate &&
-            cachedPath != null &&
-            cachedPath.isNotEmpty) {
-          if (kDebugMode) {
-            debugPrint(
-              '[PlayerCubit] HLS cache already at $cachedBitrate kbps for $trackId',
-            );
-          }
-          return;
-        }
-
-        final downloadedPath = await _audioCache.downloadAndCache(
-          trackId: trackId,
-          remoteUrl: track.url,
-          trackCache: _trackCache,
-          preferredHlsUrl: selectedVariant.url,
-          preferredHlsBitrate: selectedVariant.bitrate,
-        );
-
-        if (kDebugMode) {
-          debugPrint(
-            '[PlayerCubit] HLS cache primed for $trackId at ${selectedVariant.bitrate} kbps: $downloadedPath',
-          );
-        }
-        return;
-      }
-
-      if (cachedPath != null && cachedPath.isNotEmpty) {
-        if (kDebugMode) {
-          debugPrint('[PlayerCubit] Audio already cached for $trackId: $cachedPath');
-        }
-        return;
-      }
-
-      final downloadedPath = await _audioCache.downloadAndCache(
-        trackId: trackId,
-        remoteUrl: track.url,
-        trackCache: _trackCache,
-      );
-
-      if (kDebugMode) {
-        debugPrint('[PlayerCubit] Audio cache primed for $trackId: $downloadedPath');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[PlayerCubit] Failed to cache audio for $trackId: $e');
-      }
-    } finally {
-      _audioCacheInFlight.remove(trackId);
-    }
-  }
 
   String? _currentSourceId() {
     final track = state.track;
@@ -336,22 +197,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   PlayerCubit({
     PlayerRepository? repository,
-    TrackCacheService? trackCache,
-    AudioCacheService? audioCache,
-    ImageCacheService? imageCache,
     MusicProviderRegistry? musicProviderRegistry,
-    ConnectivityService? connectivityService,
-    SettingsCubit? settingsCubit,
-     ListeningHistoryRepository? listeningHistoryRepository,
-     SupabaseClient? supabaseClient,
+    ListeningHistoryRepository? listeningHistoryRepository,
+    SupabaseClient? supabaseClient,
     EqualizerController? equalizerController,
   }) : _repo = repository,
-       _trackCache = trackCache,
-       _audioCache = audioCache,
-       _imageCache = imageCache,
        _musicProviderRegistry = musicProviderRegistry,
-       _connectivityService = connectivityService,
-       _settingsCubit = settingsCubit,
        _listeningHistoryRepository = listeningHistoryRepository,
        _supabaseClient = supabaseClient,
        super(const PlayerViewState()) {
@@ -433,7 +284,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       },
       onError: (e) {
         // Suppress platform channel threading errors from just_audio_windows
-        // These are non-fatal warnings from the plugin
         if (kDebugMode && !e.toString().contains('platform thread')) {
           debugPrint('[PlayerCubit] Position stream error: $e');
         }
@@ -444,7 +294,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         emit(state.copyWith(duration: dur ?? Duration.zero));
       },
       onError: (e) {
-        // Suppress platform channel threading errors from just_audio_windows
         if (kDebugMode && !e.toString().contains('platform thread')) {
           debugPrint('[PlayerCubit] Duration stream error: $e');
         }
@@ -474,7 +323,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         }
       },
       onError: (e) {
-        // Suppress platform channel threading errors from just_audio_windows
         if (kDebugMode && !e.toString().contains('platform thread')) {
           debugPrint('[PlayerCubit] Player state stream error: $e');
         }
@@ -570,170 +418,25 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
   }
 
-  // Resolve playable URL with cache-first strategy
-  Future<String?> _fetchPlayableUrl(String trackId, {bool forceRefresh = false}) async {
-    // 1. Check local audio cache first (for offline playback)
-    if (_audioCache != null && !kIsWeb) {
-      final localPath = await _audioCache.getLocalAudioPath(trackId);
-      if (localPath != null && await platform_io.fileExists(localPath)) {
-        if (kDebugMode) {
-          debugPrint('[PlayerCubit] Playing from local cache: $localPath');
-        }
-        return localPath;
-      }
-    }
-
-    // 2. Check if we have a cached streaming URL (avoids API call)
-    final cachedTrack = await _trackCache?.getTrack(trackId);
-    if (!forceRefresh &&
-        cachedTrack?.streamingUrl != null &&
-        cachedTrack!.streamingUrl!.trim().isNotEmpty) {
-      
-      final cacheAge = DateTime.now().difference(cachedTrack.cachedAt);
-      // CDN streaming URLs from remote APIs typically expire within 30-60 minutes.
-      // We enforce a strict, safe 20-minute maximum age for cached URLs.
-      if (cacheAge < CacheConfig.streamingUrlMaxAge) {
-        if (kDebugMode) {
-          debugPrint(
-            '[PlayerCubit] Using valid cached streaming URL (age: ${cacheAge.inMinutes}m) for track: $trackId',
-          );
-        }
-        return cachedTrack.streamingUrl;
-      } else {
-        if (kDebugMode) {
-          debugPrint(
-            '[PlayerCubit] Cached streaming URL expired (age: ${cacheAge.inMinutes}m). Requesting fresh URL for: $trackId',
-          );
-        }
-      }
-    }
-
-    // 3. Fetch from MusicProviderRegistry (Backend or External)
+  /// Fetch the playable URL directly from the MusicProviderRegistry.
+  Future<String?> _fetchPlayableUrl(String trackId) async {
     if (_musicProviderRegistry != null) {
-      for (var attempt = 1; attempt <= 3; attempt += 1) {
-        try {
-          final url = await _musicProviderRegistry
-            .getStreamUrl(trackId)
-            .timeout(const Duration(seconds: 8));
+      try {
+        final url = await _musicProviderRegistry
+          .getStreamUrl(trackId)
+          .timeout(const Duration(seconds: 15));
 
-          if (url != null && url.trim().isNotEmpty) {
-            // 4. Cache metadata and streaming URL (and download image)
-            // Run in background so playback start is not blocked.
-            unawaited(_cacheTrackMetadata(trackId, url));
-
-            return url;
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            debugPrint('[PlayerCubit] Error fetching stream URL (attempt $attempt): $e');
-          }
-
-          if (attempt < 3) {
-            await Future<void>.delayed(Duration(milliseconds: 250 * attempt));
-            continue;
-          }
+        if (url != null && url.trim().isNotEmpty) {
+          return url;
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] Error fetching stream URL: $e');
         }
       }
     }
 
-    // Fallback if no provider registry (shouldn't happen in new setup)
-    // or if provider failed and returning null
     return null;
-  }
-
-  /// Cache track metadata from MusicProvider
-  Future<void> _cacheTrackMetadata(
-    String trackId,
-    String streamingUrl, {
-    PlayerTrack? fallback,
-  }) async {
-    if (_trackCache == null || _musicProviderRegistry == null) return;
-
-    try {
-      var track = await _musicProviderRegistry.getTrack(trackId);
-
-      // If remote fetch fails, try to use fallback data
-      if (track == null && fallback != null) {
-        if (kDebugMode) {
-          debugPrint(
-            '[PlayerCubit] getTrack failed, using fallback for $trackId',
-          );
-        }
-        // Fallback available, will use it below
-      } else if (track == null) {
-        if (kDebugMode) {
-          debugPrint(
-            '[PlayerCubit] getTrack returned null for $trackId and no fallback',
-          );
-        }
-        return;
-      }
-
-      if (kDebugMode && track != null) {
-        debugPrint('[PlayerCubit] caching track: ${track.title}');
-      }
-
-      // Download album artwork (if we have a URL from track or fallback)
-      String? imageUrl = track?.imageUrl ?? fallback?.imageUrl;
-      String? localImagePath;
-      if (_imageCache != null && imageUrl != null) {
-        try {
-          localImagePath = await _imageCache.cacheImage(imageUrl);
-        } catch (_) {}
-      }
-
-      final existing = await _trackCache.getTrack(trackId);
-      final playCount = existing?.playCount ?? 0;
-
-      final cached = CachedTrack()
-        ..trackId = trackId
-        ..title = track?.title ?? fallback?.title ?? 'Unknown Title'
-        ..albumId = track?.albumId
-        ..albumTitle = track?.albumTitle ?? fallback?.album
-        ..albumCoverUrl = imageUrl
-        ..artistName =
-            track?.artists.map((a) => a.name).join(', ') ??
-            fallback?.artist ??
-            'Unknown Artist'
-        ..durationSeconds = track?.durationSeconds ?? 0
-        ..isExplicit = track?.isExplicit ?? false
-        ..streamingUrl = streamingUrl
-        ..cachedAt = DateTime.now()
-        ..lastPlayedAt = DateTime.now()
-        ..sourceProvider = track?.source.name ?? 'musee'
-        ..playCount = playCount
-        ..localImagePath = localImagePath
-        ..hlsMasterUrl = track?.hlsMasterUrl
-        ..hlsVariantUrls = track?.hlsVariants.isEmpty == true
-          ? null
-          : {
-            for (final variant in track!.hlsVariants)
-              variant.bitrate.toString(): variant.url,
-            }
-        ..cachedHlsBitrate = existing?.cachedHlsBitrate
-        ..cachedHlsVariantUrl = existing?.cachedHlsVariantUrl;
-
-      if (existing != null) {
-        // Preserve audio cache info
-        cached.localAudioPath = existing.localAudioPath;
-        cached.audioSizeBytes = existing.audioSizeBytes;
-        cached.hlsMasterUrl ??= existing.hlsMasterUrl;
-        cached.hlsVariantUrls ??= existing.hlsVariantUrls;
-        cached.cachedHlsBitrate ??= existing.cachedHlsBitrate;
-        cached.cachedHlsVariantUrl ??= existing.cachedHlsVariantUrl;
-      }
-
-      await _trackCache.cacheTrack(cached);
-      if (kDebugMode) {
-        print(
-          '[PlayerCubit] Cached track metadata: $trackId (${cached.sourceProvider})',
-        );
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[PlayerCubit] Failed to cache track metadata: $e');
-      }
-    }
   }
 
   Future<void> playTrack(PlayerTrack track) async {
@@ -765,14 +468,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       ),
     );
 
-    // Cache metadata if we have a track ID (e.g. from Search)
-    if (track.trackId != null && track.url.isNotEmpty && _trackCache != null) {
-      // Run in background to not block immediate playback
-      unawaited(
-        _cacheTrackMetadata(track.trackId!, track.url, fallback: track),
-      );
-    }
-
     try {
       final headers = track.headers ?? const <String, String>{};
 
@@ -786,7 +481,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       await _stopPlaybackForTrackSwitch();
       await _ensurePlatformAudio();
 
-      await _loadAudioSourceWithRetry(
+      await _loadAudioSource(
         AudioSource.uri(
           toUri(track.url),
           headers: headers.isEmpty ? null : headers,
@@ -847,122 +542,13 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       }
 
       _markTrackSessionStart(track.trackId);
-      unawaited(_maybeCachePlayableAudio(track));
       unawaited(_refreshQueueIfNeeded());
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('[PlayerCubit] Primary playTrack start failed: $e');
+        debugPrint('[PlayerCubit] playTrack failed: $e');
       }
-      try {
-        if (track.trackId == null) {
-          throw StateError('Cannot refresh URL for ad-hoc track');
-        }
-
-        final refreshedUrl = await _fetchPlayableUrl(
-          track.trackId!,
-          forceRefresh: true,
-        );
-
-        if (refreshedUrl == null || refreshedUrl.trim().isEmpty) {
-          throw StateError('Refreshed URL unavailable');
-        }
-
-        final refreshedTrack = track.copyWith(url: refreshedUrl);
-        final headers = refreshedTrack.headers ?? const <String, String>{};
-  unawaited(_maybeCachePlayableAudio(refreshedTrack));
-
-        Uri toUri(String inputUrl) {
-          if (inputUrl.startsWith('http') || inputUrl.startsWith('https')) {
-            return Uri.parse(inputUrl);
-          }
-          return Uri.file(inputUrl);
-        }
-
-        if (switchToken != _trackSwitchToken) return;
-
-        emit(
-          state.copyWith(
-            track: refreshedTrack,
-            buffering: true,
-            resolvingUrl: false,
-            isTransitioning: true,
-            playing: false,
-            clearErrorMessage: true,
-          ),
-        );
-
-        await _stopPlaybackForTrackSwitch();
-        await _ensurePlatformAudio();
-
-        await _loadAudioSourceWithRetry(
-          AudioSource.uri(
-            toUri(refreshedTrack.url),
-            headers: headers.isEmpty ? null : headers,
-          ),
-          switchToken: switchToken,
-          initialPosition: const Duration(milliseconds: 50),
-        );
-
-        if (_userPaused) {
-          await _player.pause();
-          if (switchToken == _trackSwitchToken) {
-            emit(
-              state.copyWith(
-                track: refreshedTrack,
-                buffering: false,
-                resolvingUrl: false,
-                isTransitioning: false,
-                playing: false,
-                clearErrorMessage: true,
-              ),
-            );
-          }
-          return;
-        }
-
-        final started = await _ensurePlaybackStarted();
-        if (!started) {
-          if (_userPaused) {
-            if (switchToken == _trackSwitchToken) {
-              emit(
-                state.copyWith(
-                  track: refreshedTrack,
-                  buffering: false,
-                  resolvingUrl: false,
-                  isTransitioning: false,
-                  playing: false,
-                  clearErrorMessage: true,
-                ),
-              );
-            }
-            return;
-          }
-          throw StateError('Playback did not start after URL refresh');
-        }
-
-        if (switchToken == _trackSwitchToken) {
-          emit(
-            state.copyWith(
-              track: refreshedTrack,
-              buffering: false,
-              resolvingUrl: false,
-              isTransitioning: false,
-              playing: true,
-              clearErrorMessage: true,
-            ),
-          );
-          _schedulePlaybackReassertion(switchToken);
-        }
-
-        _markTrackSessionStart(refreshedTrack.trackId);
-        unawaited(_refreshQueueIfNeeded());
-      } catch (retryError) {
-        if (kDebugMode) {
-          debugPrint('[PlayerCubit] Retry playTrack start failed: $retryError');
-        }
-        if (switchToken == _trackSwitchToken) {
-          _emitPlaybackError('Unable to start this track. Please try again.');
-        }
+      if (switchToken == _trackSwitchToken) {
+        _emitPlaybackError('Unable to start this track. Please try again.');
       }
     } finally {
       if (switchToken == _trackSwitchToken) {
@@ -974,7 +560,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   /// Play a track by ID, resolving the URL via MusicProviderRegistry.
-  /// This ensures metadata caching and proper offline support.
   Future<void> playTrackById({
     required String trackId,
     String? title,
@@ -991,15 +576,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       _logCurrentTrackPlay(wasSkipped: true);
     }
 
-    // Try to get a cached local image for instant artwork display.
-    String? localImagePath;
-    if (_trackCache != null) {
-      try {
-        final cached = await _trackCache.getTrack(trackId);
-        localImagePath = cached?.localImagePath;
-      } catch (_) {}
-    }
-
     final queuedIndex = state.queue.indexWhere((q) => q.trackId == trackId);
     final queuedItem = queuedIndex >= 0 ? state.queue[queuedIndex] : null;
 
@@ -1012,7 +588,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       artist: artist ?? 'Unknown Artist',
       album: album,
       imageUrl: imageUrl,
-      localImagePath: localImagePath,
       durationSeconds: queuedItem?.durationSeconds,
       artistId: artistId,
       albumId: albumId,
@@ -1054,7 +629,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
               if (playlistId != null && playlistId.isNotEmpty) 'playlist_id': playlistId,
             },
           );
-          final items = _mergeQueueArtwork(await _mapToQueueItems(expanded));
+          final items = _mergeQueueArtwork(_mapToQueueItems(expanded));
           int newIndex = items.indexWhere((q) => q.trackId == trackId);
           if (newIndex < 0 && items.isNotEmpty) {
             final fallback = QueueItem(
@@ -1072,9 +647,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
             newIndex = 0;
           }
           // Patch the live track with IDs resolved from the expanded API data.
-          // This handles the case where artistId/albumId/playlistId were not
-          // available when the provisional track was first emitted (e.g. played
-          // from search or mini-player without full context).
           final matchedItem = newIndex >= 0 ? items[newIndex] : null;
           final patchedTrack = state.track?.trackId == trackId
               ? state.track?.copyWith(
@@ -1117,9 +689,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       return;
     }
 
-    // Metadata will be cached by _fetchPlayableUrl (which calls _cacheTrackMetadata internally)
-    // But we also need to pass initial display metadata to PlayerTrack
-
     final track = PlayerTrack(
       trackId: trackId,
       url: url,
@@ -1127,7 +696,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       artist: artist ?? 'Unknown Artist',
       album: album,
       imageUrl: imageUrl,
-      localImagePath: localImagePath,
       durationSeconds: queuedItem?.durationSeconds,
       artistId: artistId,
       albumId: albumId,
@@ -1138,21 +706,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   // Queue APIs
-  Future<List<QueueItem>> _mapToQueueItems(List<dynamic> expanded) async {
-    if (_trackCache == null) {
-      return expanded.map((m) => QueueItem.fromExpandedJson(m)).toList();
-    }
-    final futures = expanded.map((m) async {
-      var item = QueueItem.fromExpandedJson(m);
-      try {
-        final cached = await _trackCache.getTrack(item.trackId);
-        if (cached?.localImagePath != null) {
-          item = item.copyWith(localImagePath: cached!.localImagePath);
-        }
-      } catch (_) {}
-      return item;
-    });
-    return Future.wait(futures);
+  List<QueueItem> _mapToQueueItems(List<dynamic> expanded) {
+    return expanded.map((m) => QueueItem.fromExpandedJson(m)).toList();
   }
 
   Future<void> loadQueue() async {
@@ -1160,7 +715,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (repo == null) return;
     try {
       final expanded = await repo.getQueueExpanded();
-      final items = await _mapToQueueItems(expanded);
+      final items = _mapToQueueItems(expanded);
       emit(
         state.copyWith(
           queue: items,
@@ -1201,7 +756,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
               if (localTrack?.playlistId != null) 'playlist_id': localTrack!.playlistId,
             },
           );
-          final items = _mergeQueueArtwork(await _mapToQueueItems(expanded));
+          final items = _mergeQueueArtwork(_mapToQueueItems(expanded));
           final currentTrackId = state.track?.trackId;
           final syncedIndex = currentTrackId == null
               ? -1
@@ -1252,18 +807,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     final item = state.queue[removedIndex];
     final newList = [...state.queue]..removeAt(removedIndex);
 
-    // Calculate new index correctly:
-    // - If removed item is before current: shift index back by 1
-    // - If removed item IS current: keep same index (next item slides in)
-    // - If removed item is after current: no change
     int newIndex = state.currentIndex;
     if (removedIndex < state.currentIndex) {
       newIndex = state.currentIndex - 1;
     } else if (removedIndex == state.currentIndex) {
-      // Current track was removed; clamp to valid range
       newIndex = newIndex.clamp(-1, newList.length - 1);
     }
-    // If newList is empty, reset to -1
     if (newList.isEmpty) newIndex = -1;
 
     emit(
@@ -1282,21 +831,17 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   Future<void> reorderQueue(int from, int to) async {
     final list = [...state.queue];
     if (from < 0 || from >= list.length || to < 0 || to >= list.length) return;
-    if (from == to) return; // No-op
+    if (from == to) return;
 
     final item = list.removeAt(from);
     list.insert(to, item);
 
-    // Adjust current index based on the move
     int newIndex = state.currentIndex;
     if (state.currentIndex == from) {
-      // Moving the currently playing track
       newIndex = to;
     } else if (from < state.currentIndex && to >= state.currentIndex) {
-      // Moved something from before current to at/after current
       newIndex = state.currentIndex - 1;
     } else if (from > state.currentIndex && to <= state.currentIndex) {
-      // Moved something from after current to at/before current
       newIndex = state.currentIndex + 1;
     }
 
@@ -1403,8 +948,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   /// Cancel any in-progress track switch so a new one can start immediately.
-  /// The stale async callbacks will see a mismatched _trackSwitchToken and
-  /// no-op, so this is safe.
   void _cancelInProgressSwitch() {
     if (!_isBusySwitching) return;
     ++_trackSwitchToken;
@@ -1415,9 +958,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> next({bool userInitiated = true}) async {
-    // userInitiated true when tapped button; false when auto-advance
     if (_isBusySwitching) {
-      if (!userInitiated) return; // auto-advance respects the lock
+      if (!userInitiated) return;
       _cancelInProgressSwitch();
     }
     await _playNextInternal(userInitiated: userInitiated);
@@ -1644,7 +1186,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       await _stopPlaybackForTrackSwitch();
       await _ensurePlatformAudio();
 
-      await _loadAudioSourceWithRetry(
+      await _loadAudioSource(
         AudioSource.uri(uri),
         switchToken: switchToken,
         initialPosition: const Duration(milliseconds: 50),
@@ -1705,106 +1247,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       _markTrackSessionStart(item.trackId);
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('[PlayerCubit] Primary play failed for ${item.trackId}: $e');
+        debugPrint('[PlayerCubit] Play failed for ${item.trackId}: $e');
       }
-
-      try {
-        final refreshedUrl = await _fetchPlayableUrl(item.trackId, forceRefresh: true);
-        if (refreshedUrl == null || refreshedUrl.trim().isEmpty) {
-          _emitPlaybackError('Unable to refresh stream URL for this track.');
-          return;
-        }
-
-        final refreshedTrack = track.copyWith(url: refreshedUrl);
-        if (switchToken != _trackSwitchToken) {
-          _isTrackSwitchInProgress = false;
-          return;
-        }
-        emit(
-          state.copyWith(
-            track: refreshedTrack,
-            buffering: true,
-            resolvingUrl: false,
-            isTransitioning: true,
-            currentIndex: index,
-            playing: false,
-            clearErrorMessage: true,
-          ),
-        );
-
-        final refreshedUri = refreshedUrl.startsWith('http') || refreshedUrl.startsWith('https')
-            ? Uri.parse(refreshedUrl)
-            : Uri.file(refreshedUrl);
-
-        await _stopPlaybackForTrackSwitch();
-        await _ensurePlatformAudio();
-
-        await _loadAudioSourceWithRetry(
-          AudioSource.uri(refreshedUri),
-          switchToken: switchToken,
-          initialPosition: const Duration(milliseconds: 50),
-        );
-
-        if (_userPaused) {
-          await _player.pause();
-          if (switchToken == _trackSwitchToken) {
-            emit(
-              state.copyWith(
-                track: refreshedTrack,
-                buffering: false,
-                resolvingUrl: false,
-                isTransitioning: false,
-                playing: false,
-                currentIndex: index,
-                clearErrorMessage: true,
-              ),
-            );
-          }
-          return;
-        }
-
-        final started = await _ensurePlaybackStarted();
-        if (!started) {
-          if (_userPaused) {
-            if (switchToken == _trackSwitchToken) {
-              emit(
-                state.copyWith(
-                  track: refreshedTrack,
-                  buffering: false,
-                  resolvingUrl: false,
-                  isTransitioning: false,
-                  playing: false,
-                  currentIndex: index,
-                  clearErrorMessage: true,
-                ),
-              );
-            }
-            return;
-          }
-          throw StateError('Playback did not start after retry source switch');
-        }
-        if (switchToken == _trackSwitchToken) {
-          emit(
-            state.copyWith(
-              track: refreshedTrack,
-              buffering: false,
-              resolvingUrl: false,
-              isTransitioning: false,
-              playing: true,
-              currentIndex: index,
-              clearErrorMessage: true,
-            ),
-          );
-          _schedulePlaybackReassertion(switchToken);
-        }
-        _markTrackSessionStart(item.trackId);
-      } catch (retryError) {
-        if (kDebugMode) {
-          debugPrint('[PlayerCubit] Retry play failed for ${item.trackId}: $retryError');
-        }
-        if (switchToken == _trackSwitchToken) {
-          _emitPlaybackError('Unable to play this track. Please try again.');
-        }
+      if (switchToken == _trackSwitchToken) {
+        _emitPlaybackError('Unable to play this track. Please try again.');
       }
     } finally {
       if (switchToken == _trackSwitchToken) {
@@ -1816,7 +1262,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<bool> _ensurePlaybackStarted({
-    int maxAttempts = 5,
+    int maxAttempts = 3,
     Duration perAttemptTimeout = const Duration(milliseconds: 900),
   }) async {
     for (var attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -1849,104 +1295,31 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       }
     }
 
-    if (!_player.playing) {
-      if (kDebugMode) {
-        debugPrint('[PlayerCubit] Playback reassertion failed to start. Recreating player to auto-heal...');
-      }
-      await _recreateAudioPlayer();
-    }
-
     return _player.playing;
   }
 
-  Future<void> _loadAudioSourceWithRetry(
+  Future<void> _loadAudioSource(
     AudioSource source, {
     required int switchToken,
     Duration initialPosition = const Duration(milliseconds: 50),
   }) async {
-    int attempts = 0;
-    const int maxAttempts = 3;
-    while (attempts < maxAttempts) {
-      if (switchToken != _trackSwitchToken) {
-        if (kDebugMode) {
-          debugPrint('[PlayerCubit] _loadAudioSourceWithRetry aborted before load attempt ${attempts + 1} due to stale token: $switchToken');
-        }
-        return;
-      }
-      try {
-        attempts++;
-        final loadFuture = _audioOperationHandler.executeAudioOperation(
-          () => _player.setAudioSource(
-            source,
-            initialPosition: initialPosition,
-          ).timeout(const Duration(seconds: 8)),
-        );
-        _activeLoadFuture = loadFuture;
-        await loadFuture;
-        return;
-      } catch (e) {
-        if (switchToken != _trackSwitchToken) {
-          if (kDebugMode) {
-            debugPrint('[PlayerCubit] _loadAudioSourceWithRetry aborted after failure due to stale token: $switchToken');
-          }
-          return;
-        }
-        if (attempts >= maxAttempts) {
-          if (kDebugMode) {
-            debugPrint('[PlayerCubit] All setAudioSource attempts failed. Recreating player for recovery...');
-          }
-          await _recreateAudioPlayer();
-          rethrow;
-        }
-        final delayMs = attempts * 1000;
-        if (kDebugMode) {
-          debugPrint('[PlayerCubit] setAudioSource failed (attempt $attempts/$maxAttempts): $e. Retrying in ${delayMs}ms...');
-        }
-        await Future.delayed(Duration(milliseconds: delayMs));
-      } finally {
-        _activeLoadFuture = null;
-      }
-    }
-  }
-
-  Future<void> _recreateAudioPlayer() async {
-    if (kDebugMode) {
-      debugPrint('[PlayerCubit] Critical player error/deadlock suspected. Recreating AudioPlayer...');
-    }
-    _playbackReassertTimer?.cancel();
-    _switchFailSafeTimer?.cancel();
-    _unexpectedPauseTimer?.cancel();
-
-    await _positionSub?.cancel();
-    await _durationSub?.cancel();
-    await _playerStateSub?.cancel();
-
-    final activeLoad = _activeLoadFuture;
-    if (activeLoad != null) {
-      if (kDebugMode) {
-        debugPrint('[PlayerCubit] Waiting for active setAudioSource to complete before recreating player...');
-      }
-      try {
-        await activeLoad.timeout(const Duration(seconds: 1));
-      } catch (_) {}
-    }
+    if (switchToken != _trackSwitchToken) return;
 
     try {
-      // Use a timeout to prevent the dispose call from hanging Dart thread indefinitely if the native player is deadlocked
-      await _player.dispose().timeout(const Duration(milliseconds: 500), onTimeout: () {
-        if (kDebugMode) {
-          debugPrint('[PlayerCubit] AudioPlayer.dispose() timed out (ignoring to prevent thread hang).');
-        }
-      });
+      final loadFuture = _audioOperationHandler.executeAudioOperation(
+        () => _player.setAudioSource(
+          source,
+          initialPosition: initialPosition,
+        ).timeout(const Duration(seconds: 15)),
+      );
+      _activeLoadFuture = loadFuture;
+      await loadFuture;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[PlayerCubit] Failed to dispose stuck player (safe to ignore): $e');
-      }
+      if (switchToken != _trackSwitchToken) return;
+      rethrow;
+    } finally {
+      _activeLoadFuture = null;
     }
-
-    _platformAudioInitialized = false;
-    await _ensurePlatformAudio();
-    onPlayerRecreated?.call();
   }
 
   void _schedulePlaybackReassertion(int switchToken) {
@@ -1978,7 +1351,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _snapshotLogTimer?.cancel();
     _currentTrackIdForLogging = trackId;
     _currentTrackStartedAt = DateTime.now();
-    unawaited(_trackCache?.updateLastPlayed(trackId));
 
     _snapshotLogTimer = Timer(const Duration(seconds: 12), () {
       if (state.track?.trackId == trackId && _player.playing) {
@@ -2132,7 +1504,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
             if (state.track!.imageUrl != null) 'cover_url': state.track!.imageUrl,
           },
         );
-        final items = await _mapToQueueItems(expanded);
+        final items = _mapToQueueItems(expanded);
         final seededIndex = items.indexWhere((q) => q.trackId == state.track!.trackId);
         emit(state.copyWith(queue: items, currentIndex: seededIndex >= 0 ? seededIndex : 0));
       } catch (e) {
@@ -2147,7 +1519,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     final refreshedRemaining = state.queue.length - (state.currentIndex + 1);
     final refreshedNeeded = _queuePrefetchTarget - refreshedRemaining;
 
-    // 2. Recommendation-based smart fill to always keep next 10 ready
+    // 2. Recommendation-based smart fill to always keep next tracks ready
     if (refreshedNeeded > 0 && state.queue.isNotEmpty && _repo != null) {
       final existingIds = state.queue.map((q) => q.trackId).toSet();
       int remainingNeeded = refreshedNeeded;
@@ -2179,48 +1551,44 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
       // 3. Fallback smart fill from provider search if recommendations are insufficient
       if (remainingNeeded > 0 && _musicProviderRegistry != null) {
-      try {
-        final seed = state.queue.last;
-        // Use artist as seed for recommendations
-        final seedQuery = seed.artist.split(',').first.trim();
-        if (seedQuery.isNotEmpty && seedQuery != 'Unknown Artist') {
-          // Search for similar tracks
-          final results = await _musicProviderRegistry.search(
-            seedQuery,
-            limitPerProvider: remainingNeeded + 3,
-          );
-
-          // Filter duplicates (already in queue)
-          final newTracks = results.tracks
-              .where((t) => !existingIds.contains(t.prefixedId))
-              .take(remainingNeeded)
-              .toList();
-
-          if (newTracks.isNotEmpty) {
-            final trackIds = <String>[];
-            final metadataList = <Map<String, dynamic>>[];
-
-            for (final track in newTracks) {
-              trackIds.add(track.prefixedId);
-              metadataList.add({
-                'title': track.title,
-                'artist': track.artistName,
-                'cover_url': track.imageUrl,
-                'duration': track.durationSeconds,
-                'source': track.source.name,
-              });
-            }
-
-            // Bulk add with metadata
-            await _repo.addToQueue(
-              trackIds: trackIds,
-              metadataList: metadataList,
+        try {
+          final seed = state.queue.last;
+          final seedQuery = seed.artist.split(',').first.trim();
+          if (seedQuery.isNotEmpty && seedQuery != 'Unknown Artist') {
+            final results = await _musicProviderRegistry.search(
+              seedQuery,
+              limitPerProvider: remainingNeeded + 3,
             );
+
+            final newTracks = results.tracks
+                .where((t) => !existingIds.contains(t.prefixedId))
+                .take(remainingNeeded)
+                .toList();
+
+            if (newTracks.isNotEmpty) {
+              final trackIds = <String>[];
+              final metadataList = <Map<String, dynamic>>[];
+
+              for (final track in newTracks) {
+                trackIds.add(track.prefixedId);
+                metadataList.add({
+                  'title': track.title,
+                  'artist': track.artistName,
+                  'cover_url': track.imageUrl,
+                  'duration': track.durationSeconds,
+                  'source': track.source.name,
+                });
+              }
+
+              await _repo.addToQueue(
+                trackIds: trackIds,
+                metadataList: metadataList,
+              );
+            }
           }
+        } catch (e) {
+          if (kDebugMode) debugPrint('[PlayerCubit] Smart auto-fill failed: $e');
         }
-      } catch (e) {
-        if (kDebugMode) debugPrint('[PlayerCubit] Smart auto-fill failed: $e');
-      }
       }
     }
 
@@ -2229,8 +1597,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (repo == null) return;
     try {
       final expanded = await repo.getQueueExpanded();
-      final items = await _mapToQueueItems(expanded);
-      // Preserve current track: find same trackId in new list to set index.
+      final items = _mapToQueueItems(expanded);
       int newIndex = -1;
       if (state.track?.trackId != null) {
         newIndex = items.indexWhere((q) => q.trackId == state.track!.trackId);

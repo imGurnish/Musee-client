@@ -244,12 +244,7 @@ Future<void> initDependencies() async {
     ..registerLazySingleton(
       () => PlayerCubit(
         repository: serviceLocator(),
-        trackCache: serviceLocator<TrackCacheService>(),
-        audioCache: serviceLocator<AudioCacheService>(),
-        imageCache: serviceLocator<ImageCacheService>(),
         musicProviderRegistry: serviceLocator<MusicProviderRegistry>(),
-        connectivityService: serviceLocator<ConnectivityService>(),
-        settingsCubit: serviceLocator<SettingsCubit>(),
         listeningHistoryRepository:
             serviceLocator<ListeningHistoryRepository>(),
         supabaseClient: serviceLocator<SupabaseClient>(),
@@ -295,13 +290,6 @@ Future<void> initDependencies() async {
   applyEqualizerSettings(serviceLocator<SettingsCubit>().state);
   syncSettingsToPlayer(serviceLocator<SettingsCubit>().state);
 
-  // Re-apply settings if the player has to auto-heal/recreate itself on network failures
-  serviceLocator<PlayerCubit>().onPlayerRecreated = () {
-    Future.microtask(() {
-      applyEqualizerSettings(serviceLocator<SettingsCubit>().state);
-      syncSettingsToPlayer(serviceLocator<SettingsCubit>().state);
-    });
-  };
 
   //auth
   _initAuth();
