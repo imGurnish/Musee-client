@@ -1295,13 +1295,23 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
   }
 
+  /// Returns true only when the player is both playing AND has an active audio
+  /// source (processingState != idle). A state of playing=true with
+  /// processingState=idle is a zombie state that just_audio can emit when an
+  /// HLS source fails silently — treat it the same as not playing.
+  bool get _isActivelyPlaying =>
+      _player.playing && _player.processingState != ProcessingState.idle;
+
   Future<bool> _ensurePlaybackStarted({
     int maxAttempts = 3,
     Duration perAttemptTimeout = const Duration(milliseconds: 900),
   }) async {
     for (var attempt = 1; attempt <= maxAttempts; attempt += 1) {
       if (_userPaused) return false;
-      if (_player.playing) return true;
+      // Guard against playing=true, idle zombie state: just_audio can set
+      // playing=true while processingState=idle when an HLS source fails to
+      // load, giving a false positive that audio is running.
+      if (_isActivelyPlaying) return true;
 
       try {
         PlaybackDiagnostics.log('Ensuring playback started (attempt $attempt)...');
@@ -1318,17 +1328,19 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         return false;
       }
 
-      if (_player.playing) {
+      if (_isActivelyPlaying) {
         PlaybackDiagnostics.log('Playback started successfully.');
         return true;
       }
 
       try {
         await _player.playerStateStream
-            .firstWhere((state) => state.playing)
+            .firstWhere(
+              (s) => s.playing && s.processingState != ProcessingState.idle,
+            )
             .timeout(perAttemptTimeout);
 
-        if (_player.playing) {
+        if (_isActivelyPlaying) {
           PlaybackDiagnostics.log('Playback started successfully (detected via playerStateStream).');
           return true;
         }
@@ -1338,7 +1350,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
 
     PlaybackDiagnostics.log('Playback did not start after $maxAttempts attempts.');
-    return _player.playing;
+    return _isActivelyPlaying;
   }
 
   Future<void> _loadAudioSource(
@@ -1376,13 +1388,25 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (_userPaused) return;
 
       final current = _player.playerState;
-      if (!current.playing && current.processingState != ProcessingState.completed) {
+      // Also catch the zombie state: playing=true but processingState=idle
+      // means no audio source is actually loaded — treat it as not playing.
+      final isZombie = current.playing && current.processingState == ProcessingState.idle;
+      final needsReassertion = (!current.playing || isZombie)
+          && current.processingState != ProcessingState.completed;
+
+      if (needsReassertion) {
         if (kDebugMode) {
-          debugPrint('[PlayerCubit] Reasserting playback after switch token=$switchToken');
+          debugPrint(
+            '[PlayerCubit] Reasserting playback after switch token=$switchToken'
+            '${isZombie ? " (zombie idle state)" : ""}',
+          );
         }
+        PlaybackDiagnostics.log(
+          'Reasserting playback${isZombie ? " — zombie idle state detected" : ""}.',
+        );
         try {
           await _audioOperationHandler.executeAudioOperation(() => _player.play());
-          emit(state.copyWith(playing: _player.playing, buffering: false));
+          emit(state.copyWith(playing: _isActivelyPlaying, buffering: false));
         } catch (e) {
           if (kDebugMode) {
             debugPrint('[PlayerCubit] Reassert play failed: $e');
