@@ -24,6 +24,7 @@ import 'package:musee/core/platform/windows_platform_config.dart';
 import 'package:musee/core/equalizer/equalizer_controller.dart';
 
 import 'player_state.dart';
+import 'playback_diagnostics.dart';
 
 class PlayerCubit extends Cubit<PlayerViewState> {
   static const int _queuePrefetchTarget = 20;
@@ -38,6 +39,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   StreamSubscription<Duration?>? _durationSub;
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<PlayerViewState>? _viewStateSub;
+  StreamSubscription<PlaybackEvent>? _playbackEventSub;
   Timer? _snapshotLogTimer;
   Timer? _playbackReassertTimer;
   Timer? _switchFailSafeTimer;
@@ -220,6 +222,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (kDebugMode) {
       debugPrint('[PlayerCubit] Initializing AudioPlayer instance...');
     }
+    PlaybackDiagnostics.log('Initializing AudioPlayer instance');
 
     // Build Android EQ pipeline before creating the player.
     // Returns null on Windows/Web — AudioPlayer handles null gracefully.
@@ -242,6 +245,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           if (kDebugMode) {
             debugPrint('[PlayerCubit] Audio session interruption began. Pausing...');
           }
+          PlaybackDiagnostics.log('Audio session interruption began (focus loss/incoming call). Pausing...');
           _userPaused = true;
           _unexpectedPauseTimer?.cancel();
           _playbackReassertTimer?.cancel();
@@ -258,6 +262,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         if (kDebugMode) {
           debugPrint('[PlayerCubit] Audio becoming noisy (headphones unplugged). Pausing...');
         }
+        PlaybackDiagnostics.log('Audio becoming noisy (headphones unplugged). Pausing...');
         _userPaused = true;
         _unexpectedPauseTimer?.cancel();
         _playbackReassertTimer?.cancel();
@@ -271,6 +276,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (kDebugMode) {
         debugPrint('[PlayerCubit] AudioSession config error (non-fatal): $e');
       }
+      PlaybackDiagnostics.log('AudioSession config error (non-fatal): $e');
     }
 
     try {
@@ -279,6 +285,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (kDebugMode) {
         debugPrint('[PlayerCubit] MediaControls init error (non-fatal): $e');
       }
+      PlaybackDiagnostics.log('MediaControls init error (non-fatal): $e');
     }
 
     _publishNowPlaying(state);
@@ -290,10 +297,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         emit(state.copyWith(position: pos));
       },
       onError: (e) {
-        // Suppress platform channel threading errors from just_audio_windows
         if (kDebugMode && !e.toString().contains('platform thread')) {
           debugPrint('[PlayerCubit] Position stream error: $e');
         }
+        PlaybackDiagnostics.log('Position stream error: $e');
       },
     );
     _durationSub = _player.durationStream.listen(
@@ -304,6 +311,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         if (kDebugMode && !e.toString().contains('platform thread')) {
           debugPrint('[PlayerCubit] Duration stream error: $e');
         }
+        PlaybackDiagnostics.log('Duration stream error: $e');
       },
     );
     _playerStateSub = _player.playerStateStream.listen(
@@ -316,6 +324,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         final buffering =
             ps.processingState == ProcessingState.loading ||
             ps.processingState == ProcessingState.buffering;
+
+        PlaybackDiagnostics.log('PlayerState: playing=$playing, processingState=${ps.processingState}');
+
         emit(
           state.copyWith(
             playing: playing,
@@ -326,6 +337,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
         // Auto-advance when current track completes
         if (ps.processingState == ProcessingState.completed && !_isTrackSwitchInProgress && !_isAdvancingNext) {
+          PlaybackDiagnostics.log('Track completed. Advancing to next track.');
           unawaited(_playNextInternal());
         }
       },
@@ -333,6 +345,15 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         if (kDebugMode && !e.toString().contains('platform thread')) {
           debugPrint('[PlayerCubit] Player state stream error: $e');
         }
+        PlaybackDiagnostics.log('Player state stream error: $e');
+      },
+    );
+    _playbackEventSub = _player.playbackEventStream.listen(
+      (event) {
+        // High level transitions can be traced here
+      },
+      onError: (e) {
+        PlaybackDiagnostics.log('Playback event stream error: $e');
       },
     );
   }
@@ -458,6 +479,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _isTrackSwitchInProgress = true;
     _armSwitchFailSafe(switchToken);
 
+    PlaybackDiagnostics.log('playTrack requested: trackId=${track.trackId}, title="${track.title}", url="${track.url}"');
+
     final provisionalDuration = (track.durationSeconds ?? 0) > 0
         ? Duration(seconds: track.durationSeconds!)
         : Duration.zero;
@@ -554,6 +577,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (kDebugMode) {
         debugPrint('[PlayerCubit] playTrack failed: $e');
       }
+      PlaybackDiagnostics.log('playTrack failed with exception: $e');
       if (switchToken == _trackSwitchToken) {
         _emitPlaybackError('Unable to start this track. Please try again.');
       }
@@ -1110,12 +1134,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (index < 0 || index >= state.queue.length) return;
     if (_isTrackSwitchInProgress) return;
 
+    final item = state.queue[index];
+    PlaybackDiagnostics.log('_playAtIndex: index=$index, trackId=${item.trackId}, title="${item.title}"');
+
     _isTrackSwitchInProgress = true;
     final switchToken = ++_trackSwitchToken;
     _playbackReassertTimer?.cancel();
     _armSwitchFailSafe(switchToken);
 
-    final item = state.queue[index];
     final provisionalDuration = (item.durationSeconds ?? 0) > 0
       ? Duration(seconds: item.durationSeconds!)
       : Duration.zero;
@@ -1256,6 +1282,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (kDebugMode) {
         debugPrint('[PlayerCubit] Play failed for ${item.trackId}: $e');
       }
+      PlaybackDiagnostics.log('_playAtIndex failed with exception: $e');
       if (switchToken == _trackSwitchToken) {
         _emitPlaybackError('Unable to play this track. Please try again.');
       }
@@ -1277,11 +1304,13 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (_player.playing) return true;
 
       try {
+        PlaybackDiagnostics.log('Ensuring playback started (attempt $attempt)...');
         await _audioOperationHandler.executeAudioOperation(() => _player.play());
       } catch (e) {
         if (kDebugMode) {
           debugPrint('[PlayerCubit] play() failed during ensurePlaybackStarted attempt $attempt: $e');
         }
+        PlaybackDiagnostics.log('play() failed during attempt $attempt: $e');
       }
 
       if (_userPaused) {
@@ -1289,19 +1318,26 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         return false;
       }
 
-      if (_player.playing) return true;
+      if (_player.playing) {
+        PlaybackDiagnostics.log('Playback started successfully.');
+        return true;
+      }
 
       try {
         await _player.playerStateStream
             .firstWhere((state) => state.playing)
             .timeout(perAttemptTimeout);
 
-        if (_player.playing) return true;
+        if (_player.playing) {
+          PlaybackDiagnostics.log('Playback started successfully (detected via playerStateStream).');
+          return true;
+        }
       } catch (_) {
         // Continue retry loop.
       }
     }
 
+    PlaybackDiagnostics.log('Playback did not start after $maxAttempts attempts.');
     return _player.playing;
   }
 
@@ -1313,6 +1349,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (switchToken != _trackSwitchToken) return;
 
     try {
+      PlaybackDiagnostics.log('Loading audio source (switchToken=$switchToken)...');
       final loadFuture = _audioOperationHandler.executeAudioOperation(
         () => _player.setAudioSource(
           source,
@@ -1321,7 +1358,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       );
       _activeLoadFuture = loadFuture;
       await loadFuture;
+      PlaybackDiagnostics.log('Audio source loaded successfully');
     } catch (e) {
+      PlaybackDiagnostics.log('Audio source load failed: $e');
       if (switchToken != _trackSwitchToken) return;
       rethrow;
     } finally {
@@ -1710,6 +1749,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (kDebugMode) {
       debugPrint('[PlayerCubit] close() called ($hashCode)');
     }
+    PlaybackDiagnostics.log('PlayerCubit close() called');
     _logCurrentTrackPlay(wasSkipped: true);
     // Flush any buffered play-logs before shutting down.
     await _listeningHistoryRepository?.flushPlayLogs();
@@ -1722,6 +1762,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     await _durationSub?.cancel();
     await _playerStateSub?.cancel();
     await _viewStateSub?.cancel();
+    await _playbackEventSub?.cancel();
     if (_platformAudioInitialized) await _player.dispose();
     _audioOperationHandler.dispose();
     return super.close();

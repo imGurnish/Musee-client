@@ -15,6 +15,7 @@ import 'package:musee/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
 import 'package:musee/features/settings/presentation/pages/profile_edit_page.dart';
+import 'package:musee/features/settings/presentation/pages/diagnostics_page.dart';
 import 'package:musee/features/settings/presentation/widgets/settings_section.dart';
 import 'package:musee/features/settings/presentation/widgets/settings_tile.dart';
 import 'package:musee/features/user_onboarding/presentation/bloc/onboarding_bloc.dart';
@@ -670,6 +671,23 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             onTap: _checkForUpdatesManually,
             isLoading: _checkingForUpdate,
           ),
+        Divider(
+          height: 1,
+          thickness: 1,
+          indent: 54,
+          color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+        ),
+        SettingsNavTile(
+          icon: Icons.analytics_outlined,
+          iconColor: Colors.blue,
+          title: 'Playback logs',
+          subtitle: 'View diagnostics for track interruptions',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const DiagnosticsPage(),
+            ),
+          ),
+        ),
       ],
     );
   }
