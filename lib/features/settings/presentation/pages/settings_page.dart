@@ -22,6 +22,7 @@ import 'package:musee/features/user_onboarding/presentation/pages/onboarding_pag
 import 'package:musee/init_dependencies.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -30,18 +31,27 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver {
   bool _clearingCache = false;
   bool _checkingForUpdate = false;
   AppUpdateInfo? _manualUpdateInfo;
   String? _appVersion;
+  bool? _batteryOptimizationsIgnored;
 
   final AppUpdateService _updateService = AppUpdateService();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadAppVersion();
+    _updateBatteryOptimizationStatus();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Future<void> _loadAppVersion() async {
@@ -56,6 +66,76 @@ class _SettingsPageState extends State<SettingsPage> {
       });
     } catch (_) {
       // Best effort only.
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _updateBatteryOptimizationStatus();
+    }
+  }
+
+  Future<void> _updateBatteryOptimizationStatus() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      final status = await Permission.ignoreBatteryOptimizations.status;
+      if (mounted) {
+        setState(() {
+          _batteryOptimizationsIgnored = status.isGranted;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _handleBatteryOptimization() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    
+    final status = await Permission.ignoreBatteryOptimizations.status;
+    if (status.isGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Battery optimization is already set to Unrestricted.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Uninterrupted Playback'),
+        content: const Text(
+          'To prevent Android from interrupting playback when your screen is off '
+          'or the app is in the background, please set Musee\'s battery usage to '
+          'Unrestricted.\n\n'
+          '1. We will open settings.\n'
+          '2. Tap "Battery" (or "Battery usage").\n'
+          '3. Select "Unrestricted" (or "Don\'t optimize").'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      final requested = await Permission.ignoreBatteryOptimizations.request();
+      if (!requested.isGranted) {
+        await openAppSettings();
+      }
+      await _updateBatteryOptimizationStatus();
     }
   }
 
@@ -435,6 +515,24 @@ class _SettingsPageState extends State<SettingsPage> {
                       .read<SettingsCubit>()
                       .setShowExplicitContent(v),
             ),
+            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
+              SettingsNavTile(
+                icon: Icons.battery_saver_rounded,
+                iconColor: _batteryOptimizationsIgnored == true ? Colors.green : Colors.orange,
+                title: 'Android battery optimization',
+                subtitle: _batteryOptimizationsIgnored == true
+                    ? 'Unrestricted (allows uninterrupted background playback)'
+                    : 'Optimized (playback might get interrupted)',
+                trailingLabel: _batteryOptimizationsIgnored == true ? 'Unrestricted' : 'Optimize',
+                onTap: _handleBatteryOptimization,
+              ),
+              Divider(
+                height: 1,
+                thickness: 1,
+                indent: 54,
+                color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+              ),
+            ],
             if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
               SettingsNavTile(
                 icon: Icons.equalizer_rounded,

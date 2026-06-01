@@ -206,6 +206,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
        _listeningHistoryRepository = listeningHistoryRepository,
        _supabaseClient = supabaseClient,
        super(const PlayerViewState()) {
+    if (kDebugMode) {
+      debugPrint('[PlayerCubit] Instance created ($hashCode)');
+    }
     _equalizerController = equalizerController ?? EqualizerController();
     _init();
   }
@@ -213,6 +216,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   Future<void> _ensurePlatformAudio() async {
     if (_platformAudioInitialized) return;
     _platformAudioInitialized = true;
+
+    if (kDebugMode) {
+      debugPrint('[PlayerCubit] Initializing AudioPlayer instance...');
+    }
 
     // Build Android EQ pipeline before creating the player.
     // Returns null on Windows/Web — AudioPlayer handles null gracefully.
@@ -1700,6 +1707,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   @override
   Future<void> close() async {
+    if (kDebugMode) {
+      debugPrint('[PlayerCubit] close() called ($hashCode)');
+    }
     _logCurrentTrackPlay(wasSkipped: true);
     // Flush any buffered play-logs before shutting down.
     await _listeningHistoryRepository?.flushPlayLogs();
