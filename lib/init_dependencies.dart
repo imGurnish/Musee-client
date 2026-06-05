@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:musee/core/common/cubit/app_user_cubit.dart';
 import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:dio/dio.dart';
@@ -284,17 +285,48 @@ Future<void> initDependencies() async {
     player.setRecommendationAutoFill(s.recommendationAutoFillEnabled);
   }
 
-  // Bridge: when settings change → push immediately to the player.
+  // Bridge: when settings change → push immediately to the player and enforce cache size.
   serviceLocator<SettingsCubit>().stream.listen((s) {
     Future.microtask(() {
       applyEqualizerSettings(s);
       syncSettingsToPlayer(s);
+
+      List<String>? protectedTrackIds;
+      if (serviceLocator.isRegistered<PlayerCubit>()) {
+        final player = serviceLocator<PlayerCubit>();
+        final currentTrackId = player.state.track?.trackId;
+        String? nextTrackId;
+        final queue = player.state.queue;
+        final currentIndex = player.state.currentIndex;
+        if (queue.isNotEmpty && currentIndex >= 0 && currentIndex + 1 < queue.length) {
+          nextTrackId = queue[currentIndex + 1].trackId;
+        }
+        protectedTrackIds = [
+          if (currentTrackId != null) currentTrackId,
+          if (nextTrackId != null) nextTrackId,
+        ];
+      }
+
+      unawaited(
+        serviceLocator<AudioCacheService>().enforceMaxSize(
+          maxCacheSizeBytes: s.maxCacheSize.bytes,
+          trackCache: serviceLocator<TrackCacheService>(),
+          protectedTrackIds: protectedTrackIds,
+        ),
+      );
     });
   });
 
   // Apply persisted settings immediately on startup.
-  applyEqualizerSettings(serviceLocator<SettingsCubit>().state);
-  syncSettingsToPlayer(serviceLocator<SettingsCubit>().state);
+  final initialSettings = serviceLocator<SettingsCubit>().state;
+  applyEqualizerSettings(initialSettings);
+  syncSettingsToPlayer(initialSettings);
+  unawaited(
+    serviceLocator<AudioCacheService>().enforceMaxSize(
+      maxCacheSizeBytes: initialSettings.maxCacheSize.bytes,
+      trackCache: serviceLocator<TrackCacheService>(),
+    ),
+  );
 
 
   //auth

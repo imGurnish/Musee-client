@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:audio_session/audio_session.dart';
+import 'package:dio/dio.dart';
 import 'package:bloc/bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
@@ -12,6 +13,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 
 import 'package:musee/core/providers/music_provider_registry.dart';
 import 'package:musee/core/providers/provider_models.dart';
+import 'package:musee/core/cache/models/cached_track.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 
@@ -70,6 +72,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   // URL cache: trackId → (url, targetBitrate, fetchedAt). Signed URLs are valid for ~60 min;
   // we cache for 50 min to stay safely within the expiry window.
   final Map<String, (String, int?, DateTime)> _urlCache = {};
+  final Map<String, CancelToken> _backgroundCacheCancelTokens = {};
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
@@ -540,13 +543,50 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     return null;
   }
 
+  void _cancelInactiveBackgroundCaches() {
+    final currentTrackId = state.track?.trackId;
+    String? nextTrackId;
+    final queue = state.queue;
+    final currentIndex = state.currentIndex;
+    if (queue.isNotEmpty && currentIndex >= 0 && currentIndex + 1 < queue.length) {
+      nextTrackId = queue[currentIndex + 1].trackId;
+    }
+
+    final activeIds = {
+      if (currentTrackId != null) currentTrackId,
+      if (nextTrackId != null) nextTrackId,
+    };
+
+    final toCancel = <String>[];
+    for (final trackId in _backgroundCacheCancelTokens.keys) {
+      if (!activeIds.contains(trackId)) {
+        toCancel.add(trackId);
+      }
+    }
+
+    for (final trackId in toCancel) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Cancelling stale background cache for track $trackId');
+      }
+      _backgroundCacheCancelTokens[trackId]?.cancel();
+      _backgroundCacheCancelTokens.remove(trackId);
+    }
+  }
+
   void _startBackgroundCache(String trackId, int? targetBitrate) {
     if (_audioCache == null || _trackCache == null || _musicProviderRegistry == null || kIsWeb) return;
+
+    // Cancel any existing background cache task for this specific trackId first
+    _backgroundCacheCancelTokens[trackId]?.cancel();
+
+    final cancelToken = CancelToken();
+    _backgroundCacheCancelTokens[trackId] = cancelToken;
 
     unawaited(() async {
       try {
         final providerTrack = await _musicProviderRegistry.getTrack(trackId);
         if (providerTrack == null) return;
+        if (cancelToken.isCancelled) return;
 
         ProviderAudioVariant? chosenVariant;
         if (targetBitrate == null) {
@@ -579,7 +619,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         }
 
         if (chosenVariant != null) {
-          final cachedTrack = await _trackCache.getTrack(trackId);
+          CachedTrack? cachedTrack = await _trackCache.getTrack(trackId);
           // Only cache if not already cached at equal or higher quality
           if (cachedTrack?.localAudioPath != null &&
               cachedTrack?.cachedHlsBitrate != null &&
@@ -587,19 +627,60 @@ class PlayerCubit extends Cubit<PlayerViewState> {
             return;
           }
 
+          if (cancelToken.isCancelled) return;
+
+          // Create or update track metadata to set lastPlayedAt and protect it from eviction
+          if (cachedTrack == null) {
+            cachedTrack = CachedTrack()
+              ..trackId = trackId
+              ..title = providerTrack.title
+              ..albumId = providerTrack.albumId
+              ..albumTitle = providerTrack.albumTitle
+              ..albumCoverUrl = providerTrack.imageUrl
+              ..artistName = providerTrack.artistName
+              ..durationSeconds = providerTrack.durationSeconds ?? 0
+              ..isExplicit = providerTrack.isExplicit
+              ..cachedAt = DateTime.now()
+              ..lastPlayedAt = DateTime.now()
+              ..sourceProvider = providerTrack.source.name;
+            await _trackCache.cacheTrack(cachedTrack);
+          } else {
+            cachedTrack.lastPlayedAt = DateTime.now();
+            await _trackCache.cacheTrack(cachedTrack);
+          }
+
           if (kDebugMode) {
             debugPrint('[PlayerCubit] Background caching track $trackId at quality ${chosenVariant.bitrate} kbps');
           }
+          final currentTrackId = state.track?.trackId;
+          String? nextTrackId;
+          final queue = state.queue;
+          final currentIndex = state.currentIndex;
+          if (queue.isNotEmpty && currentIndex >= 0 && currentIndex + 1 < queue.length) {
+            nextTrackId = queue[currentIndex + 1].trackId;
+          }
+          final protected = [
+            if (currentTrackId != null) currentTrackId,
+            if (nextTrackId != null) nextTrackId,
+          ];
+
           await _audioCache.downloadAndCache(
             trackId: trackId,
             remoteUrl: chosenVariant.url,
             trackCache: _trackCache,
             preferredHlsBitrate: chosenVariant.bitrate,
+            maxCacheSizeBytes: _settingsCubit?.state.maxCacheSize.bytes,
+            protectedTrackIds: protected,
+            cancelToken: cancelToken,
           );
         }
       } catch (e) {
         if (kDebugMode) {
           debugPrint('[PlayerCubit] Background caching failed for $trackId: $e');
+        }
+      } finally {
+        if (_backgroundCacheCancelTokens[trackId] == cancelToken) {
+          _backgroundCacheCancelTokens.remove(trackId);
         }
       }
     }());
@@ -608,6 +689,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   /// Pre-fetches the URL for the next queued track in the background so it is
   /// already in [_urlCache] when the user taps Next or the track auto-advances.
   Future<void> _prefetchNextTrackUrl() async {
+    _cancelInactiveBackgroundCaches();
     final queue = state.queue;
     final currentIndex = state.currentIndex;
     if (queue.isEmpty || currentIndex < 0) return;
@@ -636,6 +718,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (track.trackId != null && state.track?.trackId != track.trackId) {
       _logCurrentTrackPlay(wasSkipped: true);
     }
+    _cancelInactiveBackgroundCaches();
 
     final switchToken = ++_trackSwitchToken;
     _playbackReassertTimer?.cancel();
@@ -763,6 +846,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (state.track?.trackId != null && state.track?.trackId != trackId) {
       _logCurrentTrackPlay(wasSkipped: true);
     }
+    _cancelInactiveBackgroundCaches();
 
     final queuedIndex = state.queue.indexWhere((q) => q.trackId == trackId);
     final queuedItem = queuedIndex >= 0 ? state.queue[queuedIndex] : null;
@@ -1916,6 +2000,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
     PlaybackDiagnostics.log('PlayerCubit close() called');
     _logCurrentTrackPlay(wasSkipped: true);
+    for (final token in _backgroundCacheCancelTokens.values) {
+      token.cancel();
+    }
+    _backgroundCacheCancelTokens.clear();
     // Flush any buffered play-logs before shutting down.
     await _listeningHistoryRepository?.flushPlayLogs();
     await _listeningHistoryRepository?.dispose();

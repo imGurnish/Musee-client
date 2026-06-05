@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:dio/dio.dart';
+import 'package:get_it/get_it.dart';
+import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
@@ -133,11 +135,27 @@ class DownloadManager extends Cubit<DownloadState> {
       final cancelToken = CancelToken();
       _cancelTokens[trackId] = cancelToken;
 
+      final List<String> protectedTrackIds = [trackId];
+      if (GetIt.instance.isRegistered<PlayerCubit>()) {
+        final player = GetIt.instance<PlayerCubit>();
+        final currentTrackId = player.state.track?.trackId;
+        if (currentTrackId != null) {
+          protectedTrackIds.add(currentTrackId);
+        }
+        final queue = player.state.queue;
+        final currentIndex = player.state.currentIndex;
+        if (queue.isNotEmpty && currentIndex >= 0 && currentIndex + 1 < queue.length) {
+          final nextTrackId = queue[currentIndex + 1].trackId;
+          protectedTrackIds.add(nextTrackId);
+        }
+      }
+
       final filePath = await _audioCache.downloadAndCache(
         trackId: trackId,
         remoteUrl: downloadUrl,
         trackCache: _trackCache,
         preferredHlsBitrate: preferredVariant?.bitrate ?? targetBitrate,
+        maxCacheSizeBytes: _settingsCubit.state.maxCacheSize.bytes,
         onProgress: (received, total) {
           if (total > 0) {
             final p = received / total;
@@ -145,6 +163,7 @@ class DownloadManager extends Cubit<DownloadState> {
           }
         },
         cancelToken: cancelToken,
+        protectedTrackIds: protectedTrackIds,
       );
 
       if (filePath == null) {
