@@ -1,5 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:equatable/equatable.dart';
 import '../../data/repositories/player_queue_repository.dart';
 import '../../data/models/queue_models.dart';
@@ -11,7 +11,7 @@ part 'enhanced_queue_state.dart';
 /// Enhanced Queue Bloc with smart recommendations and preference-based management
 class EnhancedQueueBloc extends Bloc<EnhancedQueueEvent, EnhancedQueueState> {
   final PlayerQueueRepository queueRepository;
-  final AudioPlayer audioPlayer;
+  final Player audioPlayer;
 
   EnhancedQueueBloc({
     required this.queueRepository,

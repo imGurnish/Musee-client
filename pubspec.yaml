@@ -51,9 +51,8 @@ dependencies:
   lottie: ^3.3.1
   hydrated_bloc: ^10.1.1
   url_launcher: ^6.3.2
-  just_audio: ^0.10.5
-  # Ensure Windows platform implementation is available for just_audio
-  just_audio_windows: ^0.2.3
+  media_kit: ^1.2.0
+  media_kit_libs_video: ^1.0.7
   audio_service: ^0.18.18
   audio_session: ^0.1.21
   equatable: ^2.0.5

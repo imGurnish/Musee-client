@@ -16,7 +16,7 @@ import 'package:musee/init_dependencies.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/download/download_manager.dart';
-import 'package:musee/core/platform/windows_platform_config.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
 
@@ -27,14 +27,8 @@ import 'web_url_strategy.dart'
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Windows-specific initialization to prevent audio threading issues
-  if (defaultTargetPlatform == TargetPlatform.windows) {
-    try {
-      await initializeWindowsPlatformConfig();
-    } catch (_) {
-      // Non-fatal, continue with app initialization
-    }
-  }
+  // Initialize MediaKit for cross-platform playback
+  MediaKit.ensureInitialized();
 
   //Configure URL strategy for web
   configureUrlStrategy();

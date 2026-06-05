@@ -3,7 +3,7 @@ import 'dart:math' as math;
 
 import 'package:audio_session/audio_session.dart';
 import 'package:bloc/bloc.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/features/player/domain/repository/player_repository.dart';
 import 'package:musee/features/listening_history/data/models/listening_history_models.dart';
@@ -30,16 +30,18 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   static const int _queuePrefetchTarget = 20;
   static const int _queueMaxSize = 60;
 
-  late AudioPlayer _player;
+  late final Player _player;
   final PlayerRepository? _repo;
   final MusicProviderRegistry? _musicProviderRegistry;
   final ListeningHistoryRepository? _listeningHistoryRepository;
   final SupabaseClient? _supabaseClient;
   StreamSubscription<Duration>? _positionSub;
-  StreamSubscription<Duration?>? _durationSub;
-  StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<Duration>? _durationSub;
+  StreamSubscription<bool>? _playingSub;
+  StreamSubscription<bool>? _bufferingSub;
+  StreamSubscription<bool>? _completedSub;
+  StreamSubscription<String>? _errorSub;
   StreamSubscription<PlayerViewState>? _viewStateSub;
-  StreamSubscription<PlaybackEvent>? _playbackEventSub;
   Timer? _snapshotLogTimer;
   Timer? _playbackReassertTimer;
   Timer? _switchFailSafeTimer;
@@ -52,6 +54,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   bool _userPaused = false;
   int _trackSwitchToken = 0;
   bool _platformAudioInitialized = false;
+  DateTime? _trackMediaOpenedAt; // guards against spurious completed events
   final _random = math.Random();
   final _audioOperationHandler = WindowsAudioOperationHandler();
   Future<void>? _activeLoadFuture;
@@ -144,7 +147,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           buffering: false,
           resolvingUrl: false,
           isTransitioning: false,
-          playing: _player.playing,
+          playing: _player.state.playing,
           clearErrorMessage: true,
         ),
       );
@@ -224,15 +227,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
     PlaybackDiagnostics.log('Initializing AudioPlayer instance');
 
-    // Build Android EQ pipeline before creating the player.
-    // Returns null on Windows/Web — AudioPlayer handles null gracefully.
-    final pipeline = _equalizerController.buildAndroidPipeline();
-
-    _player = AudioPlayer(
-      handleAudioSessionActivation: false,
-      handleInterruptions: false,
-      audioPipeline: pipeline ?? AudioPipeline(),
-    );
+    _player = Player();
+    _equalizerController.initialize(_player);
     _setupPlayerStreams();
 
     try {
@@ -292,68 +288,82 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   void _setupPlayerStreams() {
-    _positionSub = _player.positionStream.listen(
+    _positionSub = _player.stream.position.listen(
       (pos) {
         emit(state.copyWith(position: pos));
       },
       onError: (e) {
-        if (kDebugMode && !e.toString().contains('platform thread')) {
-          debugPrint('[PlayerCubit] Position stream error: $e');
-        }
         PlaybackDiagnostics.log('Position stream error: $e');
       },
     );
-    _durationSub = _player.durationStream.listen(
+    _durationSub = _player.stream.duration.listen(
       (dur) {
-        emit(state.copyWith(duration: dur ?? Duration.zero));
+        emit(state.copyWith(duration: dur));
       },
       onError: (e) {
-        if (kDebugMode && !e.toString().contains('platform thread')) {
-          debugPrint('[PlayerCubit] Duration stream error: $e');
-        }
         PlaybackDiagnostics.log('Duration stream error: $e');
       },
     );
-    _playerStateSub = _player.playerStateStream.listen(
-      (ps) async {
-        final playing = ps.playing;
+    _playingSub = _player.stream.playing.listen(
+      (playing) {
         if (playing) {
           _userPaused = false;
           _unexpectedPauseTimer?.cancel();
         }
-        final buffering =
-            ps.processingState == ProcessingState.loading ||
-            ps.processingState == ProcessingState.buffering;
-
-        PlaybackDiagnostics.log('PlayerState: playing=$playing, processingState=${ps.processingState}');
-
+        PlaybackDiagnostics.log('PlayerState: playing=$playing');
         emit(
           state.copyWith(
             playing: playing,
+            isTransitioning: _isBusySwitching,
+          ),
+        );
+      },
+      onError: (e) {
+        PlaybackDiagnostics.log('Playing stream error: $e');
+      },
+    );
+    _bufferingSub = _player.stream.buffering.listen(
+      (buffering) {
+        PlaybackDiagnostics.log('PlayerState: buffering=$buffering');
+        emit(
+          state.copyWith(
             buffering: buffering,
             isTransitioning: _isBusySwitching,
           ),
         );
-
-        // Auto-advance when current track completes
-        if (ps.processingState == ProcessingState.completed && !_isTrackSwitchInProgress && !_isAdvancingNext) {
+      },
+      onError: (e) {
+        PlaybackDiagnostics.log('Buffering stream error: $e');
+      },
+    );
+    _completedSub = _player.stream.completed.listen(
+      (completed) {
+        if (completed && !_isTrackSwitchInProgress && !_isAdvancingNext) {
+          // Guard: ignore spurious 'completed' events that fire within 5 seconds
+          // of opening a new media. These can occur when libmpv/HLS encounters
+          // a transient EOF or codec issue right at stream start.
+          final openedAt = _trackMediaOpenedAt;
+          if (openedAt != null &&
+              DateTime.now().difference(openedAt).inMilliseconds < 5000) {
+            PlaybackDiagnostics.log(
+              'Ignoring spurious completed event (track opened ${DateTime.now().difference(openedAt).inMilliseconds}ms ago).',
+            );
+            return;
+          }
           PlaybackDiagnostics.log('Track completed. Advancing to next track.');
           unawaited(_playNextInternal());
         }
       },
       onError: (e) {
-        if (kDebugMode && !e.toString().contains('platform thread')) {
-          debugPrint('[PlayerCubit] Player state stream error: $e');
-        }
-        PlaybackDiagnostics.log('Player state stream error: $e');
+        PlaybackDiagnostics.log('Completed stream error: $e');
       },
     );
-    _playbackEventSub = _player.playbackEventStream.listen(
-      (event) {
-        // High level transitions can be traced here
-      },
-      onError: (e) {
-        PlaybackDiagnostics.log('Playback event stream error: $e');
+    _errorSub = _player.stream.error.listen(
+      (error) {
+        PlaybackDiagnostics.log('[MPV ERROR] $error');
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit][MPV ERROR] $error');
+        }
       },
     );
   }
@@ -501,23 +511,13 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     try {
       final headers = track.headers ?? const <String, String>{};
 
-      Uri toUri(String inputUrl) {
-        if (inputUrl.startsWith('http') || inputUrl.startsWith('https')) {
-          return Uri.parse(inputUrl);
-        }
-        return Uri.file(inputUrl);
-      }
-
       await _stopPlaybackForTrackSwitch();
       await _ensurePlatformAudio();
 
       await _loadAudioSource(
-        AudioSource.uri(
-          toUri(track.url),
-          headers: headers.isEmpty ? null : headers,
-        ),
+        track.url,
+        headers.isEmpty ? null : headers,
         switchToken: switchToken,
-        initialPosition: const Duration(milliseconds: 50),
       );
 
       if (_userPaused) {
@@ -1212,17 +1212,13 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     );
 
     try {
-      final uri = url.startsWith('http') || url.startsWith('https')
-          ? Uri.parse(url)
-          : Uri.file(url);
-
       await _stopPlaybackForTrackSwitch();
       await _ensurePlatformAudio();
 
       await _loadAudioSource(
-        AudioSource.uri(uri),
+        url,
+        null,
         switchToken: switchToken,
-        initialPosition: const Duration(milliseconds: 50),
       );
 
       if (_userPaused) {
@@ -1295,12 +1291,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
   }
 
-  /// Returns true only when the player is both playing AND has an active audio
-  /// source (processingState != idle). A state of playing=true with
-  /// processingState=idle is a zombie state that just_audio can emit when an
-  /// HLS source fails silently — treat it the same as not playing.
-  bool get _isActivelyPlaying =>
-      _player.playing && _player.processingState != ProcessingState.idle;
+  /// Returns true only when the player is playing.
+  bool get _isActivelyPlaying => _player.state.playing;
 
   Future<bool> _ensurePlaybackStarted({
     int maxAttempts = 3,
@@ -1308,18 +1300,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }) async {
     for (var attempt = 1; attempt <= maxAttempts; attempt += 1) {
       if (_userPaused) return false;
-      // Guard against playing=true, idle zombie state: just_audio can set
-      // playing=true while processingState=idle when an HLS source fails to
-      // load, giving a false positive that audio is running.
       if (_isActivelyPlaying) return true;
 
       try {
         PlaybackDiagnostics.log('Ensuring playback started (attempt $attempt)...');
         await _audioOperationHandler.executeAudioOperation(() => _player.play());
       } catch (e) {
-        if (kDebugMode) {
-          debugPrint('[PlayerCubit] play() failed during ensurePlaybackStarted attempt $attempt: $e');
-        }
         PlaybackDiagnostics.log('play() failed during attempt $attempt: $e');
       }
 
@@ -1334,14 +1320,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       }
 
       try {
-        await _player.playerStateStream
-            .firstWhere(
-              (s) => s.playing && s.processingState != ProcessingState.idle,
-            )
+        await _player.stream.playing
+            .firstWhere((p) => p)
             .timeout(perAttemptTimeout);
 
         if (_isActivelyPlaying) {
-          PlaybackDiagnostics.log('Playback started successfully (detected via playerStateStream).');
+          PlaybackDiagnostics.log('Playback started successfully (detected via playing stream).');
           return true;
         }
       } catch (_) {
@@ -1354,22 +1338,33 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   Future<void> _loadAudioSource(
-    AudioSource source, {
+    String url,
+    Map<String, String>? headers, {
     required int switchToken,
-    Duration initialPosition = const Duration(milliseconds: 50),
+    Duration initialPosition = Duration.zero,
   }) async {
     if (switchToken != _trackSwitchToken) return;
 
     try {
       PlaybackDiagnostics.log('Loading audio source (switchToken=$switchToken)...');
-      final loadFuture = _audioOperationHandler.executeAudioOperation(
-        () => _player.setAudioSource(
-          source,
-          initialPosition: initialPosition,
-        ).timeout(const Duration(seconds: 15)),
-      );
+      final loadFuture = _audioOperationHandler.executeAudioOperation(() async {
+        await _player.open(
+          Media(url, httpHeaders: headers),
+          play: false,
+        );
+        // Only seek if a meaningful non-zero position is requested AND it is
+        // safe to do so (i.e., a concrete resume position). For new tracks we
+        // always start from zero to avoid a pre-play seek that can break HLS
+        // streams before the first segment is buffered.
+        if (initialPosition > const Duration(seconds: 1)) {
+          await _player.seek(initialPosition);
+        }
+      });
       _activeLoadFuture = loadFuture;
       await loadFuture;
+      // Record when the media was opened so the completed-stream guard can
+      // reject spurious EOF events (HLS codec/buffer errors at stream start).
+      _trackMediaOpenedAt = DateTime.now();
       PlaybackDiagnostics.log('Audio source loaded successfully');
     } catch (e) {
       PlaybackDiagnostics.log('Audio source load failed: $e');
@@ -1380,6 +1375,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
   }
 
+
   void _schedulePlaybackReassertion(int switchToken) {
     _playbackReassertTimer?.cancel();
     _playbackReassertTimer = Timer(const Duration(milliseconds: 900), () async {
@@ -1387,23 +1383,11 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (_isTrackSwitchInProgress) return;
       if (_userPaused) return;
 
-      final current = _player.playerState;
-      // Also catch the zombie state: playing=true but processingState=idle
-      // means no audio source is actually loaded — treat it as not playing.
-      final isZombie = current.playing && current.processingState == ProcessingState.idle;
-      final needsReassertion = (!current.playing || isZombie)
-          && current.processingState != ProcessingState.completed;
+      final current = _player.state;
+      final needsReassertion = !current.playing && !current.completed;
 
       if (needsReassertion) {
-        if (kDebugMode) {
-          debugPrint(
-            '[PlayerCubit] Reasserting playback after switch token=$switchToken'
-            '${isZombie ? " (zombie idle state)" : ""}',
-          );
-        }
-        PlaybackDiagnostics.log(
-          'Reasserting playback${isZombie ? " — zombie idle state detected" : ""}.',
-        );
+        PlaybackDiagnostics.log('Reasserting playback after switch token=$switchToken.');
         try {
           await _audioOperationHandler.executeAudioOperation(() => _player.play());
           emit(state.copyWith(playing: _isActivelyPlaying, buffering: false));
@@ -1423,7 +1407,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _currentTrackStartedAt = DateTime.now();
 
     _snapshotLogTimer = Timer(const Duration(seconds: 12), () {
-      if (state.track?.trackId == trackId && _player.playing) {
+      if (state.track?.trackId == trackId && _player.state.playing) {
         _logCurrentTrackPlay(wasSkipped: false, preserveSession: true);
       }
     });
@@ -1447,7 +1431,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     final startedAt = _currentTrackStartedAt;
     final playerPositionSeconds =
-        _platformAudioInitialized ? _player.position.inSeconds : 0;
+        _platformAudioInitialized ? _player.state.position.inSeconds : 0;
     final fallbackElapsedSeconds = startedAt == null
         ? 0
         : DateTime.now().difference(startedAt).inSeconds;
@@ -1506,7 +1490,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   Future<void> togglePlayPause() async {
     if (!_platformAudioInitialized) return;
-    if (_player.playing) {
+    if (_player.state.playing) {
       _userPaused = true;
       _playbackReassertTimer?.cancel();
       _unexpectedPauseTimer?.cancel();
@@ -1531,7 +1515,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (_isTrackSwitchInProgress) return;
     if (!ignoreUserPause && _userPaused) return;
     if (state.track == null) return;
-    if (_player.playing) return;
+    if (_player.state.playing) return;
     _userPaused = false;
     _unexpectedPauseTimer?.cancel();
     await _audioOperationHandler.executeAudioOperation(() => _player.play());
@@ -1555,7 +1539,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (!_platformAudioInitialized) return;
     final safeVolume = volume.clamp(0.0, 1.0).toDouble();
     await _audioOperationHandler.executeAudioOperation(
-      () => _player.setVolume(safeVolume),
+      () => _player.setVolume(safeVolume * 100.0),
       delay: const Duration(milliseconds: 50),
     );
     emit(state.copyWith(volume: safeVolume));
@@ -1742,7 +1726,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       playing: viewState.playing,
       buffering: viewState.buffering,
       position: viewState.position,
-      bufferedPosition: _platformAudioInitialized ? _player.bufferedPosition : Duration.zero,
+      bufferedPosition: _platformAudioInitialized ? _player.state.buffer : Duration.zero,
       hasPrevious: hasPrevious,
       hasNext: hasNext,
       duration: viewState.duration,
@@ -1784,9 +1768,11 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _unexpectedPauseTimer?.cancel();
     await _positionSub?.cancel();
     await _durationSub?.cancel();
-    await _playerStateSub?.cancel();
+    await _playingSub?.cancel();
+    await _bufferingSub?.cancel();
+    await _completedSub?.cancel();
+    await _errorSub?.cancel();
     await _viewStateSub?.cancel();
-    await _playbackEventSub?.cancel();
     if (_platformAudioInitialized) await _player.dispose();
     _audioOperationHandler.dispose();
     return super.close();
