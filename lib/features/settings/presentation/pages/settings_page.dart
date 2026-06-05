@@ -516,6 +516,18 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
                       .read<SettingsCubit>()
                       .setShowExplicitContent(v),
             ),
+            SettingsDropdownTile<StreamingQuality>(
+              icon: Icons.speed_rounded,
+              iconColor: colorScheme.primary,
+              title: 'Streaming quality',
+              subtitle: 'Audio quality for streaming playback',
+              value: settings.streamingQuality,
+              options: StreamingQuality.values
+                  .map((q) => (q, q.shortLabel))
+                  .toList(),
+              onChanged: (v) =>
+                  context.read<SettingsCubit>().setStreamingQuality(v),
+            ),
             if (!kIsWeb) ...[
               Divider(
                 height: 1,

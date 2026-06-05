@@ -51,23 +51,23 @@ class MusicProviderRegistry {
   }
 
   /// Get download URL for a track, automatically selecting the correct provider.
-  Future<String?> getDownloadUrl(String trackId) async {
+  Future<String?> getDownloadUrl(String trackId, {int? targetBitrate}) async {
     final provider = getProviderForTrack(trackId);
     if (provider == null) return null;
 
     // Strip the source prefix to get the raw ID
     final rawId = trackId.rawId;
-    return provider.getDownloadUrl(rawId);
+    return provider.getDownloadUrl(rawId, targetBitrate: targetBitrate);
   }
 
   /// Get streaming URL for a track, automatically selecting the correct provider.
-  Future<String?> getStreamUrl(String trackId) async {
+  Future<String?> getStreamUrl(String trackId, {int? targetBitrate}) async {
     final provider = getProviderForTrack(trackId);
     if (provider == null) return null;
 
     // Strip the source prefix to get the raw ID
     final rawId = trackId.rawId;
-    return provider.getStreamUrl(rawId);
+    return provider.getStreamUrl(rawId, targetBitrate: targetBitrate);
   }
 
   /// Get track details, automatically selecting the correct provider.

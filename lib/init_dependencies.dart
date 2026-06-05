@@ -225,6 +225,7 @@ Future<void> initDependencies() async {
       serviceLocator<TrackCacheService>(),
       serviceLocator<MusicProviderRegistry>(),
       serviceLocator<ImageCacheService>(),
+      serviceLocator<SettingsCubit>(),
     ),
   );
 
@@ -252,6 +253,8 @@ Future<void> initDependencies() async {
         equalizerController: serviceLocator<EqualizerController>(),
         trackCache: serviceLocator<TrackCacheService>(),
         audioCache: serviceLocator<AudioCacheService>(),
+        settingsCubit: serviceLocator<SettingsCubit>(),
+        connectivityService: serviceLocator<ConnectivityService>(),
       ),
     );
 

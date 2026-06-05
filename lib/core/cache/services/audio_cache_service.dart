@@ -16,7 +16,12 @@ abstract class AudioCacheService {
   Future<String?> getLocalAudioPath(String trackId);
 
   /// Get local playback URI (localhost HTTP URL or file URI) for a cached track
-  Future<String?> getLocalPlaybackUri(String trackId);
+  Future<String?> getLocalPlaybackUri(
+    String trackId, {
+    int? targetBitrate,
+    required TrackCacheService trackCache,
+    bool isOnline,
+  });
 
   /// Download audio file and cache it locally
   /// Returns the local file path on success
@@ -355,14 +360,41 @@ class AudioCacheServiceImpl implements AudioCacheService {
   }
 
   @override
-  Future<String?> getLocalPlaybackUri(String trackId) async {
+  Future<String?> getLocalPlaybackUri(
+    String trackId, {
+    int? targetBitrate,
+    required TrackCacheService trackCache,
+    bool isOnline = true,
+  }) async {
     if (kIsWeb) return null;
 
     final path = await getLocalAudioPath(trackId);
     if (path == null) return null;
 
+    final isHls = await _hasPlayableHlsCache(trackId);
+    if (isHls) {
+      final cachedTrack = await trackCache.getTrack(trackId);
+      final cachedBitrate = cachedTrack?.cachedHlsBitrate;
+
+      if (cachedBitrate != null) {
+        if (isOnline) {
+          if (targetBitrate == null) {
+            // Target is Auto (adaptive, up to 320 kbps).
+            // Serve from cache only if we have the highest quality (320).
+            if (cachedBitrate < 320) {
+              return null; // Force network stream (master)
+            }
+          } else {
+            // Target is specific quality. Serve from cache if cached quality is equal or better.
+            if (cachedBitrate < targetBitrate) {
+              return null; // Force network stream of higher quality
+            }
+          }
+        }
+      }
+    }
+
     if (_localServer != null) {
-      final isHls = await _hasPlayableHlsCache(trackId);
       if (isHls) {
         return 'http://localhost:${_localServer!.port}/${trackId}_hls/index.m3u8';
       } else {

@@ -118,7 +118,7 @@ class MuseeServerProvider implements MusicProvider {
   }
 
   @override
-  Future<String?> getDownloadUrl(String trackId) async {
+  Future<String?> getDownloadUrl(String trackId, {int? targetBitrate}) async {
     if (trackId.contains(':')) return null;
     try {
       final uri = Uri.parse('$_baseUrl/api/user/tracks/$trackId');
@@ -130,6 +130,17 @@ class MuseeServerProvider implements MusicProvider {
 
       final hls = data['hls'] as Map<String, dynamic>?;
       final variants = (hls?['variants'] as List?)?.cast<dynamic>() ?? const [];
+
+      if (targetBitrate != null) {
+        for (final item in variants) {
+          final m = (item as Map).cast<String, dynamic>();
+          final url = m['url'] as String?;
+          final bitrate = (m['bitrate'] as num?)?.toInt() ?? 0;
+          if (bitrate == targetBitrate && url != null && url.isNotEmpty) {
+            return url;
+          }
+        }
+      }
 
       String? bestVariantUrl;
       int bestBitrate = -1;
@@ -155,7 +166,7 @@ class MuseeServerProvider implements MusicProvider {
   }
 
   @override
-  Future<String?> getStreamUrl(String trackId) async {
+  Future<String?> getStreamUrl(String trackId, {int? targetBitrate}) async {
     if (trackId.contains(':')) return null;
     try {
       final uri = Uri.parse('$_baseUrl/api/user/tracks/$trackId');
@@ -166,6 +177,18 @@ class MuseeServerProvider implements MusicProvider {
       final data = json.decode(response.body) as Map<String, dynamic>;
       final hls = data['hls'] as Map<String, dynamic>?;
       final master = hls?['master'] as String?;
+
+      if (targetBitrate != null && !kIsWeb) {
+        final variants = (hls?['variants'] as List?)?.cast<dynamic>() ?? const [];
+        for (final item in variants) {
+          final m = (item as Map).cast<String, dynamic>();
+          final bitrate = (m['bitrate'] as num?)?.toInt() ?? 0;
+          final url = m['url'] as String?;
+          if (bitrate == targetBitrate && url != null && url.isNotEmpty) {
+            return url;
+          }
+        }
+      }
 
       // On Web, prefer MP3 fallback over HLS
       if (kIsWeb) {

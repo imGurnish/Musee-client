@@ -14,6 +14,10 @@ class SettingsCubit extends HydratedCubit<SettingsState> {
     emit(state.copyWith(downloadQuality: quality));
   }
 
+  void setStreamingQuality(StreamingQuality quality) {
+    emit(state.copyWith(streamingQuality: quality));
+  }
+
   void setWifiOnlyDownloads(bool value) {
     emit(state.copyWith(wifiOnlyDownloads: value));
   }

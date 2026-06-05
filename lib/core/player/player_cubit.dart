@@ -11,6 +11,7 @@ import 'package:musee/features/listening_history/data/repositories/listening_his
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 
 import 'package:musee/core/providers/music_provider_registry.dart';
+import 'package:musee/core/providers/provider_models.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 
@@ -27,6 +28,9 @@ import 'package:musee/core/equalizer/equalizer_controller.dart';
 
 import 'player_state.dart';
 import 'playback_diagnostics.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
+import 'package:musee/core/common/services/connectivity_service.dart';
 
 class PlayerCubit extends Cubit<PlayerViewState> {
   static const int _queuePrefetchTarget = 20;
@@ -39,6 +43,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   final SupabaseClient? _supabaseClient;
   final TrackCacheService? _trackCache;
   final AudioCacheService? _audioCache;
+  final SettingsCubit? _settingsCubit;
+  final ConnectivityService? _connectivityService;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
   StreamSubscription<bool>? _playingSub;
@@ -61,9 +67,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   DateTime? _trackMediaOpenedAt; // guards against spurious completed events
   final _random = math.Random();
   final _audioOperationHandler = WindowsAudioOperationHandler();
-  // URL cache: trackId → (url, fetchedAt). Signed URLs are valid for ~60 min;
+  // URL cache: trackId → (url, targetBitrate, fetchedAt). Signed URLs are valid for ~60 min;
   // we cache for 50 min to stay safely within the expiry window.
-  final Map<String, (String, DateTime)> _urlCache = {};
+  final Map<String, (String, int?, DateTime)> _urlCache = {};
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
@@ -200,12 +206,16 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     EqualizerController? equalizerController,
     TrackCacheService? trackCache,
     AudioCacheService? audioCache,
+    SettingsCubit? settingsCubit,
+    ConnectivityService? connectivityService,
   }) : _repo = repository,
        _musicProviderRegistry = musicProviderRegistry,
        _listeningHistoryRepository = listeningHistoryRepository,
        _supabaseClient = supabaseClient,
        _trackCache = trackCache,
        _audioCache = audioCache,
+       _settingsCubit = settingsCubit,
+       _connectivityService = connectivityService,
        super(const PlayerViewState()) {
     if (kDebugMode) {
       debugPrint('[PlayerCubit] Instance created ($hashCode)');
@@ -475,16 +485,25 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   /// Returns a cached URL if one was fetched within the last 50 minutes,
   /// otherwise fetches fresh and stores in cache.
   Future<String?> _fetchPlayableUrl(String trackId) async {
+    final streamingQuality = _settingsCubit?.state.streamingQuality ?? StreamingQuality.auto;
+    final targetBitrate = streamingQuality.targetBitrate;
+    final isOnline = _connectivityService?.isOnline ?? true;
+
     // 1. Check local audio cache first (for offline playback)
-    if (_audioCache != null && !kIsWeb) {
-      final localUri = await _audioCache.getLocalPlaybackUri(trackId);
+    if (_audioCache != null && _trackCache != null && !kIsWeb) {
+      final localUri = await _audioCache.getLocalPlaybackUri(
+        trackId,
+        targetBitrate: targetBitrate,
+        trackCache: _trackCache,
+        isOnline: isOnline,
+      );
       if (localUri != null) {
         PlaybackDiagnostics.log('Playing from local cache: $localUri');
         if (kDebugMode) {
           debugPrint('[PlayerCubit] Playing from local cache: $localUri');
         }
         // Update last played timestamp for LRU
-        _trackCache?.updateLastPlayed(trackId);
+        _trackCache.updateLastPlayed(trackId);
         return localUri;
       }
     }
@@ -492,7 +511,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     // 2. Return cached URL if fresh enough (signed URLs expire at ~60 min).
     final cached = _urlCache[trackId];
     if (cached != null &&
-        DateTime.now().difference(cached.$2).inMinutes < 50) {
+        DateTime.now().difference(cached.$3).inMinutes < 50 &&
+        cached.$2 == targetBitrate) {
       PlaybackDiagnostics.log('URL cache hit for $trackId');
       return cached.$1;
     }
@@ -500,11 +520,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (_musicProviderRegistry != null) {
       try {
         final url = await _musicProviderRegistry
-          .getStreamUrl(trackId)
+          .getStreamUrl(trackId, targetBitrate: targetBitrate)
           .timeout(const Duration(seconds: 15));
 
         if (url != null && url.trim().isNotEmpty) {
-          _urlCache[trackId] = (url, DateTime.now());
+          _urlCache[trackId] = (url, targetBitrate, DateTime.now());
+          if (isOnline) {
+            _startBackgroundCache(trackId, targetBitrate);
+          }
           return url;
         }
       } catch (e) {
@@ -515,6 +538,71 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
 
     return null;
+  }
+
+  void _startBackgroundCache(String trackId, int? targetBitrate) {
+    if (_audioCache == null || _trackCache == null || _musicProviderRegistry == null || kIsWeb) return;
+
+    unawaited(() async {
+      try {
+        final providerTrack = await _musicProviderRegistry.getTrack(trackId);
+        if (providerTrack == null) return;
+
+        ProviderAudioVariant? chosenVariant;
+        if (targetBitrate == null) {
+          // Auto mode: Cache the highest available variant
+          int maxBitrate = -1;
+          for (final variant in providerTrack.hlsVariants) {
+            if (variant.bitrate > maxBitrate) {
+              maxBitrate = variant.bitrate;
+              chosenVariant = variant;
+            }
+          }
+        } else {
+          // Find matching variant
+          for (final variant in providerTrack.hlsVariants) {
+            if (variant.bitrate == targetBitrate) {
+              chosenVariant = variant;
+              break;
+            }
+          }
+          // If not found, fallback to highest quality
+          if (chosenVariant == null) {
+            int maxBitrate = -1;
+            for (final variant in providerTrack.hlsVariants) {
+              if (variant.bitrate > maxBitrate) {
+                maxBitrate = variant.bitrate;
+                chosenVariant = variant;
+              }
+            }
+          }
+        }
+
+        if (chosenVariant != null) {
+          final cachedTrack = await _trackCache.getTrack(trackId);
+          // Only cache if not already cached at equal or higher quality
+          if (cachedTrack?.localAudioPath != null &&
+              cachedTrack?.cachedHlsBitrate != null &&
+              cachedTrack!.cachedHlsBitrate! >= chosenVariant.bitrate) {
+            return;
+          }
+
+          if (kDebugMode) {
+            debugPrint('[PlayerCubit] Background caching track $trackId at quality ${chosenVariant.bitrate} kbps');
+          }
+          await _audioCache.downloadAndCache(
+            trackId: trackId,
+            remoteUrl: chosenVariant.url,
+            trackCache: _trackCache,
+            preferredHlsBitrate: chosenVariant.bitrate,
+          );
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] Background caching failed for $trackId: $e');
+        }
+      }
+    }());
   }
 
   /// Pre-fetches the URL for the next queued track in the background so it is
@@ -528,9 +616,13 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (nextIndex >= queue.length) return;
 
     final nextTrackId = queue[nextIndex].trackId;
+    final streamingQuality = _settingsCubit?.state.streamingQuality ?? StreamingQuality.auto;
+    final targetBitrate = streamingQuality.targetBitrate;
+
     final cached = _urlCache[nextTrackId];
     if (cached != null &&
-        DateTime.now().difference(cached.$2).inMinutes < 50) {
+        DateTime.now().difference(cached.$3).inMinutes < 50 &&
+        cached.$2 == targetBitrate) {
       return; // Already cached and fresh.
     }
 

@@ -7,6 +7,9 @@ import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/services/image_cache_service.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
 import 'package:musee/core/providers/music_provider_registry.dart';
+import 'package:musee/core/providers/provider_models.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
 
 enum DownloadStatus { pending, downloading, completed, failed, cancelled }
 
@@ -42,12 +45,18 @@ class DownloadManager extends Cubit<DownloadState> {
   final TrackCacheService _trackCache;
   final MusicProviderRegistry _registry;
   final ImageCacheService _imageCache;
+  final SettingsCubit _settingsCubit;
 
   // Track active cancel tokens
   final Map<String, CancelToken> _cancelTokens = {};
 
-  DownloadManager(this._audioCache, this._trackCache, this._registry, this._imageCache)
-    : super(DownloadState.initial());
+  DownloadManager(
+    this._audioCache,
+    this._trackCache,
+    this._registry,
+    this._imageCache,
+    this._settingsCubit,
+  ) : super(DownloadState.initial());
 
   Future<void> addToQueue(String trackId) async {
     if (state.status[trackId] == DownloadStatus.downloading) return;
@@ -91,9 +100,30 @@ class DownloadManager extends Cubit<DownloadState> {
 
       await _trackCache.cacheTrack(cachedTrack);
 
-      // Fetch URL
-      final url = await _registry.getDownloadUrl(trackId);
-      if (url == null) {
+      // Fetch URL with download quality selection
+      final downloadQuality = _settingsCubit.state.downloadQuality;
+      final targetBitrate = downloadQuality.targetBitrate;
+
+      // Find preferred variant matching target bitrate
+      ProviderAudioVariant? preferredVariant;
+      for (final variant in providerTrack.hlsVariants) {
+        if (variant.bitrate == targetBitrate) {
+          preferredVariant = variant;
+          break;
+        }
+      }
+      if (preferredVariant == null && providerTrack.hlsVariants.isNotEmpty) {
+        int maxBitrate = -1;
+        for (final variant in providerTrack.hlsVariants) {
+          if (variant.bitrate > maxBitrate) {
+            maxBitrate = variant.bitrate;
+            preferredVariant = variant;
+          }
+        }
+      }
+
+      final downloadUrl = preferredVariant?.url ?? await _registry.getDownloadUrl(trackId, targetBitrate: targetBitrate);
+      if (downloadUrl == null) {
         _fail(trackId, 'Could not resolve stream URL');
         return;
       }
@@ -105,8 +135,9 @@ class DownloadManager extends Cubit<DownloadState> {
 
       final filePath = await _audioCache.downloadAndCache(
         trackId: trackId,
-        remoteUrl: url,
+        remoteUrl: downloadUrl,
         trackCache: _trackCache,
+        preferredHlsBitrate: preferredVariant?.bitrate ?? targetBitrate,
         onProgress: (received, total) {
           if (total > 0) {
             final p = received / total;

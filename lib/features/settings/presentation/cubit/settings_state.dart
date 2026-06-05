@@ -4,11 +4,14 @@ import 'package:musee/core/equalizer/eq_presets.dart';
 
 enum DownloadQuality { low, medium, high }
 
+enum StreamingQuality { auto, low, medium, high }
+
 enum MaxCacheSize { mb100, mb250, mb500, gb1 }
 
 class SettingsState extends Equatable {
   final ThemeMode themeMode;
   final DownloadQuality downloadQuality;
+  final StreamingQuality streamingQuality;
   final bool wifiOnlyDownloads;
   final MaxCacheSize maxCacheSize;
   final bool autoPlayEnabled;
@@ -32,6 +35,7 @@ class SettingsState extends Equatable {
   const SettingsState({
     this.themeMode = ThemeMode.system,
     this.downloadQuality = DownloadQuality.high,
+    this.streamingQuality = StreamingQuality.auto,
     this.wifiOnlyDownloads = true,
     this.maxCacheSize = MaxCacheSize.mb500,
     this.autoPlayEnabled = true,
@@ -49,6 +53,7 @@ class SettingsState extends Equatable {
   SettingsState copyWith({
     ThemeMode? themeMode,
     DownloadQuality? downloadQuality,
+    StreamingQuality? streamingQuality,
     bool? wifiOnlyDownloads,
     MaxCacheSize? maxCacheSize,
     bool? autoPlayEnabled,
@@ -65,6 +70,7 @@ class SettingsState extends Equatable {
     return SettingsState(
       themeMode: themeMode ?? this.themeMode,
       downloadQuality: downloadQuality ?? this.downloadQuality,
+      streamingQuality: streamingQuality ?? this.streamingQuality,
       wifiOnlyDownloads: wifiOnlyDownloads ?? this.wifiOnlyDownloads,
       maxCacheSize: maxCacheSize ?? this.maxCacheSize,
       autoPlayEnabled: autoPlayEnabled ?? this.autoPlayEnabled,
@@ -85,6 +91,7 @@ class SettingsState extends Equatable {
     return {
       'themeMode': themeMode.index,
       'downloadQuality': downloadQuality.index,
+      'streamingQuality': streamingQuality.index,
       'wifiOnlyDownloads': wifiOnlyDownloads,
       'maxCacheSize': maxCacheSize.index,
       'autoPlayEnabled': autoPlayEnabled,
@@ -113,6 +120,7 @@ class SettingsState extends Equatable {
     return SettingsState(
       themeMode: ThemeMode.values[json['themeMode'] as int? ?? 0],
       downloadQuality: DownloadQuality.values[json['downloadQuality'] as int? ?? 2],
+      streamingQuality: StreamingQuality.values[json['streamingQuality'] as int? ?? 0],
       wifiOnlyDownloads: json['wifiOnlyDownloads'] as bool? ?? true,
       maxCacheSize: MaxCacheSize.values[json['maxCacheSize'] as int? ?? 2],
       autoPlayEnabled: json['autoPlayEnabled'] as bool? ?? true,
@@ -132,6 +140,7 @@ class SettingsState extends Equatable {
   List<Object?> get props => [
     themeMode,
     downloadQuality,
+    streamingQuality,
     wifiOnlyDownloads,
     maxCacheSize,
     autoPlayEnabled,
@@ -167,6 +176,60 @@ extension DownloadQualityLabel on DownloadQuality {
         return 'Medium';
       case DownloadQuality.high:
         return 'High';
+    }
+  }
+}
+
+extension DownloadQualityBitrate on DownloadQuality {
+  int get targetBitrate {
+    switch (this) {
+      case DownloadQuality.low:
+        return 96;
+      case DownloadQuality.medium:
+        return 160;
+      case DownloadQuality.high:
+        return 320;
+    }
+  }
+}
+
+extension StreamingQualityLabel on StreamingQuality {
+  String get label {
+    switch (this) {
+      case StreamingQuality.auto:
+        return 'Auto (adaptive)';
+      case StreamingQuality.low:
+        return 'Low (96 kbps)';
+      case StreamingQuality.medium:
+        return 'Medium (160 kbps)';
+      case StreamingQuality.high:
+        return 'High (320 kbps)';
+    }
+  }
+
+  String get shortLabel {
+    switch (this) {
+      case StreamingQuality.auto:
+        return 'Auto';
+      case StreamingQuality.low:
+        return 'Low';
+      case StreamingQuality.medium:
+        return 'Medium';
+      case StreamingQuality.high:
+        return 'High';
+    }
+  }
+
+  int? get targetBitrate {
+    switch (this) {
+      case StreamingQuality.auto:
+        return null;
+      case StreamingQuality.low:
+        return 96;
+      case StreamingQuality.medium:
+        return 160;
+      case StreamingQuality.high:
+        return 320;
     }
   }
 }
