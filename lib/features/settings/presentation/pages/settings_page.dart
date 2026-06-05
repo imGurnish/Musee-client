@@ -516,25 +516,31 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
                       .read<SettingsCubit>()
                       .setShowExplicitContent(v),
             ),
-            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
-              SettingsNavTile(
-                icon: Icons.battery_saver_rounded,
-                iconColor: _batteryOptimizationsIgnored == true ? Colors.green : Colors.orange,
-                title: 'Android battery optimization',
-                subtitle: _batteryOptimizationsIgnored == true
-                    ? 'Unrestricted (allows uninterrupted background playback)'
-                    : 'Optimized (playback might get interrupted)',
-                trailingLabel: _batteryOptimizationsIgnored == true ? 'Unrestricted' : 'Optimize',
-                onTap: _handleBatteryOptimization,
-              ),
+            if (!kIsWeb) ...[
               Divider(
                 height: 1,
                 thickness: 1,
                 indent: 54,
                 color: colorScheme.outlineVariant.withValues(alpha: 0.35),
               ),
-            ],
-            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+              if (defaultTargetPlatform == TargetPlatform.android) ...[
+                SettingsNavTile(
+                  icon: Icons.battery_saver_rounded,
+                  iconColor: _batteryOptimizationsIgnored == true ? Colors.green : Colors.orange,
+                  title: 'Android battery optimization',
+                  subtitle: _batteryOptimizationsIgnored == true
+                      ? 'Unrestricted (allows uninterrupted background playback)'
+                      : 'Optimized (playback might get interrupted)',
+                  trailingLabel: _batteryOptimizationsIgnored == true ? 'Unrestricted' : 'Optimize',
+                  onTap: _handleBatteryOptimization,
+                ),
+                Divider(
+                  height: 1,
+                  thickness: 1,
+                  indent: 54,
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+                ),
+              ],
               SettingsNavTile(
                 icon: Icons.equalizer_rounded,
                 iconColor: colorScheme.primary,
@@ -542,6 +548,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
                 subtitle: 'EQ presets, bass & surround enhancement',
                 onTap: () => context.push(Routes.equalizer),
               ),
+            ],
           ],
         );
       },

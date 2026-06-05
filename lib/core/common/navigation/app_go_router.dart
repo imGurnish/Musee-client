@@ -445,8 +445,7 @@ class AppGoRouter {
           path: Routes.equalizer,
           name: 'equalizer',
           redirect: (context, state) {
-            final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-            if (!isAndroid) {
+            if (kIsWeb) {
               return Routes.forbidden;
             }
             return null;
