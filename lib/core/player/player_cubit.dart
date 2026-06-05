@@ -224,8 +224,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     PlaybackDiagnostics.log('Initializing AudioPlayer instance');
 
     _player = Player();
-    if (_player.platform is NativePlayer) {
-      final nativePlayer = _player.platform as NativePlayer;
+    if (!kIsWeb && _player.platform is NativePlayer) {
+      final dynamic nativePlayer = _player.platform;
       try {
         await nativePlayer.setProperty('demuxer-max-bytes', '1048576');
         await nativePlayer.setProperty('demuxer-max-back-bytes', '1048576');

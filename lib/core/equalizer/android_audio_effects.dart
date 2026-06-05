@@ -90,8 +90,8 @@ class AndroidAudioEffects {
       ];
       final filterString = 'lavfi=[${bands.join(',')}]';
 
-      if (_player.platform is NativePlayer) {
-        await (_player.platform as NativePlayer).setProperty('af', filterString);
+      if (!kIsWeb && _player.platform is NativePlayer) {
+        await (_player.platform as dynamic).setProperty('af', filterString);
       }
     } catch (e) {
       if (kDebugMode) {
