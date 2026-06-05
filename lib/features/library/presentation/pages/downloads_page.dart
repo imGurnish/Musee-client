@@ -248,7 +248,19 @@ class _DownloadsPageState extends State<DownloadsPage> {
       ),
       body: RefreshIndicator(
         onRefresh: _pullToRefresh,
-        child: BlocBuilder<DownloadManager, DownloadState>(
+        child: BlocConsumer<DownloadManager, DownloadState>(
+          listenWhen: (previous, current) {
+            if (previous.status.length != current.status.length) return true;
+            for (final key in current.status.keys) {
+              if (previous.status[key] != current.status[key]) {
+                return true;
+              }
+            }
+            return false;
+          },
+          listener: (context, state) {
+            _refreshOfflineTracks();
+          },
           builder: (context, downloadState) {
             final activeDownloads = downloadState.status.entries
                 .where(
@@ -413,42 +425,56 @@ class _DownloadsPageState extends State<DownloadsPage> {
                           final status = downloadState.status[trackId];
                           final isPending = status == DownloadStatus.pending;
 
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                            child: Card(
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                                title: Text(
-                                  isPending
-                                      ? 'Queued track'
-                                      : 'Downloading track',
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      trackId,
+                          return FutureBuilder<CachedTrack?>(
+                            future: _trackCache.getTrack(trackId),
+                            builder: (context, trackSnapshot) {
+                              final track = trackSnapshot.data;
+                              final titleText = track != null
+                                  ? track.title
+                                  : (isPending ? 'Queued track' : 'Downloading track');
+                              final subtitleText = track != null
+                                  ? '${track.artistName} • Downloading...'
+                                  : trackId;
+
+                              return Padding(
+                                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                                child: Card(
+                                  child: ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 8,
+                                    ),
+                                    leading: track != null ? _buildArtwork(track) : null,
+                                    title: Text(
+                                      titleText,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
-                                    const SizedBox(height: 8),
-                                    LinearProgressIndicator(
-                                      value: isPending ? null : progress,
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          subtitleText,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        LinearProgressIndicator(
+                                          value: isPending ? null : progress,
+                                        ),
+                                      ],
                                     ),
-                                  ],
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.close),
+                                      onPressed: () => context
+                                          .read<DownloadManager>()
+                                          .cancel(trackId),
+                                    ),
+                                  ),
                                 ),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.close),
-                                  onPressed: () => context
-                                      .read<DownloadManager>()
-                                      .cancel(trackId),
-                                ),
-                              ),
-                            ),
+                              );
+                            },
                           );
                         }, childCount: activeDownloads.length),
                       ),
@@ -475,25 +501,41 @@ class _DownloadsPageState extends State<DownloadsPage> {
                               downloadState.errors[trackId] ??
                               'Download failed';
 
-                          return Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                            child: Card(
-                              child: ListTile(
-                                title: const Text('Failed track'),
-                                subtitle: Text(
-                                  '$trackId\n$error',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                          return FutureBuilder<CachedTrack?>(
+                            future: _trackCache.getTrack(trackId),
+                            builder: (context, trackSnapshot) {
+                              final track = trackSnapshot.data;
+                              final titleText = track != null ? track.title : 'Failed track';
+                              final subtitleText = track != null
+                                  ? '${track.artistName}\n$error'
+                                  : '$trackId\n$error';
+
+                              return Padding(
+                                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                                child: Card(
+                                  child: ListTile(
+                                    leading: track != null ? _buildArtwork(track) : null,
+                                    title: Text(
+                                      titleText,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Text(
+                                      subtitleText,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    isThreeLine: true,
+                                    trailing: IconButton(
+                                      icon: const Icon(Icons.refresh),
+                                      onPressed: () => context
+                                          .read<DownloadManager>()
+                                          .addToQueue(trackId),
+                                    ),
+                                  ),
                                 ),
-                                isThreeLine: true,
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.refresh),
-                                  onPressed: () => context
-                                      .read<DownloadManager>()
-                                      .addToQueue(trackId),
-                                ),
-                              ),
-                            ),
+                              );
+                            },
                           );
                         }, childCount: failedDownloads.length),
                       ),

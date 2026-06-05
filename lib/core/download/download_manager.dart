@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:dio/dio.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
+import 'package:musee/core/cache/services/image_cache_service.dart';
+import 'package:musee/core/cache/models/cached_track.dart';
 import 'package:musee/core/providers/music_provider_registry.dart';
 
 enum DownloadStatus { pending, downloading, completed, failed, cancelled }
@@ -38,11 +41,12 @@ class DownloadManager extends Cubit<DownloadState> {
   final AudioCacheService _audioCache;
   final TrackCacheService _trackCache;
   final MusicProviderRegistry _registry;
+  final ImageCacheService _imageCache;
 
   // Track active cancel tokens
   final Map<String, CancelToken> _cancelTokens = {};
 
-  DownloadManager(this._audioCache, this._trackCache, this._registry)
+  DownloadManager(this._audioCache, this._trackCache, this._registry, this._imageCache)
     : super(DownloadState.initial());
 
   Future<void> addToQueue(String trackId) async {
@@ -53,6 +57,40 @@ class DownloadManager extends Cubit<DownloadState> {
     _updateProgress(trackId, 0.0);
 
     try {
+      // Fetch track details and cache them first
+      final providerTrack = await _registry.getTrack(trackId);
+      if (providerTrack == null) {
+        _fail(trackId, 'Could not resolve track metadata');
+        return;
+      }
+
+      String? localImagePath;
+      if (providerTrack.imageUrl != null && providerTrack.imageUrl!.isNotEmpty) {
+        try {
+          localImagePath = await _imageCache.cacheImage(providerTrack.imageUrl!);
+        } catch (e) {
+          if (kDebugMode) {
+            print('[DownloadManager] Failed to cache track artwork: $e');
+          }
+        }
+      }
+
+      final cachedTrack = CachedTrack()
+        ..trackId = trackId
+        ..title = providerTrack.title
+        ..albumId = providerTrack.albumId
+        ..albumTitle = providerTrack.albumTitle
+        ..albumCoverUrl = providerTrack.imageUrl
+        ..artistName = providerTrack.artistName
+        ..durationSeconds = providerTrack.durationSeconds ?? 0
+        ..isExplicit = providerTrack.isExplicit
+        ..cachedAt = DateTime.now()
+        ..lastPlayedAt = DateTime.now()
+        ..sourceProvider = providerTrack.source.name
+        ..localImagePath = localImagePath;
+
+      await _trackCache.cacheTrack(cachedTrack);
+
       // Fetch URL
       final url = await _registry.getDownloadUrl(trackId);
       if (url == null) {
@@ -65,7 +103,7 @@ class DownloadManager extends Cubit<DownloadState> {
       final cancelToken = CancelToken();
       _cancelTokens[trackId] = cancelToken;
 
-      await _audioCache.downloadAndCache(
+      final filePath = await _audioCache.downloadAndCache(
         trackId: trackId,
         remoteUrl: url,
         trackCache: _trackCache,
@@ -78,7 +116,11 @@ class DownloadManager extends Cubit<DownloadState> {
         cancelToken: cancelToken,
       );
 
-      _finish(trackId);
+      if (filePath == null) {
+        _fail(trackId, 'Download failed to save file');
+      } else {
+        _finish(trackId);
+      }
     } catch (e) {
       if (CancelToken.isCancel(e as dynamic)) {
         _updateStatus(trackId, DownloadStatus.cancelled);

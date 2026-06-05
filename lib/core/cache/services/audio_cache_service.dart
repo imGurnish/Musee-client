@@ -15,6 +15,9 @@ abstract class AudioCacheService {
   /// Get local file path for a cached track, or null if not cached
   Future<String?> getLocalAudioPath(String trackId);
 
+  /// Get local playback URI (localhost HTTP URL or file URI) for a cached track
+  Future<String?> getLocalPlaybackUri(String trackId);
+
   /// Download audio file and cache it locally
   /// Returns the local file path on success
   Future<String?> downloadAndCache({
@@ -43,6 +46,7 @@ abstract class AudioCacheService {
 class AudioCacheServiceImpl implements AudioCacheService {
   final Dio _dio;
   Directory? _cacheDir;
+  HttpServer? _localServer;
 
   AudioCacheServiceImpl(this._dio);
 
@@ -53,6 +57,46 @@ class AudioCacheServiceImpl implements AudioCacheService {
     _cacheDir = Directory('${appDir.path}/audio_cache');
     if (!await _cacheDir!.exists()) {
       await _cacheDir!.create(recursive: true);
+    }
+
+    // Start local loopback HTTP server to serve cached audio files
+    try {
+      _localServer = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      _localServer!.listen((request) async {
+        try {
+          final rawPath = request.uri.path.replaceFirst('/', '');
+          final decodedPath = Uri.decodeComponent(rawPath);
+          // Normalize backslashes from previously downloaded playlists to forward slashes
+          final filePath = decodedPath.replaceAll(r'\', '/');
+          final file = File('${_cacheDir!.path}/$filePath');
+
+          if (await file.exists()) {
+            if (filePath.endsWith('.m3u8')) {
+              request.response.headers.contentType = ContentType('application', 'vnd.apple.mpegurl');
+            } else if (filePath.endsWith('.ts')) {
+              request.response.headers.contentType = ContentType('video', 'mp2t');
+            } else {
+              request.response.headers.contentType = ContentType.binary;
+            }
+            await file.openRead().pipe(request.response);
+          } else {
+            request.response.statusCode = HttpStatus.notFound;
+            await request.response.close();
+          }
+        } catch (e) {
+          try {
+            request.response.statusCode = HttpStatus.internalServerError;
+            await request.response.close();
+          } catch (_) {}
+        }
+      });
+      if (kDebugMode) {
+        debugPrint('[AudioCacheService] Local HTTP server started on port ${_localServer!.port}');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[AudioCacheService] Failed to start local HTTP server: $e');
+      }
     }
   }
 
@@ -107,7 +151,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
     List<String> segments, {
     required String basePath,
   }) {
-    return '$basePath/${segments.join('/')}';
+    return '$basePath${Platform.pathSeparator}${segments.join(Platform.pathSeparator)}';
   }
 
   String _relativePathBetween(List<String> fromDirSegments, List<String> toFileSegments) {
@@ -155,20 +199,23 @@ class AudioCacheServiceImpl implements AudioCacheService {
     required Uri rootUri,
     required String basePath,
     required Set<String> visited,
-    void Function(int received, int total)? onProgress,
+    _HlsProgress? progressTracker,
+    CancelToken? cancelToken,
   }) async {
     final localSegments = _localSegmentsForUri(uri, rootUri: rootUri);
     final localPath = _localPathForSegments(localSegments, basePath: basePath);
 
     if (!_isPlaylistUri(uri)) {
+      progressTracker?.addFile();
       final file = File(localPath);
       await file.parent.create(recursive: true);
       await _dio.download(
         uri.toString(),
         localPath,
-        cancelToken: null,
+        cancelToken: cancelToken,
         options: Options(responseType: ResponseType.bytes, followRedirects: true),
       );
+      progressTracker?.completeFile();
       return (path: localPath, segments: localSegments);
     }
 
@@ -178,11 +225,13 @@ class AudioCacheServiceImpl implements AudioCacheService {
     }
     visited.add(cacheKey);
 
+    progressTracker?.addFile();
     final playlistFile = File(localPath);
     await playlistFile.parent.create(recursive: true);
 
     final playlistResp = await _dio.get<String>(
       uri.toString(),
+      cancelToken: cancelToken,
       options: Options(responseType: ResponseType.plain, followRedirects: true),
     );
 
@@ -210,7 +259,8 @@ class AudioCacheServiceImpl implements AudioCacheService {
         rootUri: rootUri,
         basePath: basePath,
         visited: visited,
-        onProgress: onProgress,
+        progressTracker: progressTracker,
+        cancelToken: cancelToken,
       );
 
       rewritten.add(
@@ -219,6 +269,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
     }
 
     await playlistFile.writeAsString('${rewritten.join('\n')}\n');
+    progressTracker?.completeFile();
     return (path: localPath, segments: localSegments);
   }
 
@@ -249,12 +300,19 @@ class AudioCacheServiceImpl implements AudioCacheService {
 
     try {
       final rootUri = Uri.parse(remoteUrl);
+      final progressTracker = _HlsProgress((received, total) {
+        if (onProgress != null) {
+          onProgress(received, total);
+        }
+      });
+
       final cachedRoot = await _cacheHlsUri(
         uri: rootUri,
         rootUri: rootUri,
         basePath: hlsDir.path,
         visited: <String>{},
-        onProgress: onProgress,
+        progressTracker: progressTracker,
+        cancelToken: cancelToken,
       );
 
       final playlistLocalPath = cachedRoot.path;
@@ -294,6 +352,28 @@ class AudioCacheServiceImpl implements AudioCacheService {
       }
     }
     return null;
+  }
+
+  @override
+  Future<String?> getLocalPlaybackUri(String trackId) async {
+    if (kIsWeb) return null;
+
+    final path = await getLocalAudioPath(trackId);
+    if (path == null) return null;
+
+    if (_localServer != null) {
+      final isHls = await _hasPlayableHlsCache(trackId);
+      if (isHls) {
+        return 'http://localhost:${_localServer!.port}/${trackId}_hls/index.m3u8';
+      } else {
+        final file = File(path);
+        final ext = file.path.split('.').last;
+        return 'http://localhost:${_localServer!.port}/$trackId.$ext';
+      }
+    }
+
+    // Fallback if local server failed to start
+    return Uri.file(path).toString();
   }
 
   @override
@@ -495,6 +575,30 @@ class AudioCacheServiceImpl implements AudioCacheService {
           await entity.delete(recursive: true);
         }
       }
+    }
+  }
+}
+
+class _HlsProgress {
+  int total = 0;
+  int completed = 0;
+  final void Function(int received, int total)? onProgress;
+
+  _HlsProgress(this.onProgress);
+
+  void addFile() {
+    total++;
+    _report();
+  }
+
+  void completeFile() {
+    completed++;
+    _report();
+  }
+
+  void _report() {
+    if (onProgress != null && total > 0) {
+      onProgress!(completed, total);
     }
   }
 }

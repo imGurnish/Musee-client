@@ -11,6 +11,8 @@ import 'package:musee/features/listening_history/data/repositories/listening_his
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, debugPrint;
 
 import 'package:musee/core/providers/music_provider_registry.dart';
+import 'package:musee/core/cache/services/track_cache_service.dart';
+import 'package:musee/core/cache/services/audio_cache_service.dart';
 
 
 
@@ -35,6 +37,8 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   final MusicProviderRegistry? _musicProviderRegistry;
   final ListeningHistoryRepository? _listeningHistoryRepository;
   final SupabaseClient? _supabaseClient;
+  final TrackCacheService? _trackCache;
+  final AudioCacheService? _audioCache;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
   StreamSubscription<bool>? _playingSub;
@@ -194,10 +198,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     ListeningHistoryRepository? listeningHistoryRepository,
     SupabaseClient? supabaseClient,
     EqualizerController? equalizerController,
+    TrackCacheService? trackCache,
+    AudioCacheService? audioCache,
   }) : _repo = repository,
        _musicProviderRegistry = musicProviderRegistry,
        _listeningHistoryRepository = listeningHistoryRepository,
        _supabaseClient = supabaseClient,
+       _trackCache = trackCache,
+       _audioCache = audioCache,
        super(const PlayerViewState()) {
     if (kDebugMode) {
       debugPrint('[PlayerCubit] Instance created ($hashCode)');
@@ -467,7 +475,21 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   /// Returns a cached URL if one was fetched within the last 50 minutes,
   /// otherwise fetches fresh and stores in cache.
   Future<String?> _fetchPlayableUrl(String trackId) async {
-    // Return cached URL if fresh enough (signed URLs expire at ~60 min).
+    // 1. Check local audio cache first (for offline playback)
+    if (_audioCache != null && !kIsWeb) {
+      final localUri = await _audioCache.getLocalPlaybackUri(trackId);
+      if (localUri != null) {
+        PlaybackDiagnostics.log('Playing from local cache: $localUri');
+        if (kDebugMode) {
+          debugPrint('[PlayerCubit] Playing from local cache: $localUri');
+        }
+        // Update last played timestamp for LRU
+        _trackCache?.updateLastPlayed(trackId);
+        return localUri;
+      }
+    }
+
+    // 2. Return cached URL if fresh enough (signed URLs expire at ~60 min).
     final cached = _urlCache[trackId];
     if (cached != null &&
         DateTime.now().difference(cached.$2).inMinutes < 50) {
