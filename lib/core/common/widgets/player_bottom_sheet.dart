@@ -706,16 +706,17 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                             : null,
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 180),
-                        child: state.playing
+                        child: showingLoading
+                            ? _SheetPlayButtonLoader(
+                                key: const ValueKey('loading'),
+                                resolving: state.resolvingUrl,
+                                playing: state.playing,
+                              )
+                            : state.playing
                             ? const Icon(
                                 Icons.pause_rounded,
                                 key: ValueKey('pause'),
                                 size: 42,
-                              )
-                            : showingLoading
-                            ? _SheetPlayButtonLoader(
-                                key: const ValueKey('loading'),
-                                resolving: state.resolvingUrl,
                               )
                             : const Icon(
                                 Icons.play_arrow_rounded,
@@ -975,7 +976,12 @@ class _QueueSheet extends StatelessWidget {
 
 class _SheetPlayButtonLoader extends StatefulWidget {
   final bool resolving;
-  const _SheetPlayButtonLoader({super.key, required this.resolving});
+  final bool playing;
+  const _SheetPlayButtonLoader({
+    super.key,
+    required this.resolving,
+    required this.playing,
+  });
 
   @override
   State<_SheetPlayButtonLoader> createState() => _SheetPlayButtonLoaderState();
@@ -1021,11 +1027,11 @@ class _SheetPlayButtonLoaderState extends State<_SheetPlayButtonLoader>
                   painter: _ArcPainter(color: color, strokeWidth: 2.4),
                 ),
               ),
-              // Pulsing play icon
+              // Pulsing play/pause icon
               Transform.scale(
                 scale: scale,
                 child: Icon(
-                  Icons.play_arrow_rounded,
+                  widget.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
                   size: 28,
                   color: color,
                 ),

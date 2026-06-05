@@ -385,17 +385,18 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
                                     : null,
                                 child: AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 180),
-                                  child: state.playing
-                                      ? const Icon(
-                                          Icons.pause_rounded,
-                                          key: ValueKey('pause'),
-                                          size: 22,
-                                        )
-                                      : showingLoading
+                                  child: showingLoading
                                       ? _PlayButtonLoader(
                                           key: const ValueKey('loading'),
                                           compact: true,
                                           resolving: state.resolvingUrl,
+                                          playing: state.playing,
+                                        )
+                                      : state.playing
+                                      ? const Icon(
+                                          Icons.pause_rounded,
+                                          key: ValueKey('pause'),
+                                          size: 22,
                                         )
                                       : const Icon(
                                           Icons.play_arrow_rounded,
@@ -485,11 +486,13 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
 class _PlayButtonLoader extends StatefulWidget {
   final bool compact;
   final bool resolving;
+  final bool playing;
 
   const _PlayButtonLoader({
     super.key,
     required this.compact,
     required this.resolving,
+    required this.playing,
   });
 
   @override
@@ -541,7 +544,7 @@ class _PlayButtonLoaderState extends State<_PlayButtonLoader>
               Transform.scale(
                 scale: scale,
                 child: Icon(
-                  Icons.play_arrow_rounded,
+                  widget.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
                   size: iconSize,
                   color: color,
                 ),

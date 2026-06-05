@@ -57,7 +57,9 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   DateTime? _trackMediaOpenedAt; // guards against spurious completed events
   final _random = math.Random();
   final _audioOperationHandler = WindowsAudioOperationHandler();
-  Future<void>? _activeLoadFuture;
+  // URL cache: trackId → (url, fetchedAt). Signed URLs are valid for ~60 min;
+  // we cache for 50 min to stay safely within the expiry window.
+  final Map<String, (String, DateTime)> _urlCache = {};
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
@@ -180,24 +182,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   Future<void> _stopPlaybackForTrackSwitch() async {
     _playbackReassertTimer?.cancel();
-    final activeLoad = _activeLoadFuture;
-    if (activeLoad != null) {
-      if (kDebugMode) {
-        debugPrint('[PlayerCubit] Waiting for active setAudioSource to complete before stopping...');
-      }
-      try {
-        await activeLoad;
-      } catch (_) {}
-    }
-    try {
-      if (_platformAudioInitialized) {
-        await _player.stop();
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[PlayerCubit] Failed to stop current track before switch: $e');
-      }
-    }
+    // Don't await the in-progress load — player.open() in _loadAudioSource
+    // supersedes the previous media and the switchToken rejects stale results.
+    // Don't call stop() either — player.open() stops the previous media internally,
+    // saving a full round trip (~150ms) on every track switch.
   }
 
   PlayerCubit({
@@ -228,6 +216,16 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     PlaybackDiagnostics.log('Initializing AudioPlayer instance');
 
     _player = Player();
+    if (_player.platform is NativePlayer) {
+      final nativePlayer = _player.platform as NativePlayer;
+      try {
+        await nativePlayer.setProperty('demuxer-max-bytes', '1048576');
+        await nativePlayer.setProperty('demuxer-max-back-bytes', '1048576');
+        await nativePlayer.setProperty('demuxer-readahead-secs', '5');
+      } catch (e) {
+        PlaybackDiagnostics.log('Failed to set native player properties: $e');
+      }
+    }
     _equalizerController.initialize(_player);
     _setupPlayerStreams();
 
@@ -290,7 +288,13 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   void _setupPlayerStreams() {
     _positionSub = _player.stream.position.listen(
       (pos) {
-        emit(state.copyWith(position: pos));
+        final isBuffering = _player.state.buffering || (_player.state.playing && pos == Duration.zero);
+        emit(
+          state.copyWith(
+            position: pos,
+            buffering: isBuffering,
+          ),
+        );
       },
       onError: (e) {
         PlaybackDiagnostics.log('Position stream error: $e');
@@ -311,9 +315,11 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           _unexpectedPauseTimer?.cancel();
         }
         PlaybackDiagnostics.log('PlayerState: playing=$playing');
+        final isBuffering = _player.state.buffering || (playing && state.position == Duration.zero);
         emit(
           state.copyWith(
             playing: playing,
+            buffering: isBuffering,
             isTransitioning: _isBusySwitching,
           ),
         );
@@ -325,9 +331,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _bufferingSub = _player.stream.buffering.listen(
       (buffering) {
         PlaybackDiagnostics.log('PlayerState: buffering=$buffering');
+        final isBuffering = buffering || (_player.state.playing && state.position == Duration.zero);
         emit(
           state.copyWith(
-            buffering: buffering,
+            buffering: isBuffering,
             isTransitioning: _isBusySwitching,
           ),
         );
@@ -457,7 +464,17 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }
 
   /// Fetch the playable URL directly from the MusicProviderRegistry.
+  /// Returns a cached URL if one was fetched within the last 50 minutes,
+  /// otherwise fetches fresh and stores in cache.
   Future<String?> _fetchPlayableUrl(String trackId) async {
+    // Return cached URL if fresh enough (signed URLs expire at ~60 min).
+    final cached = _urlCache[trackId];
+    if (cached != null &&
+        DateTime.now().difference(cached.$2).inMinutes < 50) {
+      PlaybackDiagnostics.log('URL cache hit for $trackId');
+      return cached.$1;
+    }
+
     if (_musicProviderRegistry != null) {
       try {
         final url = await _musicProviderRegistry
@@ -465,6 +482,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           .timeout(const Duration(seconds: 15));
 
         if (url != null && url.trim().isNotEmpty) {
+          _urlCache[trackId] = (url, DateTime.now());
           return url;
         }
       } catch (e) {
@@ -475,6 +493,28 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
 
     return null;
+  }
+
+  /// Pre-fetches the URL for the next queued track in the background so it is
+  /// already in [_urlCache] when the user taps Next or the track auto-advances.
+  Future<void> _prefetchNextTrackUrl() async {
+    final queue = state.queue;
+    final currentIndex = state.currentIndex;
+    if (queue.isEmpty || currentIndex < 0) return;
+
+    final nextIndex = currentIndex + 1;
+    if (nextIndex >= queue.length) return;
+
+    final nextTrackId = queue[nextIndex].trackId;
+    final cached = _urlCache[nextTrackId];
+    if (cached != null &&
+        DateTime.now().difference(cached.$2).inMinutes < 50) {
+      return; // Already cached and fresh.
+    }
+
+    // Fire-and-forget: populate the cache silently.
+    PlaybackDiagnostics.log('Pre-fetching URL for next track: $nextTrackId');
+    await _fetchPlayableUrl(nextTrackId);
   }
 
   Future<void> playTrack(PlayerTrack track) async {
@@ -558,10 +598,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       }
 
       if (switchToken == _trackSwitchToken) {
+        final isBuffering = _platformAudioInitialized &&
+            (_player.state.buffering || (_player.state.playing && _player.state.position == Duration.zero));
         emit(
           state.copyWith(
             track: track,
-            buffering: false,
+            buffering: isBuffering,
             resolvingUrl: false,
             isTransitioning: false,
             playing: true,
@@ -573,6 +615,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
       _markTrackSessionStart(track.trackId);
       unawaited(_refreshQueueIfNeeded());
+      unawaited(_prefetchNextTrackUrl());
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[PlayerCubit] playTrack failed: $e');
@@ -1260,10 +1303,12 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         throw StateError('Playback did not start after source switch');
       }
       if (switchToken == _trackSwitchToken) {
+        final isBuffering = _platformAudioInitialized &&
+            (_player.state.buffering || (_player.state.playing && _player.state.position == Duration.zero));
         emit(
           state.copyWith(
             track: track,
-            buffering: false,
+            buffering: isBuffering,
             resolvingUrl: false,
             isTransitioning: false,
             playing: true,
@@ -1274,6 +1319,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         _schedulePlaybackReassertion(switchToken);
       }
       _markTrackSessionStart(item.trackId);
+      unawaited(_prefetchNextTrackUrl());
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[PlayerCubit] Play failed for ${item.trackId}: $e');
@@ -1347,21 +1393,20 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     try {
       PlaybackDiagnostics.log('Loading audio source (switchToken=$switchToken)...');
-      final loadFuture = _audioOperationHandler.executeAudioOperation(() async {
+      await _audioOperationHandler.executeAudioOperation(() async {
         await _player.open(
           Media(url, httpHeaders: headers),
-          play: false,
+          // play:true lets MPV start buffering the HLS stream immediately during
+          // open() rather than waiting for a separate play() call. This shaves
+          // one async round-trip and starts HLS segment downloads sooner.
+          play: true,
         );
-        // Only seek if a meaningful non-zero position is requested AND it is
-        // safe to do so (i.e., a concrete resume position). For new tracks we
-        // always start from zero to avoid a pre-play seek that can break HLS
-        // streams before the first segment is buffered.
+        // Only seek to a concrete resume position AFTER the stream is open.
+        // Never seek to zero — that causes HLS to restart the manifest fetch.
         if (initialPosition > const Duration(seconds: 1)) {
           await _player.seek(initialPosition);
         }
       });
-      _activeLoadFuture = loadFuture;
-      await loadFuture;
       // Record when the media was opened so the completed-stream guard can
       // reject spurious EOF events (HLS codec/buffer errors at stream start).
       _trackMediaOpenedAt = DateTime.now();
@@ -1370,8 +1415,6 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       PlaybackDiagnostics.log('Audio source load failed: $e');
       if (switchToken != _trackSwitchToken) return;
       rethrow;
-    } finally {
-      _activeLoadFuture = null;
     }
   }
 

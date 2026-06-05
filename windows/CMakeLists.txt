@@ -34,7 +34,7 @@ add_definitions(-DUNICODE -D_UNICODE)
 
 # Serialize PDB file writes via the PDB server to prevent C1041 race conditions
 # ("cannot open program database") that occur during parallel MSVC compilation
-# when multiple cl.exe processes try to write to the same .pdb file.
+# when multiple cl.exe processes try to write to the same .pdb file.  
 if(MSVC)
   add_compile_options(/FS)
 endif()
