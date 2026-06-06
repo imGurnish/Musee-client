@@ -37,6 +37,12 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width >= 800;
+
+    return isDesktop ? _buildDesktopArtist(context) : _buildMobileArtist(context);
+  }
+
+  Widget _buildMobileArtist(BuildContext context) {
     final isMobile = MediaQuery.of(context).size.width < 600;
 
     return SingleChildScrollView(
@@ -341,6 +347,202 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
           color: theme.colorScheme.onPrimaryContainer,
         ),
       ),
+    );
+  }
+
+  Widget _buildDesktopArtist(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return BlocBuilder<OnboardingBloc, OnboardingState>(
+      builder: (context, state) {
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Left Column: Header, Description & Selected list (Static/Fixed)
+                  Expanded(
+                    flex: 4,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 24),
+                          // Visual Icon
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                            ),
+                            child: const Center(
+                              child: Text(
+                                '🎙️',
+                                style: TextStyle(fontSize: 36),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          Text(
+                            'Favorite Artists',
+                            style: theme.textTheme.headlineLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 32,
+                              height: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Search and select your favorite artists. Selecting an artist will dynamically load similar artists to explore!',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              height: 1.6,
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          if (state.selectedArtists.isNotEmpty) ...[
+                            Text(
+                              'Selected Artists (${state.selectedArtists.length})',
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: state.selectedArtists.map((artist) {
+                                return Chip(
+                                  label: Text(artist.name),
+                                  onDeleted: () {
+                                    context.read<OnboardingBloc>().add(
+                                      RemoveSelectedArtistEvent(artist.id),
+                                    );
+                                  },
+                                  deleteIconColor: theme.colorScheme.primary,
+                                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.08),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    side: BorderSide(
+                                      color: theme.colorScheme.primary.withValues(alpha: 0.2),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ] else ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerLow,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: 20,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'Selections are optional, but help customize your suggestions.',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 48),
+                  // Right Column: Search bar and Grid (Scrollable)
+                  Expanded(
+                    flex: 6,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 16),
+                          _buildSearchField(),
+                          const SizedBox(height: 24),
+                          if (state.isSearching)
+                            const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(40),
+                                child: CircularProgressIndicator(),
+                              ),
+                            )
+                          else if (state.searchResults.isEmpty)
+                            Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(40),
+                                child: Text(
+                                  'No artists found',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: state.searchResults.length,
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                mainAxisSpacing: 20,
+                                crossAxisSpacing: 20,
+                                childAspectRatio: 0.8,
+                              ),
+                              itemBuilder: (context, index) {
+                                final artist = state.searchResults[index];
+                                final isSelected = state.selectedArtists.any((a) => a.id == artist.id);
+
+                                return _buildArtistSearchResult(
+                                  context,
+                                  artist.name,
+                                  artist.imageUrl,
+                                  isSelected,
+                                  () {
+                                    if (isSelected) {
+                                      context.read<OnboardingBloc>().add(
+                                        RemoveSelectedArtistEvent(artist.id),
+                                      );
+                                    } else {
+                                      context.read<OnboardingBloc>().add(
+                                        SelectArtistEvent(artist),
+                                      );
+                                    }
+                                  },
+                                );
+                              },
+                            ),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

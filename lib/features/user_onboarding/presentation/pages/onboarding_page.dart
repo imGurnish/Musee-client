@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/onboarding_bloc.dart';
@@ -68,6 +69,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width >= 800;
+
     return BlocListener<OnboardingBloc, OnboardingState>(
       listener: (context, state) {
         // Once genres/moods are loaded (init done) and editing, fetch prefs once
@@ -92,36 +95,149 @@ class _OnboardingPageState extends State<OnboardingPage> {
         }
       },
       child: Scaffold(
-        body: SafeArea(
-          child: Column(
-            children: [
-              // Progress indicator
-              _buildProgressBar(),
-              // Page view for screens
-              Expanded(
-                child: PageView(
-                  controller: _pageController,
-                  physics: const NeverScrollableScrollPhysics(),
-                  onPageChanged: (index) {
-                    setState(() => _currentStep = index);
-                  },
-                  children: [
-                    OnboardingWelcomeScreen(onNext: _goToNextStep),
-                    OnboardingLanguageScreen(onNext: _goToNextStep),
-                    OnboardingGenreScreen(onNext: _goToNextStep),
-                    OnboardingMoodScreen(onNext: _goToNextStep),
-                    OnboardingArtistScreen(onNext: _goToNextStep),
-                    OnboardingRandomnessScreen(
-                      onNext: _completeOnboarding,
-                    ),
-                  ],
+        body: isDesktop ? _buildDesktopLayout(context) : _buildMobileLayout(context),
+      ),
+    );
+  }
+
+  Widget _buildMobileLayout(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        children: [
+          // Progress indicator
+          _buildProgressBar(),
+          // Page view for screens
+          Expanded(
+            child: PageView(
+              controller: _pageController,
+              physics: const NeverScrollableScrollPhysics(),
+              onPageChanged: (index) {
+                setState(() => _currentStep = index);
+              },
+              children: [
+                OnboardingWelcomeScreen(onNext: _goToNextStep),
+                OnboardingLanguageScreen(onNext: _goToNextStep),
+                OnboardingGenreScreen(onNext: _goToNextStep),
+                OnboardingMoodScreen(onNext: _goToNextStep),
+                OnboardingArtistScreen(onNext: _goToNextStep),
+                OnboardingRandomnessScreen(
+                  onNext: _completeOnboarding,
+                ),
+              ],
+            ),
+          ),
+          // Bottom navigation
+          _buildBottomNavigation(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDesktopLayout(BuildContext context) {
+    final theme = Theme.of(context);
+    final size = MediaQuery.of(context).size;
+
+    // Calculate dimensions for the centered card
+    final cardWidth = size.width * 0.75 > 980 ? 980.0 : size.width * 0.75;
+    final cardHeight = size.height * 0.85 > 780 ? 780.0 : size.height * 0.85;
+
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+      ),
+      child: Stack(
+        children: [
+          // Ambient blurred gradient elements
+          Positioned(
+            top: -100,
+            left: -100,
+            child: Container(
+              width: 350,
+              height: 350,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -150,
+            right: -100,
+            child: Container(
+              width: 450,
+              height: 450,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: theme.colorScheme.secondary.withValues(alpha: 0.06),
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 45, sigmaY: 45),
+              child: Container(color: Colors.transparent),
+            ),
+          ),
+          // Centered main content card
+          Center(
+            child: Container(
+              width: cardWidth,
+              height: cardHeight,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface.withValues(alpha: 0.82),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 24.0),
+                  child: Column(
+                    children: [
+                      // Progress indicator
+                      _buildProgressBar(),
+                      const SizedBox(height: 16),
+                      // Page view for screens
+                      Expanded(
+                        child: PageView(
+                          controller: _pageController,
+                          physics: const NeverScrollableScrollPhysics(),
+                          onPageChanged: (index) {
+                            setState(() => _currentStep = index);
+                          },
+                          children: [
+                            OnboardingWelcomeScreen(onNext: _goToNextStep),
+                            OnboardingLanguageScreen(onNext: _goToNextStep),
+                            OnboardingGenreScreen(onNext: _goToNextStep),
+                            OnboardingMoodScreen(onNext: _goToNextStep),
+                            OnboardingArtistScreen(onNext: _goToNextStep),
+                            OnboardingRandomnessScreen(
+                              onNext: _completeOnboarding,
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Bottom navigation
+                      _buildBottomNavigation(),
+                    ],
+                  ),
                 ),
               ),
-              // Bottom navigation
-              _buildBottomNavigation(),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
