@@ -49,6 +49,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
       await _audioCache.deleteAudio(track.trackId);
       track.localAudioPath = null;
       track.audioSizeBytes = 0;
+      track.downloadedAudioPath = null;
+      track.downloadedAudioSizeBytes = 0;
+      track.isDownloaded = false;
       await track.save();
 
       if (!mounted) return;
@@ -100,6 +103,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
         await _audioCache.deleteAudio(track.trackId);
         track.localAudioPath = null;
         track.audioSizeBytes = 0;
+        track.downloadedAudioPath = null;
+        track.downloadedAudioSizeBytes = 0;
+        track.isDownloaded = false;
         await track.save();
       }
 
@@ -281,7 +287,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                 final tracks = snapshot.data ?? const <CachedTrack>[];
                 final totalBytes = tracks.fold<int>(
                   0,
-                  (sum, track) => sum + track.audioSizeBytes,
+                  (sum, track) => sum + (track.downloadedAudioSizeBytes > 0 ? track.downloadedAudioSizeBytes : track.audioSizeBytes),
                 );
 
                 return CustomScrollView(
@@ -626,7 +632,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   subtitle: Text(
-                                    '${track.artistName} • ${_formatBytes(track.audioSizeBytes)}',
+                                    '${track.artistName} • ${_formatBytes(track.downloadedAudioSizeBytes > 0 ? track.downloadedAudioSizeBytes : track.audioSizeBytes)}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),

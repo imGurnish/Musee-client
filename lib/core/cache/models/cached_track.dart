@@ -82,9 +82,30 @@ class CachedTrack extends HiveObject {
   @HiveField(20, defaultValue: false)
   bool isDownloaded = false;
 
+  /// Transaction state: 'downloading', 'committed', 'deleting', or null
+  @HiveField(21)
+  String? downloadState;
+
+  /// Local file path when audio is explicitly downloaded by the user, null otherwise
+  @HiveField(22)
+  String? downloadedAudioPath;
+
+  /// Size of downloaded audio file in bytes (0 if not downloaded)
+  @HiveField(23, defaultValue: 0)
+  int downloadedAudioSizeBytes = 0;
+
+  /// Bitrate of the currently downloaded HLS variant.
+  @HiveField(24)
+  int? downloadedHlsBitrate;
+
+  /// Downloaded HLS variant playlist URL used for the local cache.
+  @HiveField(25)
+  String? downloadedHlsVariantUrl;
+
   /// Whether this track is available offline (has downloaded audio)
   bool get isAvailableOffline =>
-      localAudioPath != null && localAudioPath!.isNotEmpty;
+      (localAudioPath != null && localAudioPath!.isNotEmpty) ||
+      (downloadedAudioPath != null && downloadedAudioPath!.isNotEmpty);
 
   /// Full prefixed ID for multi-source operations
   String get prefixedId =>

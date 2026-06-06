@@ -37,13 +37,18 @@ class CachedTrackAdapter extends TypeAdapter<CachedTrack> {
       ..hlsVariantUrls = (fields[17] as Map?)?.cast<String, String>()
       ..cachedHlsBitrate = fields[18] as int?
       ..cachedHlsVariantUrl = fields[19] as String?
-      ..isDownloaded = fields[20] == null ? false : fields[20] as bool;
+      ..isDownloaded = fields[20] == null ? false : fields[20] as bool
+      ..downloadState = fields[21] as String?
+      ..downloadedAudioPath = fields[22] as String?
+      ..downloadedAudioSizeBytes = fields[23] == null ? 0 : fields[23] as int
+      ..downloadedHlsBitrate = fields[24] as int?
+      ..downloadedHlsVariantUrl = fields[25] as String?;
   }
 
   @override
   void write(BinaryWriter writer, CachedTrack obj) {
     writer
-      ..writeByte(21)
+      ..writeByte(26)
       ..writeByte(0)
       ..write(obj.trackId)
       ..writeByte(1)
@@ -85,7 +90,17 @@ class CachedTrackAdapter extends TypeAdapter<CachedTrack> {
       ..writeByte(19)
       ..write(obj.cachedHlsVariantUrl)
       ..writeByte(20)
-      ..write(obj.isDownloaded);
+      ..write(obj.isDownloaded)
+      ..writeByte(21)
+      ..write(obj.downloadState)
+      ..writeByte(22)
+      ..write(obj.downloadedAudioPath)
+      ..writeByte(23)
+      ..write(obj.downloadedAudioSizeBytes)
+      ..writeByte(24)
+      ..write(obj.downloadedHlsBitrate)
+      ..writeByte(25)
+      ..write(obj.downloadedHlsVariantUrl);
   }
 
   @override

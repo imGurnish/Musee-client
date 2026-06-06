@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -56,6 +57,31 @@ abstract class AudioCacheService {
 
   /// Clear all cached audio files
   Future<void> clearAll();
+
+  /// Flag to suspend enforceMaxSize during bulk downloads to avoid I/O thrashing
+  bool get isBulkDownloading;
+  set isBulkDownloading(bool value);
+
+  /// Increment active player reference count for a file/directory path
+  void incrementRef(String path);
+
+  /// Decrement active player reference count for a file/directory path
+  void decrementRef(String path);
+
+  /// Check if a path (or any parent/child path) is in use by any player
+  bool isPathInUse(String path);
+
+  /// Helper to convert a local HTTP playback URI or file URI back to its absolute local path
+  String? getLocalPathFromUri(String uri);
+
+  /// Run crash recovery on startup to clean up uncommitted or partially deleted caches
+  Future<void> recoverIncompleteOperations(TrackCacheService trackCache);
+
+  /// Reconcile Hive metadata with actual disk usage, repairing inconsistencies
+  Future<void> reconcileDiskUsage({required TrackCacheService trackCache});
+
+  /// Scan the cache directory and rebuild the Hive database from sidecar track.json files if lost
+  Future<void> rebuildHiveFromSidecars(TrackCacheService trackCache);
 }
 
 class AudioCacheServiceImpl implements AudioCacheService {
@@ -66,6 +92,61 @@ class AudioCacheServiceImpl implements AudioCacheService {
   final Map<String, ({CancelToken cancelToken, bool isDownload, Future<String?> future})> _activeOperations = {};
 
   AudioCacheServiceImpl(this._dio);
+
+  @override
+  bool isBulkDownloading = false;
+
+  final Map<String, int> _pathRefCounts = {};
+
+  @override
+  void incrementRef(String path) {
+    final normalized = path.replaceAll(r'\', '/');
+    _pathRefCounts[normalized] = (_pathRefCounts[normalized] ?? 0) + 1;
+  }
+
+  @override
+  void decrementRef(String path) {
+    final normalized = path.replaceAll(r'\', '/');
+    final current = _pathRefCounts[normalized] ?? 0;
+    if (current <= 1) {
+      _pathRefCounts.remove(normalized);
+    } else {
+      _pathRefCounts[normalized] = current - 1;
+    }
+  }
+
+  @override
+  bool isPathInUse(String path) {
+    final normalized = path.replaceAll(r'\', '/');
+    final count = _pathRefCounts[normalized] ?? 0;
+    if (count > 0) return true;
+
+    for (final activePath in _pathRefCounts.keys) {
+      if (activePath.contains(normalized) || normalized.contains(activePath)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @override
+  String? getLocalPathFromUri(String uri) {
+    if (kIsWeb) return null;
+    try {
+      final parsed = Uri.parse(uri);
+      if (parsed.isScheme('file')) {
+        return File(parsed.toFilePath()).path;
+      }
+      if (parsed.host == 'localhost' || parsed.host == '127.0.0.1') {
+        final pathSegments = parsed.pathSegments.where((s) => s.isNotEmpty).toList();
+        if (pathSegments.isNotEmpty) {
+          final firstSegment = pathSegments.first;
+          return '${_dir.path}/$firstSegment';
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
 
   @override
   Future<void> init() async {
@@ -115,6 +196,15 @@ class AudioCacheServiceImpl implements AudioCacheService {
         debugPrint('[AudioCacheService] Failed to start local HTTP server: $e');
       }
     }
+
+    unawaited(() async {
+      try {
+        final trackCache = GetIt.I<TrackCacheService>();
+        await rebuildHiveFromSidecars(trackCache);
+        await recoverIncompleteOperations(trackCache);
+        await reconcileDiskUsage(trackCache: trackCache);
+      } catch (_) {}
+    }());
   }
 
   Directory get _dir {
@@ -199,28 +289,47 @@ class AudioCacheServiceImpl implements AudioCacheService {
     return relativeParts.isEmpty ? '.' : relativeParts.join('/');
   }
 
-  Future<bool> _hasPlayableHlsCache(String trackId) async {
-    final hlsDir = Directory(_getHlsDirPath(trackId));
-    if (!await hlsDir.exists()) {
+  Future<bool> _verifyHlsCacheComplete(String hlsDirPath) async {
+    final playlistFile = File('$hlsDirPath/index.m3u8');
+    if (!await playlistFile.exists()) {
       return false;
     }
-
-    var hasPlaylist = false;
-    var hasMediaFile = false;
-    await for (final entity in hlsDir.list(recursive: true, followLinks: false)) {
-      if (entity is! File) {
-        continue;
+    try {
+      final content = await playlistFile.readAsString();
+      final lines = content.split('\n');
+      var segmentFound = false;
+      for (final line in lines) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty || trimmed.startsWith('#')) {
+          continue;
+        }
+        segmentFound = true;
+        // Resolve HLS segment path relative to hlsDirPath
+        final segmentFile = File('$hlsDirPath/$trimmed');
+        if (!await segmentFile.exists() || await segmentFile.length() == 0) {
+          return false;
+        }
       }
-      final lowerPath = entity.path.toLowerCase();
-      if (lowerPath.endsWith('.m3u8')) {
-        hasPlaylist = true;
-      } else {
-        hasMediaFile = true;
-      }
+      return segmentFound;
+    } catch (_) {
+      return false;
     }
-
-    return hasPlaylist && hasMediaFile;
   }
+
+  Future<bool> _verifyAudioPathExists(String path) async {
+    try {
+      if (path.contains('_hls')) {
+        final dir = Directory(path).parent;
+        return await dir.exists() && await _verifyHlsCacheComplete(dir.path);
+      } else {
+        final file = File(path);
+        return await file.exists() && await file.length() > 0;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+
 
   Future<({String path, List<String> segments})> _cacheHlsUri({
     required Uri uri,
@@ -312,6 +421,32 @@ class AudioCacheServiceImpl implements AudioCacheService {
     return total;
   }
 
+  Future<void> _saveSidecarMetadataForHls(CachedTrack track, String dirPath) async {
+    try {
+      final file = File('$dirPath/track.json');
+      final map = {
+        'trackId': track.trackId,
+        'title': track.title,
+        'artistName': track.artistName,
+        'albumTitle': track.albumTitle,
+        'albumId': track.albumId,
+        'albumCoverUrl': track.albumCoverUrl,
+        'durationSeconds': track.durationSeconds,
+        'isExplicit': track.isExplicit,
+        'audioSizeBytes': track.audioSizeBytes,
+        'cachedHlsBitrate': track.cachedHlsBitrate,
+        'cachedHlsVariantUrl': track.cachedHlsVariantUrl,
+        'downloadedAudioPath': track.downloadedAudioPath,
+        'downloadedAudioSizeBytes': track.downloadedAudioSizeBytes,
+        'downloadedHlsBitrate': track.downloadedHlsBitrate,
+        'downloadedHlsVariantUrl': track.downloadedHlsVariantUrl,
+        'isDownloaded': track.isDownloaded,
+        'sourceProvider': track.sourceProvider,
+      };
+      await file.writeAsString(jsonEncode(map));
+    } catch (_) {}
+  }
+
   Future<String?> _downloadAndCacheHls({
     required String trackId,
     required String remoteUrl,
@@ -321,11 +456,13 @@ class AudioCacheServiceImpl implements AudioCacheService {
     CancelToken? cancelToken,
     bool isDownload = false,
   }) async {
-    final hlsDir = Directory(_getHlsDirPath(trackId, bitrate: preferredHlsBitrate));
-    if (await hlsDir.exists()) {
-      await hlsDir.delete(recursive: true);
+    final targetHlsDir = Directory(_getHlsDirPath(trackId, bitrate: preferredHlsBitrate));
+    final tempHlsDir = Directory('${targetHlsDir.path}_tmp');
+    
+    if (await tempHlsDir.exists()) {
+      await tempHlsDir.delete(recursive: true);
     }
-    await hlsDir.create(recursive: true);
+    await tempHlsDir.create(recursive: true);
 
     try {
       final rootUri = Uri.parse(remoteUrl);
@@ -335,33 +472,58 @@ class AudioCacheServiceImpl implements AudioCacheService {
         }
       });
 
-      final cachedRoot = await _cacheHlsUri(
+      await _cacheHlsUri(
         uri: rootUri,
         rootUri: rootUri,
-        basePath: hlsDir.path,
+        basePath: tempHlsDir.path,
         visited: <String>{},
         progressTracker: progressTracker,
         cancelToken: cancelToken,
       );
 
-      final playlistLocalPath = cachedRoot.path;
+      final complete = await _verifyHlsCacheComplete(tempHlsDir.path);
+      if (!complete) {
+        throw StateError('Downloaded HLS cache is incomplete');
+      }
+
+      Directory resolvedHlsDir = tempHlsDir;
+      try {
+        if (await targetHlsDir.exists()) {
+          await targetHlsDir.delete(recursive: true);
+        }
+        await tempHlsDir.rename(targetHlsDir.path);
+        resolvedHlsDir = targetHlsDir;
+      } catch (_) {
+        resolvedHlsDir = tempHlsDir;
+      }
+
+      final playlistLocalPath = '${resolvedHlsDir.path}/index.m3u8';
 
       final track = await trackCache.getTrack(trackId);
       if (track != null) {
-        track.localAudioPath = playlistLocalPath;
-        track.audioSizeBytes = await _dirSizeBytes(hlsDir);
-        track.cachedHlsVariantUrl = remoteUrl;
-        track.cachedHlsBitrate = preferredHlsBitrate ?? track.cachedHlsBitrate;
+        final dirSize = await _dirSizeBytes(resolvedHlsDir);
         if (isDownload) {
+          track.downloadedAudioPath = playlistLocalPath;
+          track.downloadedAudioSizeBytes = dirSize;
+          track.downloadedHlsVariantUrl = remoteUrl;
+          track.downloadedHlsBitrate = preferredHlsBitrate ?? track.downloadedHlsBitrate;
           track.isDownloaded = true;
+        } else {
+          track.localAudioPath = playlistLocalPath;
+          track.audioSizeBytes = dirSize;
+          track.cachedHlsVariantUrl = remoteUrl;
+          track.cachedHlsBitrate = preferredHlsBitrate ?? track.cachedHlsBitrate;
         }
         await trackCache.cacheTrack(track);
+        await _saveSidecarMetadataForHls(track, resolvedHlsDir.path);
       }
 
       return playlistLocalPath;
     } catch (_) {
-      if (await hlsDir.exists()) {
-        await hlsDir.delete(recursive: true);
+      if (await tempHlsDir.exists()) {
+        try {
+          await tempHlsDir.delete(recursive: true);
+        } catch (_) {}
       }
       rethrow;
     }
@@ -371,8 +533,21 @@ class AudioCacheServiceImpl implements AudioCacheService {
   Future<String?> getLocalAudioPath(String trackId) async {
     if (kIsWeb) return null;
 
+    try {
+      final trackCache = GetIt.I<TrackCacheService>();
+      final track = await trackCache.getTrack(trackId);
+      if (track != null) {
+        if (track.downloadedAudioPath != null && await _verifyAudioPathExists(track.downloadedAudioPath!)) {
+          return track.downloadedAudioPath;
+        }
+        if (track.localAudioPath != null && await _verifyAudioPathExists(track.localAudioPath!)) {
+          return track.localAudioPath;
+        }
+      }
+    } catch (_) {}
+
     final hlsPlaylist = File('${_getHlsDirPath(trackId)}/index.m3u8');
-    if (await hlsPlaylist.exists() && await _hasPlayableHlsCache(trackId)) {
+    if (await hlsPlaylist.exists() && await _verifyHlsCacheComplete(hlsPlaylist.parent.path)) {
       return hlsPlaylist.path;
     }
 
@@ -395,27 +570,37 @@ class AudioCacheServiceImpl implements AudioCacheService {
   }) async {
     if (kIsWeb) return null;
 
-    final path = await getLocalAudioPath(trackId);
-    if (path == null) return null;
+    final cachedTrack = await trackCache.getTrack(trackId);
+    if (cachedTrack == null) return null;
 
-    final isHls = await _hasPlayableHlsCache(trackId);
-    if (isHls) {
-      final cachedTrack = await trackCache.getTrack(trackId);
-      final cachedBitrate = cachedTrack?.cachedHlsBitrate;
+    String? bestLocalPath;
+    int? bestLocalBitrate;
 
-      if (cachedBitrate != null) {
-        if (isOnline) {
-          if (targetBitrate == null) {
-            // Target is Auto (adaptive, up to 320 kbps).
-            // Serve from cache only if we have the highest quality (320).
-            if (cachedBitrate < 320) {
-              return null; // Force network stream (master)
-            }
-          } else {
-            // Target is specific quality. Serve from cache if cached quality is equal or better.
-            if (cachedBitrate < targetBitrate) {
-              return null; // Force network stream of higher quality
-            }
+    if (cachedTrack.localAudioPath != null && await _verifyAudioPathExists(cachedTrack.localAudioPath!)) {
+      bestLocalPath = cachedTrack.localAudioPath;
+      bestLocalBitrate = cachedTrack.cachedHlsBitrate;
+    }
+
+    if (cachedTrack.downloadedAudioPath != null && await _verifyAudioPathExists(cachedTrack.downloadedAudioPath!)) {
+      final downloadBitrate = cachedTrack.downloadedHlsBitrate;
+      if (bestLocalPath == null || (downloadBitrate != null && bestLocalBitrate != null && downloadBitrate > bestLocalBitrate)) {
+        bestLocalPath = cachedTrack.downloadedAudioPath;
+        bestLocalBitrate = downloadBitrate;
+      }
+    }
+
+    if (bestLocalPath == null) return null;
+
+    final isHls = bestLocalPath.contains('_hls');
+    if (isHls && bestLocalBitrate != null) {
+      if (isOnline) {
+        if (targetBitrate == null) {
+          if (bestLocalBitrate < 320) {
+            return null;
+          }
+        } else {
+          if (bestLocalBitrate < targetBitrate) {
+            return null;
           }
         }
       }
@@ -423,18 +608,15 @@ class AudioCacheServiceImpl implements AudioCacheService {
 
     if (_localServer != null) {
       if (isHls) {
-        final br = _getCachedBitrateSync(trackId);
-        final suffix = br != null ? '_$br' : '';
+        final suffix = bestLocalBitrate != null ? '_$bestLocalBitrate' : '';
         return 'http://localhost:${_localServer!.port}/${trackId}_hls$suffix/index.m3u8';
       } else {
-        final file = File(path);
-        final ext = file.path.split('.').last;
+        final ext = bestLocalPath.split('.').last;
         return 'http://localhost:${_localServer!.port}/$trackId.$ext';
       }
     }
 
-    // Fallback if local server failed to start
-    return Uri.file(path).toString();
+    return Uri.file(bestLocalPath).toString();
   }
 
   @override
@@ -510,6 +692,45 @@ class AudioCacheServiceImpl implements AudioCacheService {
     }
   }
 
+  bool _isSameMediaAsset(String urlA, String urlB) {
+    try {
+      final uriA = Uri.parse(urlA);
+      final uriB = Uri.parse(urlB);
+      return uriA.scheme == uriB.scheme &&
+          uriA.host == uriB.host &&
+          uriA.path == uriB.path;
+    } catch (_) {}
+    return false;
+  }
+
+  Future<void> _saveSidecarMetadataForSingleFile(CachedTrack track, String filePath) async {
+    try {
+      final dotIndex = filePath.lastIndexOf('.');
+      if (dotIndex == -1) return;
+      final file = File('${filePath.substring(0, dotIndex)}.json');
+      final map = {
+        'trackId': track.trackId,
+        'title': track.title,
+        'artistName': track.artistName,
+        'albumTitle': track.albumTitle,
+        'albumId': track.albumId,
+        'albumCoverUrl': track.albumCoverUrl,
+        'durationSeconds': track.durationSeconds,
+        'isExplicit': track.isExplicit,
+        'audioSizeBytes': track.audioSizeBytes,
+        'cachedHlsBitrate': track.cachedHlsBitrate,
+        'cachedHlsVariantUrl': track.cachedHlsVariantUrl,
+        'downloadedAudioPath': track.downloadedAudioPath,
+        'downloadedAudioSizeBytes': track.downloadedAudioSizeBytes,
+        'downloadedHlsBitrate': track.downloadedHlsBitrate,
+        'downloadedHlsVariantUrl': track.downloadedHlsVariantUrl,
+        'isDownloaded': track.isDownloaded,
+        'sourceProvider': track.sourceProvider,
+      };
+      await file.writeAsString(jsonEncode(map));
+    } catch (_) {}
+  }
+
   Future<String?> _executeDownloadAndCache({
     required String trackId,
     required String remoteUrl,
@@ -523,66 +744,101 @@ class AudioCacheServiceImpl implements AudioCacheService {
     required bool isDownload,
   }) async {
     _activeDownloads.add(trackId);
+    
+    // Begin transaction: set downloadState to 'downloading'
+    CachedTrack? track = await trackCache.getTrack(trackId);
+    track ??= CachedTrack()
+      ..trackId = trackId
+      ..title = 'Unknown Title'
+      ..artistName = 'Unknown Artist'
+      ..cachedAt = DateTime.now();
+    track.downloadState = 'downloading';
+    await trackCache.cacheTrack(track);
+
     try {
-      final existingLocalPath = await getLocalAudioPath(trackId);
       final existingTrack = await trackCache.getTrack(trackId);
 
-      if (existingLocalPath != null) {
-        bool isQualityMatch = true;
-        if (preferredHlsBitrate != null && existingTrack?.cachedHlsBitrate != null) {
-          if (isDownload) {
-            isQualityMatch = existingTrack!.cachedHlsBitrate == preferredHlsBitrate;
-          } else {
-            isQualityMatch = existingTrack!.cachedHlsBitrate! >= preferredHlsBitrate;
+      if (existingTrack != null) {
+        if (isDownload) {
+          final existingDownloadPath = existingTrack.downloadedAudioPath;
+          if (existingDownloadPath != null) {
+            bool isQualityMatch = true;
+            if (preferredHlsBitrate != null && existingTrack.downloadedHlsBitrate != null) {
+              isQualityMatch = existingTrack.downloadedHlsBitrate == preferredHlsBitrate;
+            }
+            bool isAssetMatch = true;
+            if (existingTrack.downloadedHlsVariantUrl != null) {
+              isAssetMatch = _isSameMediaAsset(existingTrack.downloadedHlsVariantUrl!, remoteUrl);
+            }
+
+            if (isQualityMatch && isAssetMatch) {
+              final exists = await _verifyAudioPathExists(existingDownloadPath);
+              if (exists) {
+                if (!existingTrack.isDownloaded) {
+                  existingTrack.isDownloaded = true;
+                  await trackCache.cacheTrack(existingTrack);
+                }
+                return existingDownloadPath;
+              }
+            }
+          }
+        } else {
+          final existingCachePath = existingTrack.localAudioPath;
+          if (existingCachePath != null) {
+            bool isQualityMatch = true;
+            if (preferredHlsBitrate != null && existingTrack.cachedHlsBitrate != null) {
+              isQualityMatch = existingTrack.cachedHlsBitrate! >= preferredHlsBitrate;
+            }
+            bool isAssetMatch = true;
+            if (existingTrack.cachedHlsVariantUrl != null) {
+              isAssetMatch = _isSameMediaAsset(existingTrack.cachedHlsVariantUrl!, remoteUrl);
+            }
+
+            if (isQualityMatch && isAssetMatch) {
+              final exists = await _verifyAudioPathExists(existingCachePath);
+              if (exists) {
+                return existingCachePath;
+              }
+            }
+          }
+
+          final existingDownloadPath = existingTrack.downloadedAudioPath;
+          if (existingDownloadPath != null) {
+            bool isQualityMatch = true;
+            if (preferredHlsBitrate != null && existingTrack.downloadedHlsBitrate != null) {
+              isQualityMatch = existingTrack.downloadedHlsBitrate! >= preferredHlsBitrate;
+            }
+            bool isAssetMatch = true;
+            if (existingTrack.downloadedHlsVariantUrl != null) {
+              isAssetMatch = _isSameMediaAsset(existingTrack.downloadedHlsVariantUrl!, remoteUrl);
+            }
+
+            if (isQualityMatch && isAssetMatch) {
+              final exists = await _verifyAudioPathExists(existingDownloadPath);
+              if (exists) {
+                return existingDownloadPath;
+              }
+            }
           }
         }
 
-        if (isQualityMatch) {
-          if (existingTrack != null) {
-            var needsUpdate = false;
-            if (existingTrack.localAudioPath != existingLocalPath) {
-              existingTrack.localAudioPath = existingLocalPath;
-              needsUpdate = true;
-            }
-            if (isDownload && !existingTrack.isDownloaded) {
-              existingTrack.isDownloaded = true;
-              needsUpdate = true;
-            }
-            if (existingTrack.audioSizeBytes == 0) {
-              try {
-                final isHls = await _hasPlayableHlsCache(trackId);
-                if (isHls) {
-                  existingTrack.audioSizeBytes = await _dirSizeBytes(Directory(_getHlsDirPath(trackId)));
-                } else {
-                  existingTrack.audioSizeBytes = await File(existingLocalPath).length();
-                }
-                needsUpdate = true;
-              } catch (_) {}
-            }
-            if (needsUpdate) {
-              await trackCache.cacheTrack(existingTrack);
-            }
+        // Quality or asset URL mismatch for target.
+        // Delete the target directory if it exists, to prepare for a fresh download.
+        // BUT do not delete any actively playing/locked directory.
+        if (_isLikelyHlsPlaylistUrl(remoteUrl)) {
+          final targetHlsDir = Directory(_getHlsDirPath(trackId, bitrate: preferredHlsBitrate));
+          if (await targetHlsDir.exists()) {
+            try {
+              await targetHlsDir.delete(recursive: true);
+            } catch (_) {}
           }
-          return existingLocalPath;
         } else {
-          // Quality mismatch. Delete the target HLS directory (if HLS)
-          // or target single audio files if we are downloading a single audio file.
-          // BUT do NOT delete the active cache folder/file to avoid locking issues (OS Error 32).
-          if (_isLikelyHlsPlaylistUrl(remoteUrl)) {
-            final targetHlsDir = Directory(_getHlsDirPath(trackId, bitrate: preferredHlsBitrate));
-            if (await targetHlsDir.exists()) {
+          for (final ext in ['mp3', 'm4a', 'aac', 'flac', 'wav']) {
+            final file = File(_getFilePath(trackId, ext));
+            if (await file.exists()) {
               try {
-                await targetHlsDir.delete(recursive: true);
+                await file.delete();
               } catch (_) {}
-            }
-          } else {
-            for (final ext in ['mp3', 'm4a', 'aac', 'flac']) {
-              final file = File(_getFilePath(trackId, ext));
-              if (await file.exists()) {
-                try {
-                  await file.delete();
-                } catch (_) {}
-              }
             }
           }
         }
@@ -656,27 +912,36 @@ class AudioCacheServiceImpl implements AudioCacheService {
         // If extension needs correction, rename the file
         if (correctExt != ext) {
           final newPath = _getFilePath(trackId, correctExt);
-          // Rename (move)
           await file.rename(newPath);
-
-          // Update variables for registration
           filePath = newPath;
         }
 
         final savedFile = File(filePath);
 
         // Update the track cache with local path and file size
-        final track = await trackCache.getTrack(trackId);
-        if (track != null) {
-          track.localAudioPath = filePath;
-          track.audioSizeBytes = await savedFile.length();
+        final t = await trackCache.getTrack(trackId);
+        if (t != null) {
+          final fileSize = await savedFile.length();
           if (isDownload) {
-            track.isDownloaded = true;
+            t.downloadedAudioPath = filePath;
+            t.downloadedAudioSizeBytes = fileSize;
+            t.isDownloaded = true;
+          } else {
+            t.localAudioPath = filePath;
+            t.audioSizeBytes = fileSize;
           }
-          await trackCache.cacheTrack(track);
+          await trackCache.cacheTrack(t);
+          await _saveSidecarMetadataForSingleFile(t, filePath);
         }
 
         resultPath = filePath;
+      }
+
+      // Commit transaction: set downloadState to 'committed' (or null)
+      final committedTrack = await trackCache.getTrack(trackId);
+      if (committedTrack != null) {
+        committedTrack.downloadState = 'committed';
+        await trackCache.cacheTrack(committedTrack);
       }
 
       if (resultPath != null) {
@@ -693,10 +958,53 @@ class AudioCacheServiceImpl implements AudioCacheService {
 
       return resultPath;
     } catch (e, stackTrace) {
+      final isCancel = e is DioException && e.type == DioExceptionType.cancel;
       if (kDebugMode) {
-        debugPrint('[AudioCacheService] _executeDownloadAndCache failed for track $trackId: $e');
-        debugPrint(stackTrace.toString());
+        if (isCancel) {
+          debugPrint('[AudioCacheService] Download/Cache cancelled for track $trackId');
+        } else {
+          debugPrint('[AudioCacheService] _executeDownloadAndCache failed for track $trackId: $e');
+          debugPrint(stackTrace.toString());
+        }
       }
+
+      // Cleanup files/directories on cancellation or error
+      try {
+        if (_isLikelyHlsPlaylistUrl(remoteUrl)) {
+          final targetHlsDir = Directory(_getHlsDirPath(trackId, bitrate: preferredHlsBitrate));
+          if (await targetHlsDir.exists()) {
+            await targetHlsDir.delete(recursive: true);
+          }
+          final tempHlsDir = Directory('${targetHlsDir.path}_tmp');
+          if (await tempHlsDir.exists()) {
+            await tempHlsDir.delete(recursive: true);
+          }
+        } else {
+          for (final ext in ['mp3', 'm4a', 'aac', 'flac', 'wav']) {
+            final file = File(_getFilePath(trackId, ext));
+            if (await file.exists()) {
+              await file.delete();
+            }
+            final dotIdx = file.path.lastIndexOf('.');
+            if (dotIdx != -1) {
+              final jsonFile = File('${file.path.substring(0, dotIdx)}.json');
+              if (await jsonFile.exists()) {
+                await jsonFile.delete();
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      // Reset downloadState to null so it doesn't get stuck in startup recovery
+      try {
+        final t = await trackCache.getTrack(trackId);
+        if (t != null && t.downloadState == 'downloading') {
+          t.downloadState = null;
+          await trackCache.cacheTrack(t);
+        }
+      } catch (_) {}
+
       if (isDownload) {
         rethrow;
       }
@@ -709,6 +1017,13 @@ class AudioCacheServiceImpl implements AudioCacheService {
   @override
   Future<void> deleteAudio(String trackId) async {
     if (kIsWeb) return;
+
+    final trackCache = GetIt.I<TrackCacheService>();
+    final track = await trackCache.getTrack(trackId);
+    if (track != null) {
+      track.downloadState = 'deleting';
+      await trackCache.cacheTrack(track);
+    }
 
     if (await _dir.exists()) {
       await for (final entity in _dir.list(recursive: false, followLinks: false)) {
@@ -734,6 +1049,29 @@ class AudioCacheServiceImpl implements AudioCacheService {
           await file.delete();
         } catch (_) {}
       }
+      final dotIdx = file.path.lastIndexOf('.');
+      if (dotIdx != -1) {
+        final jsonFile = File('${file.path.substring(0, dotIdx)}.json');
+        if (await jsonFile.exists()) {
+          try {
+            await jsonFile.delete();
+          } catch (_) {}
+        }
+      }
+    }
+
+    if (track != null) {
+      track.downloadState = null;
+      track.localAudioPath = null;
+      track.audioSizeBytes = 0;
+      track.cachedHlsBitrate = null;
+      track.cachedHlsVariantUrl = null;
+      track.downloadedAudioPath = null;
+      track.downloadedAudioSizeBytes = 0;
+      track.downloadedHlsBitrate = null;
+      track.downloadedHlsVariantUrl = null;
+      track.isDownloaded = false;
+      await trackCache.cacheTrack(track);
     }
   }
 
@@ -758,6 +1096,12 @@ class AudioCacheServiceImpl implements AudioCacheService {
     List<String>? protectedTrackIds,
   }) async {
     if (kIsWeb) return;
+    if (isBulkDownloading) {
+      if (kDebugMode) {
+        debugPrint('[AudioCacheService] Skipping enforceMaxSize during bulk download');
+      }
+      return;
+    }
 
     final List<CachedTrack> allTracks = await trackCache.getAllTracks();
     final Map<String, CachedTrack> tracksMap = {
@@ -803,15 +1147,17 @@ class AudioCacheServiceImpl implements AudioCacheService {
           }
         }
 
-        if (trackId != null && !protectSet.contains(trackId)) {
+        final normalizedEntityPath = entity.path.replaceAll(r'\', '/');
+        if (trackId != null && !protectSet.contains(trackId) && !isPathInUse(normalizedEntityPath)) {
           bool isObsolete = false;
           final track = tracksMap[trackId];
           if (track == null || !track.isAvailableOffline) {
             isObsolete = true;
           } else {
-            final normalizedEntityPath = entity.path.replaceAll(r'\', '/');
             final normalizedLocalPath = track.localAudioPath?.replaceAll(r'\', '/') ?? '';
-            if (!normalizedLocalPath.contains(normalizedEntityPath)) {
+            final normalizedDownloadPath = track.downloadedAudioPath?.replaceAll(r'\', '/') ?? '';
+            if (!normalizedLocalPath.contains(normalizedEntityPath) &&
+                !normalizedDownloadPath.contains(normalizedEntityPath)) {
               isObsolete = true;
             }
           }
@@ -837,7 +1183,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
     }
 
     // 2. Now calculate size of cached-only tracks and run LRU eviction if we exceed the limit
-    final cacheTracks = allTracks.where((t) => t.isAvailableOffline && !t.isDownloaded).toList();
+    final cacheTracks = allTracks.where((t) => t.localAudioPath != null).toList();
     final currentCacheSize = cacheTracks.fold<int>(0, (sum, t) => sum + t.audioSizeBytes);
     if (currentCacheSize <= maxCacheSizeBytes) return;
 
@@ -863,8 +1209,42 @@ class AudioCacheServiceImpl implements AudioCacheService {
       }
 
       if (track.localAudioPath != null) {
+        final absolutePath = track.localAudioPath!;
+        if (isPathInUse(absolutePath)) {
+          if (kDebugMode) {
+            debugPrint('[AudioCacheService] Skipping eviction of track ${track.trackId} because its path is in use');
+          }
+          continue;
+        }
+
         final trackSize = track.audioSizeBytes > 0 ? track.audioSizeBytes : 0;
-        await deleteAudio(track.trackId);
+        
+        // Delete only the cached file/folder from disk, preserving downloaded files
+        if (absolutePath.contains('_hls')) {
+          final dir = Directory(absolutePath).parent;
+          if (await dir.exists()) {
+            try {
+              await dir.delete(recursive: true);
+            } catch (_) {}
+          }
+        } else {
+          final file = File(absolutePath);
+          if (await file.exists()) {
+            try {
+              await file.delete();
+            } catch (_) {}
+          }
+          final dotIdx = file.path.lastIndexOf('.');
+          if (dotIdx != -1) {
+            final jsonFile = File('${file.path.substring(0, dotIdx)}.json');
+            if (await jsonFile.exists()) {
+              try {
+                await jsonFile.delete();
+              } catch (_) {}
+            }
+          }
+        }
+
         freedBytes += trackSize;
         track.localAudioPath = null;
         track.audioSizeBytes = 0;
@@ -872,7 +1252,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
         track.cachedHlsVariantUrl = null;
         await trackCache.cacheTrack(track);
         if (kDebugMode) {
-          debugPrint('[AudioCacheService] Evicted track ${track.trackId} ("${track.title}") to free $trackSize bytes');
+          debugPrint('[AudioCacheService] Evicted cache-only version of track ${track.trackId} ("${track.title}") to free $trackSize bytes');
         }
       }
     }
@@ -890,6 +1270,193 @@ class AudioCacheServiceImpl implements AudioCacheService {
         }
       }
     }
+  }
+
+  @override
+  Future<void> recoverIncompleteOperations(TrackCacheService trackCache) async {
+    if (kIsWeb) return;
+    try {
+      final List<CachedTrack> allTracks = await trackCache.getAllTracks();
+      for (final track in allTracks) {
+        if (track.downloadState == 'downloading') {
+          if (kDebugMode) {
+            debugPrint('[AudioCacheService] Recovering incomplete download for track ${track.trackId}');
+          }
+          await deleteAudio(track.trackId);
+          track.downloadState = null;
+          await trackCache.cacheTrack(track);
+        } else if (track.downloadState == 'deleting') {
+          if (kDebugMode) {
+            debugPrint('[AudioCacheService] Recovering incomplete deletion for track ${track.trackId}');
+          }
+          await deleteAudio(track.trackId);
+          track.downloadState = null;
+          await trackCache.cacheTrack(track);
+        }
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> reconcileDiskUsage({required TrackCacheService trackCache}) async {
+    if (kIsWeb) return;
+    try {
+      final List<CachedTrack> allTracks = await trackCache.getAllTracks();
+      for (final track in allTracks) {
+        // Reconcile Cached Version
+        if (track.localAudioPath != null) {
+          final path = track.localAudioPath!;
+          final isHls = path.contains('_hls');
+          int actualSize = 0;
+          bool exists = false;
+          try {
+            if (isHls) {
+              final dir = Directory(path).parent;
+              if (await dir.exists() && await _verifyHlsCacheComplete(dir.path)) {
+                exists = true;
+                actualSize = await _dirSizeBytes(dir);
+              }
+            } else {
+              final file = File(path);
+              if (await file.exists() && await file.length() > 0) {
+                exists = true;
+                actualSize = await file.length();
+              }
+            }
+          } catch (_) {}
+
+          if (!exists) {
+            track.localAudioPath = null;
+            track.audioSizeBytes = 0;
+            track.cachedHlsBitrate = null;
+            track.cachedHlsVariantUrl = null;
+            await trackCache.cacheTrack(track);
+          } else if (track.audioSizeBytes != actualSize) {
+            track.audioSizeBytes = actualSize;
+            await trackCache.cacheTrack(track);
+          }
+        }
+
+        // Reconcile Downloaded Version
+        if (track.downloadedAudioPath != null) {
+          final path = track.downloadedAudioPath!;
+          final isHls = path.contains('_hls');
+          int actualSize = 0;
+          bool exists = false;
+          try {
+            if (isHls) {
+              final dir = Directory(path).parent;
+              if (await dir.exists() && await _verifyHlsCacheComplete(dir.path)) {
+                exists = true;
+                actualSize = await _dirSizeBytes(dir);
+              }
+            } else {
+              final file = File(path);
+              if (await file.exists() && await file.length() > 0) {
+                exists = true;
+                actualSize = await file.length();
+              }
+            }
+          } catch (_) {}
+
+          if (!exists) {
+            track.downloadedAudioPath = null;
+            track.downloadedAudioSizeBytes = 0;
+            track.downloadedHlsBitrate = null;
+            track.downloadedHlsVariantUrl = null;
+            track.isDownloaded = false;
+            await trackCache.cacheTrack(track);
+          } else if (track.downloadedAudioSizeBytes != actualSize) {
+            track.downloadedAudioSizeBytes = actualSize;
+            await trackCache.cacheTrack(track);
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> rebuildHiveFromSidecars(TrackCacheService trackCache) async {
+    if (kIsWeb || !await _dir.exists()) return;
+    try {
+      final tracks = await trackCache.getAllTracks();
+      if (tracks.isNotEmpty) return;
+
+      if (kDebugMode) {
+        debugPrint('[AudioCacheService] Hive database is empty. Rebuilding from sidecar metadata files...');
+      }
+
+      await for (final entity in _dir.list(recursive: false, followLinks: false)) {
+        File? jsonFile;
+        if (entity is Directory) {
+          jsonFile = File('${entity.path}/track.json');
+        } else if (entity is File && entity.path.endsWith('.json')) {
+          jsonFile = entity;
+        }
+
+        if (jsonFile != null && await jsonFile.exists()) {
+          try {
+            final content = await jsonFile.readAsString();
+            final map = jsonDecode(content) as Map<String, dynamic>;
+            final track = CachedTrack()
+              ..trackId = map['trackId'] as String
+              ..title = map['title'] as String
+              ..artistName = map['artistName'] as String
+              ..albumTitle = map['albumTitle'] as String?
+              ..albumId = map['albumId'] as String?
+              ..albumCoverUrl = map['albumCoverUrl'] as String?
+              ..durationSeconds = map['durationSeconds'] as int
+              ..isExplicit = map['isExplicit'] as bool? ?? false
+              ..audioSizeBytes = map['audioSizeBytes'] as int? ?? 0
+              ..cachedHlsBitrate = map['cachedHlsBitrate'] as int?
+              ..cachedHlsVariantUrl = map['cachedHlsVariantUrl'] as String?
+              ..downloadedAudioPath = map['downloadedAudioPath'] as String?
+              ..downloadedAudioSizeBytes = map['downloadedAudioSizeBytes'] as int? ?? 0
+              ..downloadedHlsBitrate = map['downloadedHlsBitrate'] as int?
+              ..downloadedHlsVariantUrl = map['downloadedHlsVariantUrl'] as String?
+              ..isDownloaded = map['isDownloaded'] as bool? ?? false
+              ..sourceProvider = map['sourceProvider'] as String? ?? 'musee'
+              ..cachedAt = DateTime.now();
+
+            if (entity is Directory) {
+              final playlistPath = '${entity.path}/index.m3u8';
+              if (track.isDownloaded) {
+                track.downloadedAudioPath = playlistPath;
+                track.downloadedAudioSizeBytes = track.audioSizeBytes;
+                track.downloadedHlsBitrate = track.cachedHlsBitrate;
+                track.downloadedHlsVariantUrl = track.cachedHlsVariantUrl;
+                track.audioSizeBytes = 0;
+                track.cachedHlsBitrate = null;
+                track.cachedHlsVariantUrl = null;
+              } else {
+                track.localAudioPath = playlistPath;
+              }
+            } else {
+              for (final ext in ['mp3', 'm4a', 'aac', 'flac', 'wav']) {
+                final audioFile = File('${_dir.path}/${track.trackId}.$ext');
+                if (await audioFile.exists()) {
+                  if (track.isDownloaded) {
+                    track.downloadedAudioPath = audioFile.path;
+                    track.downloadedAudioSizeBytes = track.audioSizeBytes;
+                    track.audioSizeBytes = 0;
+                  } else {
+                    track.localAudioPath = audioFile.path;
+                  }
+                  break;
+                }
+              }
+            }
+
+            if (track.localAudioPath != null || track.downloadedAudioPath != null) {
+              await trackCache.cacheTrack(track);
+              if (kDebugMode) {
+                debugPrint('[AudioCacheService] Rebuilt track entry for ${track.trackId} ("${track.title}")');
+              }
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
   }
 }
 

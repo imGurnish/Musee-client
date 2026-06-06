@@ -73,6 +73,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   // we cache for 50 min to stay safely within the expiry window.
   final Map<String, (String, int?, DateTime)> _urlCache = {};
   final Map<String, CancelToken> _backgroundCacheCancelTokens = {};
+  String? _activeLocalPath;
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
@@ -1589,6 +1590,16 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }) async {
     if (switchToken != _trackSwitchToken) return;
 
+    if (_activeLocalPath != null) {
+      _audioCache?.decrementRef(_activeLocalPath!);
+      _activeLocalPath = null;
+    }
+    final localPath = _audioCache?.getLocalPathFromUri(url);
+    if (localPath != null) {
+      _activeLocalPath = localPath;
+      _audioCache?.incrementRef(localPath);
+    }
+
     try {
       PlaybackDiagnostics.log('Loading audio source (switchToken=$switchToken)...');
       await _audioOperationHandler.executeAudioOperation(() async {
@@ -1999,6 +2010,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       debugPrint('[PlayerCubit] close() called ($hashCode)');
     }
     PlaybackDiagnostics.log('PlayerCubit close() called');
+    if (_activeLocalPath != null) {
+      _audioCache?.decrementRef(_activeLocalPath!);
+      _activeLocalPath = null;
+    }
     _logCurrentTrackPlay(wasSkipped: true);
     for (final token in _backgroundCacheCancelTokens.values) {
       token.cancel();

@@ -60,6 +60,13 @@ class DownloadManager extends Cubit<DownloadState> {
     this._settingsCubit,
   ) : super(DownloadState.initial());
 
+  @override
+  void onChange(Change<DownloadState> change) {
+    super.onChange(change);
+    final hasActive = change.nextState.status.values.any((s) => s == DownloadStatus.downloading);
+    _audioCache.isBulkDownloading = hasActive;
+  }
+
   Future<void> addToQueue(String trackId) async {
     if (state.status[trackId] == DownloadStatus.downloading) return;
 

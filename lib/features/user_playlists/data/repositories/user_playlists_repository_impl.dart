@@ -544,7 +544,11 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
           ..localAudioPath = existing?.localAudioPath
           ..audioSizeBytes = existing?.audioSizeBytes ?? 0
           ..localImagePath = existing?.localImagePath
-          ..isDownloaded = existing?.isDownloaded ?? false,
+          ..isDownloaded = existing?.isDownloaded ?? false
+          ..downloadedAudioPath = existing?.downloadedAudioPath
+          ..downloadedAudioSizeBytes = existing?.downloadedAudioSizeBytes ?? 0
+          ..downloadedHlsBitrate = existing?.downloadedHlsBitrate
+          ..downloadedHlsVariantUrl = existing?.downloadedHlsVariantUrl,
       );
     }
   }
