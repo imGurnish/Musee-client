@@ -660,13 +660,8 @@ class _UserDashboardState extends State<UserDashboard> {
                               ),
                             if (topArtists.isNotEmpty)
                               SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                  ),
-                                  child: _ArtistPillsSection(
-                                    artists: topArtists,
-                                  ),
+                                child: _ArtistAvatarsSection(
+                                  artists: topArtists,
                                 ),
                               ),
 
@@ -1159,24 +1154,105 @@ class _CompactFeedSkeleton extends StatelessWidget {
   }
 }
 
-class _ArtistPillsSection extends StatelessWidget {
+class _ArtistAvatarsSection extends StatelessWidget {
   final List<DashboardArtist> artists;
-  const _ArtistPillsSection({required this.artists});
+  const _ArtistAvatarsSection({required this.artists});
+
+  Widget _buildFallback(
+    BuildContext context,
+    ThemeData theme,
+    double avatarSize,
+    String name,
+  ) {
+    return Container(
+      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+      alignment: Alignment.center,
+      child: Text(
+        name.isNotEmpty ? name[0].toUpperCase() : '?',
+        style: TextStyle(
+          fontSize: avatarSize * 0.35,
+          fontWeight: FontWeight.bold,
+          color: theme.colorScheme.onPrimaryContainer,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: artists
-          .map(
-            (artist) => ActionChip(
-              avatar: const Icon(Icons.person, size: 16),
-              label: Text(artist.name),
-              onPressed: () => context.push('/artists/${artist.artistId}'),
+    final theme = Theme.of(context);
+    final isCompact = MediaQuery.of(context).size.width < 700;
+    final double avatarSize = isCompact ? 86.0 : 96.0;
+
+    return SizedBox(
+      height: avatarSize + 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: artists.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 16),
+        itemBuilder: (context, index) {
+          final artist = artists[index];
+          return InkWell(
+            onTap: () => context.push('/artists/${artist.artistId}'),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: avatarSize + 12,
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: avatarSize,
+                    height: avatarSize,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child:
+                          artist.avatarUrl != null &&
+                                  artist.avatarUrl!.isNotEmpty
+                              ? RetryingNetworkImage(
+                                  url: artist.avatarUrl!,
+                                  fit: BoxFit.cover,
+                                  fallback: _buildFallback(
+                                    context,
+                                    theme,
+                                    avatarSize,
+                                    artist.name,
+                                  ),
+                                )
+                              : _buildFallback(
+                                  context,
+                                  theme,
+                                  avatarSize,
+                                  artist.name,
+                                ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    artist.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          )
-          .toList(),
+          );
+        },
+      ),
     );
   }
 }
