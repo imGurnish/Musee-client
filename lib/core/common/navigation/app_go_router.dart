@@ -435,10 +435,44 @@ class AppGoRouter {
         GoRoute(
           path: Routes.settings,
           name: 'settings',
-          builder: (context, state) => BlocProvider.value(
-            value: serviceLocator<SettingsCubit>(),
-            child: const SettingsPage(),
-          ),
+          pageBuilder: (context, state) {
+            return CustomTransitionPage<void>(
+              key: state.pageKey,
+              // opaque: false keeps the dashboard route rendered in the tree
+              // so BackdropFilter in SettingsPage can blur it.
+              opaque: false,
+              // SettingsPage handles its own dim/blur overlay
+              barrierColor: Colors.transparent,
+              transitionsBuilder:
+                  (context, animation, secondaryAnimation, child) {
+                if (MediaQuery.of(context).size.width >= 800) {
+                  // Desktop: simple fade-in for the modal feel
+                  return FadeTransition(
+                    opacity: CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOut,
+                    ),
+                    child: child,
+                  );
+                }
+                // Mobile: slide in from the right (standard page navigation)
+                return SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(1, 0),
+                    end: Offset.zero,
+                  ).animate(CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeInOut,
+                  )),
+                  child: child,
+                );
+              },
+              child: BlocProvider.value(
+                value: serviceLocator<SettingsCubit>(),
+                child: const SettingsPage(),
+              ),
+            );
+          },
         ),
 
         GoRoute(

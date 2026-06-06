@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -263,39 +264,97 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDesktop = MediaQuery.of(context).size.width >= 800;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      body: _buildUpdateCheckFrame(
-        CustomScrollView(
-          slivers: [
-            // ─── Gradient Header ──────────────────────────────────────────
-            SliverToBoxAdapter(child: _SettingsHeader()),
+    // ─── Shared scrollable content ────────────────────────────────────────
+    final scrollContent = _buildUpdateCheckFrame(
+      CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(child: _SettingsHeader()),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                const SizedBox(height: 20),
+                _buildAccountSection(context),
+                const SizedBox(height: 24),
+                _buildAppearanceSection(context),
+                const SizedBox(height: 24),
+                _buildPlaybackSection(context),
+                const SizedBox(height: 24),
+                _buildDownloadsSection(context),
+                const SizedBox(height: 24),
+                _buildMusicPreferencesSection(context),
+                const SizedBox(height: 24),
+                _buildAboutSection(context),
+                const SizedBox(height: 16),
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
 
-            // ─── Content ─────────────────────────────────────────────────
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  const SizedBox(height: 20),
-                  _buildAccountSection(context),
-                  const SizedBox(height: 24),
-                  _buildAppearanceSection(context),
-                  const SizedBox(height: 24),
-                  _buildPlaybackSection(context),
-                  const SizedBox(height: 24),
-                  _buildDownloadsSection(context),
-                  const SizedBox(height: 24),
-                  _buildMusicPreferencesSection(context),
-                  const SizedBox(height: 24),
-                  _buildAboutSection(context),
-                  const SizedBox(height: 16),
-                ]),
+    // ─── Desktop: blurred overlay + centered card ─────────────────────────
+    if (isDesktop) {
+      return Scaffold(
+        // Must be transparent so BackdropFilter can show the route below
+        backgroundColor: Colors.transparent,
+        body: Stack(
+          children: [
+            // Layer 1: blur + dim the dashboard behind this route
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.45),
+                ),
+              ),
+            ),
+
+            // Layer 2: tap outside the card to dismiss
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () {
+                  if (context.canPop()) context.pop();
+                },
+                behavior: HitTestBehavior.opaque,
+                child: const SizedBox.expand(),
+              ),
+            ),
+
+            // Layer 3: the settings card — absorbs taps so they don't fall through
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: GestureDetector(
+                    // Absorb taps so the card doesn't trigger the dismiss layer
+                    onTap: () {},
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Material(
+                        elevation: 32,
+                        shadowColor: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(20),
+                        color: colorScheme.surface,
+                        child: scrollContent,
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
         ),
-      ),
+      );
+    }
+
+    // ─── Mobile: full-screen page ─────────────────────────────────────────
+    return Scaffold(
+      backgroundColor: colorScheme.surface,
+      body: scrollContent,
     );
   }
 
@@ -715,11 +774,15 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
 // ─── Gradient header bar ──────────────────────────────────────────────────────
 
 class _SettingsHeader extends StatelessWidget {
+  const _SettingsHeader();
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final topPadding = MediaQuery.of(context).padding.top;
+    final isDesktop = MediaQuery.of(context).size.width >= 800;
+    // On desktop the card has its own padding; on mobile we respect the status bar
+    final topPadding = isDesktop ? 8.0 : (MediaQuery.of(context).padding.top + 8.0);
 
     return Container(
       decoration: BoxDecoration(
@@ -733,17 +796,22 @@ class _SettingsHeader extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
       ),
-      padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 20),
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Back button row
           Row(
             children: [
               IconButton.filledTonal(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.arrow_back_rounded),
-                tooltip: 'Back',
+                // Always use context.pop() — correct for GoRouter push routes
+                onPressed: () {
+                  if (context.canPop()) context.pop();
+                },
+                // ✕ on desktop (modal feel), ← on mobile (back-navigation feel)
+                icon: Icon(
+                  isDesktop ? Icons.close_rounded : Icons.arrow_back_rounded,
+                ),
+                tooltip: isDesktop ? 'Close' : 'Back',
               ),
               const Spacer(),
               Icon(
