@@ -1590,14 +1590,13 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }) async {
     if (switchToken != _trackSwitchToken) return;
 
-    if (_activeLocalPath != null) {
-      _audioCache?.decrementRef(_activeLocalPath!);
-      _activeLocalPath = null;
-    }
+    final oldActiveLocalPath = _activeLocalPath;
     final localPath = _audioCache?.getLocalPathFromUri(url);
     if (localPath != null) {
       _activeLocalPath = localPath;
       _audioCache?.incrementRef(localPath);
+    } else {
+      _activeLocalPath = null;
     }
 
     try {
@@ -1624,6 +1623,10 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       PlaybackDiagnostics.log('Audio source load failed: $e');
       if (switchToken != _trackSwitchToken) return;
       rethrow;
+    } finally {
+      if (oldActiveLocalPath != null) {
+        _audioCache?.decrementRef(oldActiveLocalPath);
+      }
     }
   }
 

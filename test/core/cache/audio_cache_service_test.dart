@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:bloc/bloc.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,17 @@ import 'package:get_it/get_it.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
 import 'package:musee/core/cache/services/audio_cache_service.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
+import 'package:musee/core/player/player_cubit.dart';
+import 'package:musee/core/player/player_state.dart';
+import 'package:musee/features/player/domain/entities/queue_item.dart';
+
+// Mock PlayerCubit using noSuchMethod for ease of mocking/stubbing
+class MockPlayerCubit extends Cubit<PlayerViewState> implements PlayerCubit {
+  MockPlayerCubit(super.initialState);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 // Mock TrackCacheService
 class MockTrackCacheService implements TrackCacheService {
@@ -436,6 +448,74 @@ segment2.ts
       expect(updated?.downloadedAudioPath, isNotNull);
       expect(updated?.downloadedAudioSizeBytes, 100);
       expect(updated?.isDownloaded, isTrue);
+    });
+
+    test('enforceMaxSize protects previously played track (currentIndex - 1) during transition', () async {
+      final cacheDir = Directory('${tempDir.path}/audio_cache');
+
+      // Create simulated cache directories for prev, curr, next, and obsolete tracks
+      final prevDir = Directory('${cacheDir.path}/prev_track_hls_320');
+      await prevDir.create(recursive: true);
+      await File('${prevDir.path}/index.m3u8').writeAsString('#EXTM3U');
+
+      final currDir = Directory('${cacheDir.path}/curr_track_hls_320');
+      await currDir.create(recursive: true);
+      await File('${currDir.path}/index.m3u8').writeAsString('#EXTM3U');
+
+      final nextDir = Directory('${cacheDir.path}/next_track_hls_320');
+      await nextDir.create(recursive: true);
+      await File('${nextDir.path}/index.m3u8').writeAsString('#EXTM3U');
+
+      final obsoleteDir = Directory('${cacheDir.path}/obsolete_track_hls_320');
+      await obsoleteDir.create(recursive: true);
+      await File('${obsoleteDir.path}/index.m3u8').writeAsString('#EXTM3U');
+
+      // Register the tracks in trackCache
+      for (final id in ['prev_track', 'curr_track', 'next_track', 'obsolete_track']) {
+        final track = CachedTrack()
+          ..trackId = id
+          ..title = '$id Track'
+          ..artistName = 'Artist'
+          ..isDownloaded = false;
+        await trackCache.cacheTrack(track);
+      }
+
+      // Register MockPlayerCubit in GetIt
+      final queue = [
+        QueueItem(trackId: 'prev_track', title: 'Prev Track', artist: 'Artist'),
+        QueueItem(trackId: 'curr_track', title: 'Curr Track', artist: 'Artist'),
+        QueueItem(trackId: 'next_track', title: 'Next Track', artist: 'Artist'),
+      ];
+      final state = PlayerViewState(
+        currentIndex: 1, // curr_track is active
+        queue: queue,
+        track: const PlayerTrack(
+          trackId: 'curr_track',
+          url: 'http://localhost/curr_track_hls_320/index.m3u8',
+          title: 'Curr Track',
+          artist: 'Artist',
+        ),
+      );
+      final mockPlayerCubit = MockPlayerCubit(state);
+      GetIt.instance.registerSingleton<PlayerCubit>(mockPlayerCubit);
+
+      try {
+        // Run enforceMaxSize
+        await audioCache.enforceMaxSize(
+          maxCacheSizeBytes: 1000000,
+          trackCache: trackCache,
+        );
+
+        // Verify that obsolete track was deleted
+        expect(obsoleteDir.existsSync(), isFalse);
+
+        // Verify that prev, curr, and next tracks were NOT deleted
+        expect(prevDir.existsSync(), isTrue);
+        expect(currDir.existsSync(), isTrue);
+        expect(nextDir.existsSync(), isTrue);
+      } finally {
+        await GetIt.instance.unregister<PlayerCubit>();
+      }
     });
   });
 }

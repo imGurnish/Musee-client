@@ -1113,7 +1113,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
       ..._activeDownloads,
     };
 
-    // Dynamically retrieve player status from GetIt if registered, to protect currently playing and prefetching tracks
+    // Dynamically retrieve player status from GetIt if registered, to protect currently playing, prefetching, and recently played tracks
     try {
       if (GetIt.instance.isRegistered<PlayerCubit>()) {
         final player = GetIt.instance<PlayerCubit>();
@@ -1123,8 +1123,13 @@ class AudioCacheServiceImpl implements AudioCacheService {
         }
         final queue = player.state.queue;
         final currentIndex = player.state.currentIndex;
-        if (queue.isNotEmpty && currentIndex >= 0 && currentIndex + 1 < queue.length) {
-          protectSet.add(queue[currentIndex + 1].trackId);
+        if (queue.isNotEmpty && currentIndex >= 0) {
+          if (currentIndex + 1 < queue.length) {
+            protectSet.add(queue[currentIndex + 1].trackId);
+          }
+          if (currentIndex - 1 >= 0) {
+            protectSet.add(queue[currentIndex - 1].trackId);
+          }
         }
       }
     } catch (_) {
