@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -37,6 +38,7 @@ abstract class AudioCacheService {
     void Function(int received, int total)? onProgress,
     CancelToken? cancelToken,
     List<String>? protectedTrackIds,
+    bool isDownload = false,
   });
 
   /// Delete a specific cached audio file
@@ -61,6 +63,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
   Directory? _cacheDir;
   HttpServer? _localServer;
   final Set<String> _activeDownloads = {};
+  final Map<String, ({CancelToken cancelToken, bool isDownload, Future<String?> future})> _activeOperations = {};
 
   AudioCacheServiceImpl(this._dio);
 
@@ -128,8 +131,19 @@ class AudioCacheServiceImpl implements AudioCacheService {
     return '${_dir.path}/$trackId.$ext';
   }
 
-  String _getHlsDirPath(String trackId) {
-    return '${_dir.path}/${trackId}_hls';
+  String _getHlsDirPath(String trackId, {int? bitrate}) {
+    final br = bitrate ?? _getCachedBitrateSync(trackId);
+    final suffix = br != null ? '_$br' : '';
+    return '${_dir.path}/${trackId}_hls$suffix';
+  }
+
+  int? _getCachedBitrateSync(String trackId) {
+    try {
+      final trackCache = GetIt.I<TrackCacheService>();
+      final track = trackCache.getTrackSync(trackId);
+      return track?.cachedHlsBitrate;
+    } catch (_) {}
+    return null;
   }
 
   bool _isLikelyHlsPlaylistUrl(String remoteUrl) {
@@ -305,8 +319,9 @@ class AudioCacheServiceImpl implements AudioCacheService {
     int? preferredHlsBitrate,
     void Function(int received, int total)? onProgress,
     CancelToken? cancelToken,
+    bool isDownload = false,
   }) async {
-    final hlsDir = Directory(_getHlsDirPath(trackId));
+    final hlsDir = Directory(_getHlsDirPath(trackId, bitrate: preferredHlsBitrate));
     if (await hlsDir.exists()) {
       await hlsDir.delete(recursive: true);
     }
@@ -337,6 +352,9 @@ class AudioCacheServiceImpl implements AudioCacheService {
         track.audioSizeBytes = await _dirSizeBytes(hlsDir);
         track.cachedHlsVariantUrl = remoteUrl;
         track.cachedHlsBitrate = preferredHlsBitrate ?? track.cachedHlsBitrate;
+        if (isDownload) {
+          track.isDownloaded = true;
+        }
         await trackCache.cacheTrack(track);
       }
 
@@ -405,7 +423,9 @@ class AudioCacheServiceImpl implements AudioCacheService {
 
     if (_localServer != null) {
       if (isHls) {
-        return 'http://localhost:${_localServer!.port}/${trackId}_hls/index.m3u8';
+        final br = _getCachedBitrateSync(trackId);
+        final suffix = br != null ? '_$br' : '';
+        return 'http://localhost:${_localServer!.port}/${trackId}_hls$suffix/index.m3u8';
       } else {
         final file = File(path);
         final ext = file.path.split('.').last;
@@ -428,41 +448,147 @@ class AudioCacheServiceImpl implements AudioCacheService {
     void Function(int received, int total)? onProgress,
     CancelToken? cancelToken,
     List<String>? protectedTrackIds,
+    bool isDownload = false,
   }) async {
     if (kIsWeb) return null;
+
+    // 1. Reconcile with active operations on the same track to prevent concurrent write conflicts
+    final active = _activeOperations[trackId];
+    if (active != null) {
+      if (active.isDownload) {
+        if (isDownload) {
+          return active.future;
+        } else {
+          // Playback cache is covered by active download
+          return null;
+        }
+      } else {
+        if (isDownload) {
+          // User download takes priority. Cancel active background cache and wait for it to exit.
+          active.cancelToken.cancel();
+          try {
+            await active.future;
+          } catch (_) {}
+        } else {
+          // Let current background cache finish
+          return active.future;
+        }
+      }
+    }
+
+    final operationCancelToken = cancelToken ?? CancelToken();
+    final completer = Completer<String?>();
+
+    _activeOperations[trackId] = (
+      cancelToken: operationCancelToken,
+      isDownload: isDownload,
+      future: completer.future,
+    );
+
+    try {
+      final result = await _executeDownloadAndCache(
+        trackId: trackId,
+        remoteUrl: remoteUrl,
+        trackCache: trackCache,
+        preferredHlsUrl: preferredHlsUrl,
+        preferredHlsBitrate: preferredHlsBitrate,
+        maxCacheSizeBytes: maxCacheSizeBytes,
+        onProgress: onProgress,
+        cancelToken: operationCancelToken,
+        protectedTrackIds: protectedTrackIds,
+        isDownload: isDownload,
+      );
+      completer.complete(result);
+      return result;
+    } catch (e) {
+      completer.completeError(e);
+      rethrow;
+    } finally {
+      if (_activeOperations[trackId]?.cancelToken == operationCancelToken) {
+        _activeOperations.remove(trackId);
+      }
+    }
+  }
+
+  Future<String?> _executeDownloadAndCache({
+    required String trackId,
+    required String remoteUrl,
+    required TrackCacheService trackCache,
+    String? preferredHlsUrl,
+    int? preferredHlsBitrate,
+    int? maxCacheSizeBytes,
+    void Function(int received, int total)? onProgress,
+    required CancelToken cancelToken,
+    List<String>? protectedTrackIds,
+    required bool isDownload,
+  }) async {
     _activeDownloads.add(trackId);
     try {
       final existingLocalPath = await getLocalAudioPath(trackId);
       final existingTrack = await trackCache.getTrack(trackId);
 
-      if (existingLocalPath != null &&
-          existingTrack?.cachedHlsBitrate != null &&
-          preferredHlsBitrate != null &&
-          existingTrack!.cachedHlsBitrate! >= preferredHlsBitrate) {
-        return existingLocalPath;
-      }
-
       if (existingLocalPath != null) {
-        if (preferredHlsBitrate != null &&
-            existingTrack?.cachedHlsBitrate != null &&
-            existingTrack!.cachedHlsBitrate! < preferredHlsBitrate) {
-          final hlsDir = Directory(_getHlsDirPath(trackId));
-          if (await hlsDir.exists()) {
-            await hlsDir.delete(recursive: true);
+        bool isQualityMatch = true;
+        if (preferredHlsBitrate != null && existingTrack?.cachedHlsBitrate != null) {
+          if (isDownload) {
+            isQualityMatch = existingTrack!.cachedHlsBitrate == preferredHlsBitrate;
+          } else {
+            isQualityMatch = existingTrack!.cachedHlsBitrate! >= preferredHlsBitrate;
           }
-        } else {
-          if (existingTrack != null && existingTrack.localAudioPath != existingLocalPath) {
-            existingTrack.localAudioPath = existingLocalPath;
-            await trackCache.cacheTrack(existingTrack);
+        }
+
+        if (isQualityMatch) {
+          if (existingTrack != null) {
+            var needsUpdate = false;
+            if (existingTrack.localAudioPath != existingLocalPath) {
+              existingTrack.localAudioPath = existingLocalPath;
+              needsUpdate = true;
+            }
+            if (isDownload && !existingTrack.isDownloaded) {
+              existingTrack.isDownloaded = true;
+              needsUpdate = true;
+            }
+            if (existingTrack.audioSizeBytes == 0) {
+              try {
+                final isHls = await _hasPlayableHlsCache(trackId);
+                if (isHls) {
+                  existingTrack.audioSizeBytes = await _dirSizeBytes(Directory(_getHlsDirPath(trackId)));
+                } else {
+                  existingTrack.audioSizeBytes = await File(existingLocalPath).length();
+                }
+                needsUpdate = true;
+              } catch (_) {}
+            }
+            if (needsUpdate) {
+              await trackCache.cacheTrack(existingTrack);
+            }
           }
           return existingLocalPath;
+        } else {
+          // Quality mismatch. Delete the target HLS directory (if HLS)
+          // or target single audio files if we are downloading a single audio file.
+          // BUT do NOT delete the active cache folder/file to avoid locking issues (OS Error 32).
+          if (_isLikelyHlsPlaylistUrl(remoteUrl)) {
+            final targetHlsDir = Directory(_getHlsDirPath(trackId, bitrate: preferredHlsBitrate));
+            if (await targetHlsDir.exists()) {
+              try {
+                await targetHlsDir.delete(recursive: true);
+              } catch (_) {}
+            }
+          } else {
+            for (final ext in ['mp3', 'm4a', 'aac', 'flac']) {
+              final file = File(_getFilePath(trackId, ext));
+              if (await file.exists()) {
+                try {
+                  await file.delete();
+                } catch (_) {}
+              }
+            }
+          }
         }
       }
 
-      final hlsDir = Directory(_getHlsDirPath(trackId));
-      if (await hlsDir.exists()) {
-        await hlsDir.delete(recursive: true);
-      }
+      if (cancelToken.isCancelled) return null;
 
       String? resultPath;
 
@@ -475,6 +601,7 @@ class AudioCacheServiceImpl implements AudioCacheService {
           preferredHlsBitrate: preferredHlsBitrate,
           onProgress: onProgress,
           cancelToken: cancelToken,
+          isDownload: isDownload,
         );
       } else {
         // Determine file extension from URL
@@ -502,6 +629,8 @@ class AudioCacheServiceImpl implements AudioCacheService {
             followRedirects: true,
           ),
         );
+
+        if (cancelToken.isCancelled) return null;
 
         // Verify content type and correct extension if needed
         final contentType = response.headers.value('content-type');
@@ -541,6 +670,9 @@ class AudioCacheServiceImpl implements AudioCacheService {
         if (track != null) {
           track.localAudioPath = filePath;
           track.audioSizeBytes = await savedFile.length();
+          if (isDownload) {
+            track.isDownloaded = true;
+          }
           await trackCache.cacheTrack(track);
         }
 
@@ -560,8 +692,14 @@ class AudioCacheServiceImpl implements AudioCacheService {
       }
 
       return resultPath;
-    } catch (e) {
-      // Download failed, return null
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('[AudioCacheService] _executeDownloadAndCache failed for track $trackId: $e');
+        debugPrint(stackTrace.toString());
+      }
+      if (isDownload) {
+        rethrow;
+      }
       return null;
     } finally {
       _activeDownloads.remove(trackId);
@@ -571,15 +709,30 @@ class AudioCacheServiceImpl implements AudioCacheService {
   @override
   Future<void> deleteAudio(String trackId) async {
     if (kIsWeb) return;
-    final hlsDir = Directory(_getHlsDirPath(trackId));
-    if (await hlsDir.exists()) {
-      await hlsDir.delete(recursive: true);
+
+    if (await _dir.exists()) {
+      await for (final entity in _dir.list(recursive: false, followLinks: false)) {
+        if (entity is Directory) {
+          final name = entity.path.replaceAll(r'\', '/').split('/').last;
+          final hlsIndex = name.indexOf('_hls');
+          if (hlsIndex != -1) {
+            final parsedTrackId = name.substring(0, hlsIndex);
+            if (parsedTrackId == trackId) {
+              try {
+                await entity.delete(recursive: true);
+              } catch (_) {}
+            }
+          }
+        }
+      }
     }
-    for (final ext in ['mp3', 'm4a', 'aac', 'flac']) {
+
+    for (final ext in ['mp3', 'm4a', 'aac', 'flac', 'wav']) {
       final file = File(_getFilePath(trackId, ext));
       if (await file.exists()) {
-        await file.delete();
-        break;
+        try {
+          await file.delete();
+        } catch (_) {}
       }
     }
   }
@@ -606,13 +759,10 @@ class AudioCacheServiceImpl implements AudioCacheService {
   }) async {
     if (kIsWeb) return;
 
-    // 1. Clean up orphaned files/folders on disk whose trackId is NOT registered in Hive
-    // and is not currently in the protected list.
     final List<CachedTrack> allTracks = await trackCache.getAllTracks();
-    final Set<String> registeredTrackIds = allTracks
-        .where((t) => t.isAvailableOffline)
-        .map((t) => t.trackId)
-        .toSet();
+    final Map<String, CachedTrack> tracksMap = {
+      for (final t in allTracks) t.trackId: t
+    };
 
     final protectSet = <String>{
       if (protectedTrackIds != null) ...protectedTrackIds,
@@ -642,8 +792,9 @@ class AudioCacheServiceImpl implements AudioCacheService {
         String? trackId;
         final name = entity.path.replaceAll(r'\', '/').split('/').last;
         if (entity is Directory) {
-          if (name.endsWith('_hls')) {
-            trackId = name.substring(0, name.length - 4);
+          final hlsIndex = name.indexOf('_hls');
+          if (hlsIndex != -1) {
+            trackId = name.substring(0, hlsIndex);
           }
         } else if (entity is File) {
           final dotIndex = name.lastIndexOf('.');
@@ -652,43 +803,55 @@ class AudioCacheServiceImpl implements AudioCacheService {
           }
         }
 
-        if (trackId != null && !registeredTrackIds.contains(trackId) && !protectSet.contains(trackId)) {
-          try {
-            if (entity is Directory) {
-              await entity.delete(recursive: true);
-            } else {
-              await entity.delete();
+        if (trackId != null && !protectSet.contains(trackId)) {
+          bool isObsolete = false;
+          final track = tracksMap[trackId];
+          if (track == null || !track.isAvailableOffline) {
+            isObsolete = true;
+          } else {
+            final normalizedEntityPath = entity.path.replaceAll(r'\', '/');
+            final normalizedLocalPath = track.localAudioPath?.replaceAll(r'\', '/') ?? '';
+            if (!normalizedLocalPath.contains(normalizedEntityPath)) {
+              isObsolete = true;
             }
-            if (kDebugMode) {
-              debugPrint('[AudioCacheService] Cleaned up orphaned cache: ${entity.path}');
-            }
-          } catch (e) {
-            if (kDebugMode) {
-              debugPrint('[AudioCacheService] Failed to delete orphaned cache entity ${entity.path}: $e');
+          }
+
+          if (isObsolete) {
+            try {
+              if (entity is Directory) {
+                await entity.delete(recursive: true);
+              } else {
+                await entity.delete();
+              }
+              if (kDebugMode) {
+                debugPrint('[AudioCacheService] Cleaned up obsolete/orphaned cache: ${entity.path}');
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                debugPrint('[AudioCacheService] Failed to delete obsolete/orphaned cache entity ${entity.path}: $e');
+              }
             }
           }
         }
       }
     }
 
-    // 2. Now calculate size and run LRU eviction if we exceed the limit
-    final currentSize = await getTotalCacheSize();
-    if (currentSize <= maxCacheSizeBytes) return;
-
-    // Get all cached tracks that have offline files
-    final offlineTracks = allTracks.where((t) => t.isAvailableOffline).toList();
+    // 2. Now calculate size of cached-only tracks and run LRU eviction if we exceed the limit
+    final cacheTracks = allTracks.where((t) => t.isAvailableOffline && !t.isDownloaded).toList();
+    final currentCacheSize = cacheTracks.fold<int>(0, (sum, t) => sum + t.audioSizeBytes);
+    if (currentCacheSize <= maxCacheSizeBytes) return;
 
     // Sort by lastPlayedAt ascending (oldest first). If lastPlayedAt is null, use cachedAt.
-    offlineTracks.sort((a, b) {
+    cacheTracks.sort((a, b) {
       final timeA = a.lastPlayedAt ?? a.cachedAt;
       final timeB = b.lastPlayedAt ?? b.cachedAt;
       return timeA.compareTo(timeB);
     });
 
     int freedBytes = 0;
-    final targetFree = currentSize - maxCacheSizeBytes;
+    final targetFree = currentCacheSize - maxCacheSizeBytes;
 
-    for (final track in offlineTracks) {
+    for (final track in cacheTracks) {
       if (freedBytes >= targetFree) break;
 
       // Skip protected tracks

@@ -526,6 +526,7 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
 
   Future<void> _seedTrackMetadata(UserPlaylistDetail detail) async {
     for (final track in detail.tracks) {
+      final existing = await _trackCache.getTrack(track.trackId);
       await _trackCache.cacheTrack(
         CachedTrack()
           ..trackId = track.trackId
@@ -536,7 +537,14 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
               .map((a) => a.name ?? 'Unknown')
               .join(', ')
           ..albumCoverUrl = track.coverUrl ?? detail.coverUrl
-          ..cachedAt = DateTime.now(),
+          ..cachedAt = existing?.cachedAt ?? DateTime.now()
+          ..lastPlayedAt = existing?.lastPlayedAt
+          ..sourceProvider = existing?.sourceProvider ?? 'musee'
+          ..playCount = existing?.playCount ?? 0
+          ..localAudioPath = existing?.localAudioPath
+          ..audioSizeBytes = existing?.audioSizeBytes ?? 0
+          ..localImagePath = existing?.localImagePath
+          ..isDownloaded = existing?.isDownloaded ?? false,
       );
     }
   }

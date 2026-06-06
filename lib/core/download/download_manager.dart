@@ -86,7 +86,8 @@ class DownloadManager extends Cubit<DownloadState> {
         }
       }
 
-      final cachedTrack = CachedTrack()
+      final existingTrack = await _trackCache.getTrack(trackId);
+      final cachedTrack = (existingTrack ?? CachedTrack())
         ..trackId = trackId
         ..title = providerTrack.title
         ..albumId = providerTrack.albumId
@@ -95,10 +96,10 @@ class DownloadManager extends Cubit<DownloadState> {
         ..artistName = providerTrack.artistName
         ..durationSeconds = providerTrack.durationSeconds ?? 0
         ..isExplicit = providerTrack.isExplicit
-        ..cachedAt = DateTime.now()
+        ..cachedAt = existingTrack?.cachedAt ?? DateTime.now()
         ..lastPlayedAt = DateTime.now()
         ..sourceProvider = providerTrack.source.name
-        ..localImagePath = localImagePath;
+        ..localImagePath = localImagePath ?? existingTrack?.localImagePath;
 
       await _trackCache.cacheTrack(cachedTrack);
 
@@ -164,6 +165,7 @@ class DownloadManager extends Cubit<DownloadState> {
         },
         cancelToken: cancelToken,
         protectedTrackIds: protectedTrackIds,
+        isDownload: true,
       );
 
       if (filePath == null) {

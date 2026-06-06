@@ -13,6 +13,9 @@ abstract class TrackCacheService {
   /// Get cached track by ID, or null if not cached
   Future<CachedTrack?> getTrack(String trackId);
 
+  /// Get cached track synchronously by ID, or null if not cached
+  CachedTrack? getTrackSync(String trackId);
+
   /// Update the last played timestamp and increment play count for LRU tracking
   Future<void> updateLastPlayed(String trackId);
 
@@ -113,6 +116,11 @@ class TrackCacheServiceImpl implements TrackCacheService {
   }
 
   @override
+  CachedTrack? getTrackSync(String trackId) {
+    return _trackBox?.get(trackId);
+  }
+
+  @override
   Future<void> updateLastPlayed(String trackId) async {
     final track = _tracks.get(trackId);
     if (track != null) {
@@ -193,7 +201,7 @@ class TrackCacheServiceImpl implements TrackCacheService {
 
   @override
   Future<List<CachedTrack>> getOfflineAvailable() async {
-    return _tracks.values.where((t) => t.isAvailableOffline).toList();
+    return _tracks.values.where((t) => t.isAvailableOffline && t.isDownloaded).toList();
   }
 
   @override

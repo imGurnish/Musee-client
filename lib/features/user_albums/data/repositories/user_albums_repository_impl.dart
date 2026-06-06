@@ -292,7 +292,7 @@ class UserAlbumsRepositoryImpl implements UserAlbumsRepository {
       final cached = await _trackCache.getTrack(track.trackId);
       if (cached == null) continue;
       cachedTrackIds.add(track.trackId);
-      if (cached.isAvailableOffline) {
+      if (cached.isDownloaded) {
         offlineTrackIds.add(track.trackId);
       }
     }
@@ -346,7 +346,8 @@ class UserAlbumsRepositoryImpl implements UserAlbumsRepository {
           ..playCount = existing?.playCount ?? 0
           ..localAudioPath = existing?.localAudioPath
           ..audioSizeBytes = existing?.audioSizeBytes ?? 0
-          ..localImagePath = existing?.localImagePath,
+          ..localImagePath = existing?.localImagePath
+          ..isDownloaded = existing?.isDownloaded ?? false,
       );
     }
   }

@@ -27,7 +27,7 @@ class CachedTrack extends HiveObject {
   @HiveField(6)
   late int durationSeconds;
 
-  @HiveField(7)
+  @HiveField(7, defaultValue: false)
   bool isExplicit = false;
 
   /// Local file path when audio is downloaded, null otherwise
@@ -47,11 +47,11 @@ class CachedTrack extends HiveObject {
   DateTime? lastPlayedAt;
 
   /// Size of cached audio file in bytes (0 if not downloaded)
-  @HiveField(12)
+  @HiveField(12, defaultValue: 0)
   int audioSizeBytes = 0;
 
   /// Source provider identifier ('musee' or 'external')
-  @HiveField(13)
+  @HiveField(13, defaultValue: 'musee')
   String sourceProvider = 'musee';
 
   /// Local file path for cached album artwork
@@ -59,7 +59,7 @@ class CachedTrack extends HiveObject {
   String? localImagePath;
 
   /// Number of times this track has been played (for recommendations)
-  @HiveField(15)
+  @HiveField(15, defaultValue: 0)
   int playCount = 0;
 
   /// Cached HLS master playlist URL, if the track is HLS-backed.
@@ -77,6 +77,10 @@ class CachedTrack extends HiveObject {
   /// Cached HLS variant playlist URL used for the local cache.
   @HiveField(19)
   String? cachedHlsVariantUrl;
+
+  /// Whether this track was intentionally downloaded by the user
+  @HiveField(20, defaultValue: false)
+  bool isDownloaded = false;
 
   /// Whether this track is available offline (has downloaded audio)
   bool get isAvailableOffline =>

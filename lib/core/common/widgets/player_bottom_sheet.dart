@@ -9,7 +9,8 @@ import 'package:go_router/go_router.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
 import 'package:musee/core/download/download_manager.dart';
-import 'package:musee/core/cache/services/audio_cache_service.dart';
+import 'package:musee/core/cache/services/track_cache_service.dart';
+import 'package:musee/core/cache/models/cached_track.dart';
 import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 import 'package:musee/features/user_playlists/presentation/widgets/add_to_playlist_sheet.dart';
 
@@ -1170,10 +1171,11 @@ class _DownloadButton extends StatelessWidget {
           );
         }
 
-        return FutureBuilder<String?>(
-          future: GetIt.I<AudioCacheService>().getLocalAudioPath(trackId),
+        return FutureBuilder<CachedTrack?>(
+          future: GetIt.I<TrackCacheService>().getTrack(trackId),
           builder: (context, snapshot) {
-            final isDownloaded = snapshot.data != null;
+            final track = snapshot.data;
+            final isDownloaded = track != null && track.isDownloaded;
 
             if (isDownloaded || status == DownloadStatus.completed) {
               return IconButton.filledTonal(

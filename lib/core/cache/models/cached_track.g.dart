@@ -24,26 +24,26 @@ class CachedTrackAdapter extends TypeAdapter<CachedTrack> {
       ..albumCoverUrl = fields[4] as String?
       ..artistName = fields[5] as String
       ..durationSeconds = fields[6] as int
-      ..isExplicit = fields[7] as bool
+      ..isExplicit = fields[7] == null ? false : fields[7] as bool
       ..localAudioPath = fields[8] as String?
       ..streamingUrl = fields[9] as String?
       ..cachedAt = fields[10] as DateTime
       ..lastPlayedAt = fields[11] as DateTime?
-      ..audioSizeBytes = fields[12] as int? ?? 0
-      // Handle new fields with defaults for backward compatibility
-      ..sourceProvider = (fields[13] as String?) ?? 'musee'
+      ..audioSizeBytes = fields[12] == null ? 0 : fields[12] as int
+      ..sourceProvider = fields[13] == null ? 'musee' : fields[13] as String
       ..localImagePath = fields[14] as String?
-      ..playCount = (fields[15] as int?) ?? 0
+      ..playCount = fields[15] == null ? 0 : fields[15] as int
       ..hlsMasterUrl = fields[16] as String?
       ..hlsVariantUrls = (fields[17] as Map?)?.cast<String, String>()
       ..cachedHlsBitrate = fields[18] as int?
-      ..cachedHlsVariantUrl = fields[19] as String?;
+      ..cachedHlsVariantUrl = fields[19] as String?
+      ..isDownloaded = fields[20] == null ? false : fields[20] as bool;
   }
 
   @override
   void write(BinaryWriter writer, CachedTrack obj) {
     writer
-      ..writeByte(20)
+      ..writeByte(21)
       ..writeByte(0)
       ..write(obj.trackId)
       ..writeByte(1)
@@ -83,7 +83,9 @@ class CachedTrackAdapter extends TypeAdapter<CachedTrack> {
       ..writeByte(18)
       ..write(obj.cachedHlsBitrate)
       ..writeByte(19)
-      ..write(obj.cachedHlsVariantUrl);
+      ..write(obj.cachedHlsVariantUrl)
+      ..writeByte(20)
+      ..write(obj.isDownloaded);
   }
 
   @override
@@ -113,10 +115,9 @@ class CachedAlbumAdapter extends TypeAdapter<CachedAlbum> {
       ..coverUrl = fields[2] as String?
       ..releaseDate = fields[3] as String?
       ..artistName = fields[4] as String
-      ..trackIds = (fields[5] as List?)?.cast<String>() ?? []
+      ..trackIds = (fields[5] as List).cast<String>()
       ..cachedAt = fields[6] as DateTime
-      // Handle new fields with defaults for backward compatibility
-      ..sourceProvider = (fields[7] as String?) ?? 'musee'
+      ..sourceProvider = fields[7] as String
       ..localCoverPath = fields[8] as String?;
   }
 
