@@ -506,132 +506,143 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
 
               // Artwork + Track info — swipeable area
               Expanded(
-                child: GestureDetector(
-                onHorizontalDragUpdate: _onHorizontalDragUpdate,
-                onHorizontalDragEnd: _onHorizontalDragEnd,
-                behavior: HitTestBehavior.translucent,
-                child: AnimatedBuilder(
-                  animation: _slideController,
-                  builder: (context, child) {
-                    // During drag: follow finger; during animation: slide out/in
-                    final double dx;
-                    final double opacity;
-                    if (_swiping) {
-                      final t = Curves.easeInOutCubic
-                          .transform(_slideController.value);
-                      dx = _slideDirection *
-                          t *
-                          MediaQuery.of(context).size.width * 0.35;
-                      opacity = (1 - t).clamp(0.3, 1.0);
-                    } else {
-                      dx = _dragDx * 0.4; // dampened drag follow
-                      opacity = 1.0;
-                    }
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Use the actual sheet width (not the screen width) so the
+                    // slide distance is bounded to the container on large devices.
+                    final sheetWidth = constraints.maxWidth;
 
-                    return Opacity(
-                      opacity: opacity,
-                      child: Transform.translate(
-                        offset: Offset(dx, 0),
-                        child: child,
+                    return ClipRect(
+                      // ClipRect ensures Transform.translate never paints
+                      // outside the sheet, preventing overflow on large screens.
+                      child: GestureDetector(
+                      onHorizontalDragUpdate: _onHorizontalDragUpdate,
+                      onHorizontalDragEnd: _onHorizontalDragEnd,
+                      behavior: HitTestBehavior.translucent,
+                      child: AnimatedBuilder(
+                        animation: _slideController,
+                        builder: (context, child) {
+                          // During drag: follow finger; during animation: slide out/in
+                          final double dx;
+                          final double opacity;
+                          if (_swiping) {
+                            final t = Curves.easeInOutCubic
+                                .transform(_slideController.value);
+                            // Cap slide to 40% of the actual sheet width
+                            dx = _slideDirection * t * sheetWidth * 0.4;
+                            opacity = (1 - t).clamp(0.3, 1.0);
+                          } else {
+                            dx = _dragDx * 0.4; // dampened drag follow
+                            opacity = 1.0;
+                          }
+
+                          return Opacity(
+                            opacity: opacity,
+                            child: Transform.translate(
+                              offset: Offset(dx, 0),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Artwork (large square)
+                            Expanded(
+                              child: Center(
+                                child: AspectRatio(
+                                  aspectRatio: 1,
+                                  child: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 220),
+                                    child: ClipRRect(
+                                      key: ValueKey(
+                                        '${state.track?.trackId ?? state.track?.url ?? 'none'}:${state.track?.localImagePath ?? state.track?.imageUrl ?? ''}',
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: _buildArtwork(
+                                        imageUrl: imageUrl,
+                                        localPath: state.track?.localImagePath,
+                                        theme: theme,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            // Title + Add
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        title,
+                                        style:
+                                            theme.textTheme.headlineSmall?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      _buildTappableHeader(
+                                        context: context,
+                                        text: subtitleText,
+                                        style: theme.textTheme.bodyLarge?.copyWith(
+                                          color: subtitleColor,
+                                        ),
+                                        onTap: () {
+                                          final artistId = state.track?.artistId;
+                                          if (artistId != null) {
+                                            Navigator.of(
+                                              context,
+                                              rootNavigator: true,
+                                            ).maybePop();
+                                            context.push('/artists/$artistId');
+                                          }
+                                        },
+                                        enabled: state.track?.artistId != null,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                if (state.track?.trackId != null)
+                                  _DownloadButton(trackId: state.track!.trackId!),
+                                const SizedBox(width: 4),
+                                // Track like button
+                                if (state.track?.trackId != null)
+                                  IconButton(
+                                    tooltip: _isTrackLiked ? 'Unlike' : 'Like',
+                                    onPressed: _toggleTrackLike,
+                                    icon: AnimatedSwitcher(
+                                      duration: const Duration(milliseconds: 250),
+                                      transitionBuilder: (child, anim) =>
+                                          FadeTransition(opacity: anim, child: child),
+                                      child: Icon(
+                                        _isTrackLiked
+                                            ? Icons.favorite_rounded
+                                            : Icons.favorite_border_rounded,
+                                        key: ValueKey(_isTrackLiked),
+                                        color: _isTrackLiked
+                                            ? Colors.redAccent
+                                            : theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                       ),
                     );
                   },
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Artwork (large square)
-                      Expanded(
-                        child: Center(
-                          child: AspectRatio(
-                            aspectRatio: 1,
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 220),
-                              child: ClipRRect(
-                                key: ValueKey(
-                                  '${state.track?.trackId ?? state.track?.url ?? 'none'}:${state.track?.localImagePath ?? state.track?.imageUrl ?? ''}',
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                                child: _buildArtwork(
-                                  imageUrl: imageUrl,
-                                  localPath: state.track?.localImagePath,
-                                  theme: theme,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // Title + Add
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  title,
-                                  style:
-                                      theme.textTheme.headlineSmall?.copyWith(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 4),
-                                _buildTappableHeader(
-                                  context: context,
-                                  text: subtitleText,
-                                  style: theme.textTheme.bodyLarge?.copyWith(
-                                    color: subtitleColor,
-                                  ),
-                                  onTap: () {
-                                    final artistId = state.track?.artistId;
-                                    if (artistId != null) {
-                                      Navigator.of(
-                                        context,
-                                        rootNavigator: true,
-                                      ).maybePop();
-                                      context.push('/artists/$artistId');
-                                    }
-                                  },
-                                  enabled: state.track?.artistId != null,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          if (state.track?.trackId != null)
-                            _DownloadButton(trackId: state.track!.trackId!),
-                          const SizedBox(width: 4),
-                          // Track like button
-                          if (state.track?.trackId != null)
-                            IconButton(
-                              tooltip: _isTrackLiked ? 'Unlike' : 'Like',
-                              onPressed: _toggleTrackLike,
-                              icon: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 250),
-                                transitionBuilder: (child, anim) =>
-                                    FadeTransition(opacity: anim, child: child),
-                                child: Icon(
-                                  _isTrackLiked
-                                      ? Icons.favorite_rounded
-                                      : Icons.favorite_border_rounded,
-                                  key: ValueKey(_isTrackLiked),
-                                  color: _isTrackLiked
-                                      ? Colors.redAccent
-                                      : theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
                 ),
               ),
 
