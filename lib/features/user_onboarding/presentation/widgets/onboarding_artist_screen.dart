@@ -59,7 +59,7 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
             Text(
               'Search and select your favorite artists (optional)',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 24),
@@ -79,7 +79,7 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
                     Text(
                       'Selected Artists',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: Colors.grey[700],
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -121,7 +121,7 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
                       child: Text(
                         'No artists found',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -242,7 +242,7 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
           border: Border.all(
             color: isSelected
                 ? Theme.of(context).colorScheme.primary
-                : Colors.grey[300]!,
+                : Theme.of(context).colorScheme.outlineVariant,
             width: isSelected ? 2 : 1,
           ),
           color: isSelected
@@ -257,7 +257,7 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
               height: 48,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
-                color: Colors.grey[300],
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 image: imageUrl != null
                     ? DecorationImage(
                   image: NetworkImage(imageUrl),
@@ -266,7 +266,10 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
                     : null,
               ),
               child: imageUrl == null
-                  ? const Icon(Icons.person, color: Colors.grey)
+                  ? Icon(
+                      Icons.person,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    )
                   : null,
             ),
             const SizedBox(width: 12),
@@ -288,7 +291,7 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
                     Text(
                       genre,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[600],
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                 ],

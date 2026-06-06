@@ -35,7 +35,7 @@ class OnboardingGenreScreen extends StatelessWidget {
             Text(
               'Select genres you enjoy (choose at least 1)',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 30),
@@ -129,7 +129,7 @@ class OnboardingGenreScreen extends StatelessWidget {
           border: Border.all(
             color: isSelected
                 ? Theme.of(context).colorScheme.primary
-                : Colors.grey[300]!,
+                : Theme.of(context).colorScheme.outlineVariant,
             width: isSelected ? 2 : 1,
           ),
           color: isSelected

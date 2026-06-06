@@ -136,7 +136,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
           Text(
             'Step ${_currentStep + 1} of 6',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Colors.grey[600],
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),
@@ -146,7 +146,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
             child: LinearProgressIndicator(
               value: (_currentStep + 1) / 6,
               minHeight: 6,
-              backgroundColor: Colors.grey[300],
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
               valueColor: AlwaysStoppedAnimation(
                 Theme.of(context).colorScheme.primary,
               ),

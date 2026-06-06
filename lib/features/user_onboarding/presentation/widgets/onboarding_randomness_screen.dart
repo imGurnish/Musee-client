@@ -35,7 +35,7 @@ class OnboardingRandomnessScreen extends StatelessWidget {
             Text(
               'How adventurous do you want your music experience?',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 40),
@@ -56,7 +56,7 @@ class OnboardingRandomnessScreen extends StatelessWidget {
                         );
                       },
                       activeColor: Theme.of(context).colorScheme.primary,
-                      inactiveColor: Colors.grey[300],
+                      inactiveColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                     ),
                     const SizedBox(height: 24),
                     // Value display
@@ -74,7 +74,7 @@ class OnboardingRandomnessScreen extends StatelessWidget {
                           Text(
                             _getRandomnessLabel(state.randomnessPercentage),
                             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Colors.grey[600],
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],
@@ -156,8 +156,8 @@ class OnboardingRandomnessScreen extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-        color: Colors.grey[50],
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        color: Theme.of(context).colorScheme.surfaceContainer,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,7 +189,7 @@ class OnboardingRandomnessScreen extends StatelessWidget {
                 Text(
                   description,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[600],
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],

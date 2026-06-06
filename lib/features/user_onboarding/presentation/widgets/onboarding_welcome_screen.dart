@@ -53,7 +53,7 @@ class OnboardingWelcomeScreen extends StatelessWidget {
               'Let\'s personalize your music experience',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Colors.grey[600],
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 40),
@@ -62,7 +62,7 @@ class OnboardingWelcomeScreen extends StatelessWidget {
               'We\'ll learn about your taste in music and create customized recommendations tailored just for you.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[500],
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 height: 1.6,
               ),
             ),
@@ -117,7 +117,7 @@ class OnboardingWelcomeScreen extends StatelessWidget {
               Text(
                 subtitle,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.grey[600],
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
