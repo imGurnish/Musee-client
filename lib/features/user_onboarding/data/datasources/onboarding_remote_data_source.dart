@@ -15,7 +15,13 @@ abstract class OnboardingRemoteDataSource {
   Future<List<MoodModel>> getAvailableMoods();
 
   /// Search for artists by query
-  Future<List<ArtistSearchModel>> searchArtists(String query);
+  Future<List<ArtistSearchModel>> searchArtists(
+    String query,
+    List<String> languages,
+  );
+
+  /// Get similar artists for an artist
+  Future<List<ArtistSearchModel>> getSimilarArtists(String artistId);
 
   /// Save onboarding preferences for user
   Future<void> saveOnboardingPreferences(OnboardingUserDTO preferences);
@@ -45,17 +51,22 @@ class OnboardingRemoteDataSourceImpl implements OnboardingRemoteDataSource {
   }
 
   @override
-  Future<List<ArtistSearchModel>> searchArtists(String query) async {
+  Future<List<ArtistSearchModel>> searchArtists(
+    String query,
+    List<String> languages,
+  ) async {
     try {
       final token = supabaseClient.auth.currentSession?.accessToken;
       final trimmed = query.trim();
-      final uri = trimmed.isEmpty
-          ? Uri.parse(
-              '${AppSecrets.backendUrl}/api/user/artists?page=0&limit=20',
-            )
-          : Uri.parse(
-              '${AppSecrets.backendUrl}/api/user/artists?page=0&limit=20&q=${Uri.encodeQueryComponent(trimmed)}',
-            );
+      
+      String urlStr = '${AppSecrets.backendUrl}/api/user/artists?page=0&limit=20';
+      if (trimmed.isNotEmpty) {
+        urlStr += '&q=${Uri.encodeQueryComponent(trimmed)}';
+      }
+      if (languages.isNotEmpty) {
+        urlStr += '&languages=${Uri.encodeQueryComponent(languages.join(','))}';
+      }
+      final uri = Uri.parse(urlStr);
 
       final response = await http.get(
         uri,
@@ -84,6 +95,44 @@ class OnboardingRemoteDataSourceImpl implements OnboardingRemoteDataSource {
           .toList();
     } catch (e) {
       throw Exception('Failed to search artists: $e');
+    }
+  }
+
+  @override
+  Future<List<ArtistSearchModel>> getSimilarArtists(String artistId) async {
+    try {
+      final token = supabaseClient.auth.currentSession?.accessToken;
+      final uri = Uri.parse(
+        '${AppSecrets.backendUrl}/api/user/artists/$artistId/similar?limit=100',
+      );
+
+      final response = await http.get(
+        uri,
+        headers: token != null ? {'Authorization': 'Bearer $token'} : {},
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Similar artists API failed: ${response.statusCode}');
+      }
+
+      final decoded = json.decode(response.body);
+      final list = decoded is List ? decoded : const [];
+
+      return list
+          .map((item) {
+            final map = Map<String, dynamic>.from(item as Map);
+            return ArtistSearchModel(
+              id: (map['artist_id'] ?? map['id'] ?? '').toString(),
+              name: (map['name'] ?? '').toString(),
+              imageUrl:
+                  map['avatar_url']?.toString() ?? map['image_url']?.toString(),
+              genre: map['genre']?.toString(),
+            );
+          })
+          .where((artist) => artist.id.isNotEmpty && artist.name.isNotEmpty)
+          .toList();
+    } catch (e) {
+      throw Exception('Failed to get similar artists: $e');
     }
   }
 

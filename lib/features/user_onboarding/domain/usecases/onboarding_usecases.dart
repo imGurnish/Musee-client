@@ -41,15 +41,37 @@ class GetAvailableMoodsUseCase implements UseCase<List<Mood>, NoParams> {
   }
 }
 
+class SearchArtistsParams {
+  final String query;
+  final List<String> languages;
+
+  const SearchArtistsParams({
+    required this.query,
+    required this.languages,
+  });
+}
+
 // Search Artists
-class SearchArtistsUseCase implements UseCase<List<Artist>, String> {
+class SearchArtistsUseCase implements UseCase<List<Artist>, SearchArtistsParams> {
   final OnboardingRepository repository;
 
   SearchArtistsUseCase(this.repository);
 
   @override
-  Future<Either<Failure, List<Artist>>> call(String query) async {
-    return await repository.searchArtists(query);
+  Future<Either<Failure, List<Artist>>> call(SearchArtistsParams params) async {
+    return await repository.searchArtists(params.query, params.languages);
+  }
+}
+
+// Get Similar Artists
+class GetSimilarArtistsUseCase implements UseCase<List<Artist>, String> {
+  final OnboardingRepository repository;
+
+  GetSimilarArtistsUseCase(this.repository);
+
+  @override
+  Future<Either<Failure, List<Artist>>> call(String artistId) async {
+    return await repository.getSimilarArtists(artistId);
   }
 }
 

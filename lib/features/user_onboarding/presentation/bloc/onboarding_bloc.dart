@@ -12,6 +12,7 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
   final GetAvailableGenresUseCase getAvailableGenresUseCase;
   final GetAvailableMoodsUseCase getAvailableMoodsUseCase;
   final SearchArtistsUseCase searchArtistsUseCase;
+  final GetSimilarArtistsUseCase getSimilarArtistsUseCase;
   final SaveOnboardingPreferencesUseCase saveOnboardingPreferencesUseCase;
   final GetUserOnboardingPreferencesUseCase getUserOnboardingPreferencesUseCase;
 
@@ -20,6 +21,7 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
     required this.getAvailableGenresUseCase,
     required this.getAvailableMoodsUseCase,
     required this.searchArtistsUseCase,
+    required this.getSimilarArtistsUseCase,
     required this.saveOnboardingPreferencesUseCase,
     required this.getUserOnboardingPreferencesUseCase,
   }) : super(const OnboardingState.initial()) {
@@ -186,7 +188,16 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
   ) async {
     emit(state.copyWith(isSearching: true));
 
-    final result = await searchArtistsUseCase.call(event.query);
+    final selectedLanguageCodes = state.selectedLanguages
+        .map((lang) => lang.code)
+        .toList();
+
+    final result = await searchArtistsUseCase.call(
+      SearchArtistsParams(
+        query: event.query,
+        languages: selectedLanguageCodes,
+      ),
+    );
 
     result.fold(
       (failure) => emit(
@@ -213,9 +224,89 @@ class OnboardingBloc extends Bloc<OnboardingEvent, OnboardingState> {
     SelectArtistEvent event,
     Emitter<OnboardingState> emit,
   ) async {
+    print('ONBOARDING_BLOC: _onSelectArtist called for artist: ${event.artist.name} (ID: ${event.artist.id})');
     if (!state.selectedArtists.any((a) => a.id == event.artist.id)) {
       final updatedArtists = [...state.selectedArtists, event.artist];
       emit(state.copyWith(selectedArtists: updatedArtists));
+
+      // If the list of visible artists is already above 100, stop adding and show notification
+      if (state.searchResults.length > 100) {
+        print('ONBOARDING_BLOC: Search results list count (${state.searchResults.length}) is already > 100. Stopping similar artists fetch.');
+        emit(state.copyWith(error: 'Too many artists selected'));
+        // Reset the error immediately so subsequent state emissions do not re-trigger the snackbar
+        emit(state.copyWith(error: ''));
+        return;
+      }
+
+      print('ONBOARDING_BLOC: Fetching similar artists for artist ID: ${event.artist.id}');
+      // Fetch similar artists in real time
+      final result = await getSimilarArtistsUseCase.call(event.artist.id);
+      result.fold(
+        (failure) {
+          print('ONBOARDING_BLOC: Fetching similar artists failed: ${failure.message}');
+          // Ignore similar artists fetch errors during onboarding to avoid blocking signup
+        },
+        (similarArtists) {
+          print('ONBOARDING_BLOC: Fetched ${similarArtists.length} similar artists: ${similarArtists.map((a) => a.name).toList()}');
+          if (similarArtists.isEmpty) {
+            print('ONBOARDING_BLOC: No similar artists returned by database');
+            return;
+          }
+
+          final selectedIds = updatedArtists.map((a) => a.id).toSet();
+          final existingIds = state.searchResults.map((a) => a.id).toSet();
+
+          // ONLY select similar artists that are NOT selected AND NOT already visible in the list
+          final targetSimilar = similarArtists
+              .where((a) => !selectedIds.contains(a.id) && !existingIds.contains(a.id))
+              .take(3)
+              .toList();
+
+          print('ONBOARDING_BLOC: Selected ${targetSimilar.length} new unseen similar artists: ${targetSimilar.map((a) => a.name).toList()}');
+
+          if (targetSimilar.isEmpty) {
+            print('ONBOARDING_BLOC: No new unseen similar artists to insert');
+            return;
+          }
+
+          // Duplicate state's search results exactly as they are without removing anything
+          final newSearchResults = [...state.searchResults];
+
+          // Find where the selected artist is in the list
+          final index = newSearchResults.indexWhere((a) => a.id == event.artist.id);
+          
+          if (index != -1) {
+            int insertOffset = 1;
+            for (final similar in targetSimilar) {
+              final model = ArtistSearchModel(
+                id: similar.id,
+                name: similar.name,
+                imageUrl: similar.imageUrl,
+                genre: similar.genre,
+              );
+              print('ONBOARDING_BLOC: Inserting new unseen similar artist ${similar.name} at index ${index + insertOffset}');
+              newSearchResults.insert(index + insertOffset, model);
+              insertOffset++;
+            }
+          } else {
+            // Fallback: just append
+            for (final similar in targetSimilar) {
+              print('ONBOARDING_BLOC: Appending new unseen similar artist ${similar.name}');
+              newSearchResults.add(ArtistSearchModel(
+                id: similar.id,
+                name: similar.name,
+                imageUrl: similar.imageUrl,
+                genre: similar.genre,
+              ));
+            }
+          }
+
+          print('ONBOARDING_BLOC: Emitting state with updated searchResults count: ${newSearchResults.length}');
+          emit(state.copyWith(searchResults: newSearchResults));
+        },
+      );
+    } else {
+      print('ONBOARDING_BLOC: Artist ${event.artist.name} is already selected, doing nothing');
     }
   }
 

@@ -796,6 +796,9 @@ void _initUserOnboarding() {
       () => SearchArtistsUseCase(serviceLocator<OnboardingRepository>()),
     )
     ..registerFactory(
+      () => GetSimilarArtistsUseCase(serviceLocator<OnboardingRepository>()),
+    )
+    ..registerFactory(
       () => SaveOnboardingPreferencesUseCase(
         serviceLocator<OnboardingRepository>(),
       ),
@@ -813,6 +816,7 @@ void _initUserOnboarding() {
         getAvailableGenresUseCase: serviceLocator<GetAvailableGenresUseCase>(),
         getAvailableMoodsUseCase: serviceLocator<GetAvailableMoodsUseCase>(),
         searchArtistsUseCase: serviceLocator<SearchArtistsUseCase>(),
+        getSimilarArtistsUseCase: serviceLocator<GetSimilarArtistsUseCase>(),
         saveOnboardingPreferencesUseCase:
             serviceLocator<SaveOnboardingPreferencesUseCase>(),
         getUserOnboardingPreferencesUseCase:

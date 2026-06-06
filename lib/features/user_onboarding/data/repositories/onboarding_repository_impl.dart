@@ -41,9 +41,22 @@ class OnboardingRepositoryImpl implements OnboardingRepository {
   }
 
   @override
-  Future<Either<Failure, List<Artist>>> searchArtists(String query) async {
+  Future<Either<Failure, List<Artist>>> searchArtists(
+    String query,
+    List<String> languages,
+  ) async {
     try {
-      final artists = await remoteDataSource.searchArtists(query);
+      final artists = await remoteDataSource.searchArtists(query, languages);
+      return Right(_mapArtistModelToEntity(artists));
+    } catch (e) {
+      return Left(Failure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, List<Artist>>> getSimilarArtists(String artistId) async {
+    try {
+      final artists = await remoteDataSource.getSimilarArtists(artistId);
       return Right(_mapArtistModelToEntity(artists));
     } catch (e) {
       return Left(Failure(e.toString()));

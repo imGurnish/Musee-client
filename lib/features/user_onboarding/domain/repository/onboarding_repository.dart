@@ -13,7 +13,13 @@ abstract class OnboardingRepository {
   Future<Either<Failure, List<Mood>>> getAvailableMoods();
 
   /// Search for artists
-  Future<Either<Failure, List<Artist>>> searchArtists(String query);
+  Future<Either<Failure, List<Artist>>> searchArtists(
+    String query,
+    List<String> languages,
+  );
+
+  /// Get similar artists for a given artist
+  Future<Either<Failure, List<Artist>>> getSimilarArtists(String artistId);
 
   /// Save user onboarding preferences
   Future<Either<Failure, void>> saveOnboardingPreferences(

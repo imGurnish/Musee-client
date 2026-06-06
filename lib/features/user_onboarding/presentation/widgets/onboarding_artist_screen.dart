@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../bloc/onboarding_bloc.dart';
+import 'package:musee/core/common/widgets/retrying_network_image.dart';
 
 class OnboardingArtistScreen extends StatefulWidget {
   final VoidCallback onNext;
@@ -128,11 +129,16 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
                   );
                 }
 
-                return ListView.separated(
+                return GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: state.searchResults.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 12),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: isMobile ? 3 : 4,
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 16,
+                    childAspectRatio: 0.76,
+                  ),
                   itemBuilder: (context, index) {
                     final artist = state.searchResults[index];
                     final isSelected = state.selectedArtists.any((a) => a.id == artist.id);
@@ -141,12 +147,17 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
                       context,
                       artist.name,
                       artist.imageUrl,
-                      artist.genre,
                       isSelected,
                       () {
-                        context.read<OnboardingBloc>().add(
-                          SelectArtistEvent(artist),
-                        );
+                        if (isSelected) {
+                          context.read<OnboardingBloc>().add(
+                            RemoveSelectedArtistEvent(artist.id),
+                          );
+                        } else {
+                          context.read<OnboardingBloc>().add(
+                            SelectArtistEvent(artist),
+                          );
+                        }
                       },
                     );
                   },
@@ -229,89 +240,105 @@ class _OnboardingArtistScreenState extends State<OnboardingArtistScreen> {
     BuildContext context,
     String name,
     String? imageUrl,
-    String? genre,
     bool isSelected,
     VoidCallback onTap,
   ) {
+    final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    final double avatarSize = isMobile ? 80.0 : 96.0;
+
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected
-                ? Theme.of(context).colorScheme.primary
-                : Theme.of(context).colorScheme.outlineVariant,
-            width: isSelected ? 2 : 1,
-          ),
-          color: isSelected
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.05)
-              : Colors.transparent,
-        ),
-        child: Row(
-          children: [
-            // Artist image or placeholder
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                image: imageUrl != null
-                    ? DecorationImage(
-                  image: NetworkImage(imageUrl),
-                  fit: BoxFit.cover,
-                )
-                    : null,
-              ),
-              child: imageUrl == null
-                  ? Icon(
-                      Icons.person,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            // Artist info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: isSelected
-                          ? Theme.of(context).colorScheme.primary
-                          : null,
-                    ),
-                  ),
-                  if (genre != null)
-                    Text(
-                      genre,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            // Checkmark if selected
-            if (isSelected)
-              Container(
-                padding: const EdgeInsets.all(4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            children: [
+              // Circular avatar with scale feedback on selection
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: avatarSize,
+                height: avatarSize,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Theme.of(context).colorScheme.primary,
+                  border: Border.all(
+                    color: isSelected
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.outlineVariant,
+                    width: isSelected ? 3.0 : 1.0,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: isSelected ? 8 : 4,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
                 ),
-                child: Icon(
-                  Icons.check,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.onPrimary,
+                child: ClipOval(
+                  child: imageUrl != null && imageUrl.isNotEmpty
+                      ? RetryingNetworkImage(
+                          url: imageUrl,
+                          fit: BoxFit.cover,
+                          fallback: _buildFallback(theme, avatarSize, name),
+                        )
+                      : _buildFallback(theme, avatarSize, name),
                 ),
               ),
-          ],
+              // Selection indicator checkmark in corner
+              if (isSelected)
+                Positioned(
+                  right: 2,
+                  top: 2,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: theme.colorScheme.primary,
+                      border: Border.all(
+                        color: theme.colorScheme.surface,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.check,
+                      size: isMobile ? 10 : 12,
+                      color: theme.colorScheme.onPrimary,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Name
+          Expanded(
+            child: Text(
+              name,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? theme.colorScheme.primary : null,
+                height: 1.2,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFallback(ThemeData theme, double avatarSize, String name) {
+    return Container(
+      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
+      alignment: Alignment.center,
+      child: Text(
+        name.isNotEmpty ? name[0].toUpperCase() : '?',
+        style: TextStyle(
+          fontSize: avatarSize * 0.35,
+          fontWeight: FontWeight.bold,
+          color: theme.colorScheme.onPrimaryContainer,
         ),
       ),
     );
