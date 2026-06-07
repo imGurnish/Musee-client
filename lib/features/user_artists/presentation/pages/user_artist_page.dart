@@ -9,6 +9,7 @@ import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
 import 'package:musee/features/user_artists/domain/entities/user_artist.dart';
 import 'package:musee/features/user_artists/presentation/bloc/user_artist_bloc.dart';
+import 'package:musee/core/common/widgets/bottom_bar_spacing.dart';
 
 class UserArtistPage extends StatefulWidget {
   final String artistId;
@@ -340,6 +341,7 @@ class _UserArtistViewState extends State<_UserArtistView> {
                             ),
                           ),
                         ),
+                      const SliverBottomBarSpacing(mobileHeight: 24),
                     ],
                   );
                 },

@@ -71,68 +71,156 @@ class _BottomNavBarState extends State<BottomNavBar> {
           final barHeight = hasTrack ? 136.0 : 68.0;
           final boxHeight = hasTrack ? 128.0 : 60.0;
 
-          return BottomAppBar(
-            shape: const CircularNotchedRectangle(),
-            notchMargin: 8.0,
-            color: colorScheme.surface,
-            elevation: 8,
-            padding: const EdgeInsets.all(4),
-            height: barHeight,
-            child: SizedBox(
-              height: boxHeight,
-              child: Column(
-                mainAxisSize: MainAxisSize.max,
-                children: [
-                  if (hasTrack) const FloatingPlayerPanel(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: <Widget>[
-                      _buildNavItem(
-                        context,
-                        Icons.home_outlined,
-                        Icons.home,
-                        0,
-                        'Home',
-                        '/dashboard',
-                      ),
-                      _buildNavItem(
-                        context,
-                        Icons.search_outlined,
-                        Icons.search,
-                        1,
-                        'Search',
-                        '/search',
-                      ),
-                      _buildNavItem(
-                        context,
-                        Icons.library_books_outlined,
-                        Icons.library_books,
-                        2,
-                        'Your Library',
-                        '/library',
-                      ),
-                      // _buildNavItem(
-                      //   context,
-                      //   Icons.money_outlined,
-                      //   Icons.money,
-                      //   3,
-                      //   'Premium',
-                      //   '/premium',
-                      // ),
-                      _buildNavItem(
-                        context,
-                        Icons.add_outlined,
-                        Icons.add,
-                        4,
-                        'Create',
-                        '/create',
+          final screenWidth = MediaQuery.of(context).size.width;
+          final isWide = screenWidth > 720;
+
+          final Widget bar;
+
+          if (isWide) {
+            bar = Material(
+              color: colorScheme.surfaceContainerHigh,
+              elevation: 8,
+              shape: RoundedRectangleBorder(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+                side: BorderSide(
+                  color: colorScheme.onSurface.withValues(alpha: 0.12),
+                  width: 1.0,
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(
+                height: barHeight,
+                child: Column(
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    if (hasTrack) const FloatingPlayerPanel(),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: <Widget>[
+                        _buildNavItem(
+                          context,
+                          Icons.home_outlined,
+                          Icons.home,
+                          0,
+                          'Home',
+                          '/dashboard',
+                        ),
+                        _buildNavItem(
+                          context,
+                          Icons.search_outlined,
+                          Icons.search,
+                          1,
+                          'Search',
+                          '/search',
+                        ),
+                        _buildNavItem(
+                          context,
+                          Icons.library_books_outlined,
+                          Icons.library_books,
+                          2,
+                          'Your Library',
+                          '/library',
+                        ),
+                        _buildNavItem(
+                          context,
+                          Icons.add_outlined,
+                          Icons.add,
+                          4,
+                          'Create',
+                          '/create',
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          } else {
+            bar = Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: colorScheme.onSurface.withValues(alpha: 0.12),
+                    width: 1.0,
+                  ),
+                ),
+              ),
+              child: BottomAppBar(
+                shape: const CircularNotchedRectangle(),
+                notchMargin: 8.0,
+                color: colorScheme.surfaceContainerHigh,
+                elevation: 0,
+                padding: const EdgeInsets.all(4),
+                height: barHeight,
+                child: SizedBox(
+                  height: boxHeight,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      if (hasTrack) const FloatingPlayerPanel(),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: <Widget>[
+                          _buildNavItem(
+                            context,
+                            Icons.home_outlined,
+                            Icons.home,
+                            0,
+                            'Home',
+                            '/dashboard',
+                          ),
+                          _buildNavItem(
+                            context,
+                            Icons.search_outlined,
+                            Icons.search,
+                            1,
+                            'Search',
+                            '/search',
+                          ),
+                          _buildNavItem(
+                            context,
+                            Icons.library_books_outlined,
+                            Icons.library_books,
+                            2,
+                            'Your Library',
+                            '/library',
+                          ),
+                          _buildNavItem(
+                            context,
+                            Icons.add_outlined,
+                            Icons.add,
+                            4,
+                            'Create',
+                            '/create',
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
-          );
+            );
+          }
+
+          if (isWide) {
+            return SizedBox(
+              height: barHeight,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 24.0, right: 24.0),
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: bar,
+                  ),
+                ),
+              ),
+            );
+          }
+          return bar;
         },
       ),
     );

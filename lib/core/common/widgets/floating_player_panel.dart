@@ -243,14 +243,9 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
                 }
               : null,
           child: Container(
-            decoration: BoxDecoration(
-              color: color.surfaceContainerHighest,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
-              ),
+            decoration: const BoxDecoration(
+              color: Colors.transparent,
             ),
-            clipBehavior: Clip.antiAlias,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [

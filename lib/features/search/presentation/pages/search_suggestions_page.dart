@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:get_it/get_it.dart';
 import 'package:musee/core/common/widgets/playing_bars_animation.dart';
+import 'package:musee/core/common/widgets/bottom_bar_spacing.dart';
 import 'package:musee/init_dependencies.dart';
 
 import 'package:musee/core/common/widgets/player_bottom_sheet.dart';
@@ -428,11 +429,15 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
         }
 
         // 5. Bottom Loader / Spacing
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24.0),
-          child: state.isFetchingMore
-              ? const Center(child: CircularProgressIndicator())
-              : const SizedBox.shrink(),
+        return Column(
+          children: [
+            if (state.isFetchingMore)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24.0),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            const BottomBarSpacing(mobileHeight: 24.0),
+          ],
         );
       },
     );
@@ -541,12 +546,16 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
           return items[itemIndex];
         }
         
-        // Bottom loader
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24.0),
-          child: state.isFetchingMore
-              ? const Center(child: CircularProgressIndicator())
-              : const SizedBox.shrink(),
+        // Bottom loader / Spacing
+        return Column(
+          children: [
+            if (state.isFetchingMore)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24.0),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            const BottomBarSpacing(mobileHeight: 24.0),
+          ],
         );
       },
     );
@@ -723,8 +732,11 @@ class _SearchSuggestionsPageState extends State<SearchSuggestionsPage> {
           const SizedBox(height: 8),
           Expanded(
             child: ListView.builder(
-              itemCount: _recents.length,
+              itemCount: _recents.length + 1,
               itemBuilder: (context, index) {
+                if (index == _recents.length) {
+                  return const BottomBarSpacing(mobileHeight: 24.0);
+                }
                 final item = _recents[index];
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12.0),

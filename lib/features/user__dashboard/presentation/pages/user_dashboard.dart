@@ -25,6 +25,7 @@ import 'package:musee/core/error/error_widgets.dart';
 import 'package:musee/features/user_onboarding/presentation/bloc/onboarding_bloc.dart';
 import 'package:musee/features/user_onboarding/presentation/pages/onboarding_page.dart';
 import 'package:musee/init_dependencies.dart';
+import 'package:musee/core/common/widgets/bottom_bar_spacing.dart';
 
 class UserDashboard extends StatefulWidget {
   const UserDashboard({super.key});
@@ -662,8 +663,8 @@ class _UserDashboardState extends State<UserDashboard> {
                                 ),
                               ),
 
-                            SliverToBoxAdapter(
-                              child: SizedBox(height: isCompact ? 24 : 32),
+                            SliverBottomBarSpacing(
+                              mobileHeight: isCompact ? 24 : 32,
                             ),
                           ],
                         ),

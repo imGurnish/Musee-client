@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:musee/features/user_playlists/domain/entities/user_playlist.dart';
 import 'package:musee/features/user_playlists/domain/repository/user_playlists_repository.dart';
 import 'package:musee/init_dependencies.dart';
+import 'package:musee/core/common/widgets/bottom_bar_spacing.dart';
 
 class UserLibraryPage extends StatefulWidget {
   const UserLibraryPage({super.key});
@@ -355,6 +356,7 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
                 );
               },
             ),
+            const BottomBarSpacing(mobileHeight: 24),
           ],
         ),
       ),

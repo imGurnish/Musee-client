@@ -17,9 +17,10 @@ import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_state.dart';
 import 'package:musee/core/common/widgets/playing_bars_animation.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
-import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 import 'package:musee/features/user_playlists/domain/entities/user_playlist.dart';
+import 'package:musee/core/common/widgets/bottom_bar_spacing.dart';
+import 'package:musee/core/download/download_manager.dart';
 
 class UserPlaylistPage extends StatefulWidget {
   final String playlistId;
@@ -1870,7 +1871,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                     ),
                 ],
 
-                const SliverToBoxAdapter(child: SizedBox(height: 96)),
+                const SliverBottomBarSpacing(mobileHeight: 96),
               ],
               ]
             );

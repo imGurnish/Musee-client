@@ -13,6 +13,7 @@ import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 import 'package:musee/features/user_playlists/presentation/widgets/add_to_playlist_sheet.dart';
+import 'package:musee/core/common/widgets/bottom_bar_spacing.dart';
 
 class UserAlbumPage extends StatefulWidget {
   final String albumId;
@@ -767,7 +768,7 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                     ),
                   ),
 
-                const SliverToBoxAdapter(child: SizedBox(height: 96)),
+                const SliverBottomBarSpacing(mobileHeight: 96),
               ],
             );
           },
