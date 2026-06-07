@@ -34,7 +34,6 @@ void main() async {
   configureUrlStrategy();
   GoRouter.optionURLReflectsImperativeAPIs = true;
 
-
   HydratedBloc.storage = await HydratedStorage.build(
     storageDirectory: kIsWeb
         ? HydratedStorageDirectory.web
@@ -192,17 +191,48 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             debugShowCheckedModeBanner: false,
             routerConfig: _router,
             builder: (context, child) => _buildAppFrame(child),
-            // --- Light Theme Definition ---
             theme: ThemeData(
               cardColor: AppColors.lightColorScheme.secondary.withAlpha(10),
               colorScheme: AppColors.lightColorScheme,
               useMaterial3: true,
+              scrollbarTheme: ScrollbarThemeData(
+                thickness: const WidgetStatePropertyAll(4.0),
+                radius: const Radius.circular(8.0),
+                thumbColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.hovered) ||
+                      states.contains(WidgetState.dragged)) {
+                    return AppColors.lightColorScheme.onSurface.withValues(
+                      alpha: 0.45,
+                    );
+                  }
+                  return AppColors.lightColorScheme.onSurface.withValues(
+                    alpha: 0.2,
+                  );
+                }),
+                interactive: true,
+              ),
             ),
             // Dark Theme
             darkTheme: ThemeData(
               cardColor: AppColors.darkColorScheme.secondary.withAlpha(10),
               colorScheme: AppColors.darkColorScheme,
               useMaterial3: true,
+              scrollbarTheme: ScrollbarThemeData(
+                thickness: const WidgetStatePropertyAll(4.0),
+                radius: const Radius.circular(8.0),
+                thumbColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.hovered) ||
+                      states.contains(WidgetState.dragged)) {
+                    return AppColors.darkColorScheme.onSurface.withValues(
+                      alpha: 0.45,
+                    );
+                  }
+                  return AppColors.darkColorScheme.onSurface.withValues(
+                    alpha: 0.2,
+                  );
+                }),
+                interactive: true,
+              ),
             ),
             // Driven by SettingsCubit — persists across restarts
             themeMode: settings.themeMode,
