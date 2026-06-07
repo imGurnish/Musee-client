@@ -86,8 +86,8 @@ class _BottomNavBarState extends State<BottomNavBar> {
                   topRight: Radius.circular(16),
                 ),
                 side: BorderSide(
-                  color: colorScheme.onSurface.withValues(alpha: 0.12),
-                  width: 1.0,
+                  color: colorScheme.onSurface.withValues(alpha: 0.08),
+                  width: 0.5,
                 ),
               ),
               clipBehavior: Clip.antiAlias,
@@ -143,8 +143,8 @@ class _BottomNavBarState extends State<BottomNavBar> {
               decoration: BoxDecoration(
                 border: Border(
                   top: BorderSide(
-                    color: colorScheme.onSurface.withValues(alpha: 0.12),
-                    width: 1.0,
+                    color: colorScheme.onSurface.withValues(alpha: 0.08),
+                    width: 0.5,
                   ),
                 ),
               ),
