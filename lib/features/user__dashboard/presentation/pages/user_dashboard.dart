@@ -151,10 +151,7 @@ class _UserDashboardState extends State<UserDashboard> {
       _awaitingBackendRecovery = false;
       _backendRecoveryTimer?.cancel();
       _backendRecoveryTimer = null;
-      ErrorSnackbar.showMessage(
-        context,
-        'Back online. Refreshing...',
-      );
+      ErrorSnackbar.showMessage(context, 'Back online. Refreshing...');
       await _dashboardCubit.load(forceRefresh: true);
     } finally {
       _isRecoveringBackend = false;
@@ -815,31 +812,48 @@ class _HeroBanner extends StatelessWidget {
                   'Here\'s your daily mix and top picks based on your recent listening.',
                   style: theme.textTheme.bodyMedium,
                 ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: const [
-                    _QuickChip(label: 'Focus'),
-                    _QuickChip(label: 'Chill'),
-                    _QuickChip(label: 'Workout'),
-                    _QuickChip(label: 'Party'),
-                  ],
-                ),
+                // const SizedBox(height: 12),
+                // Wrap(
+                //   spacing: 8,
+                //   runSpacing: 8,
+                //   children: const [
+                //     _QuickChip(label: 'Focus'),
+                //     _QuickChip(label: 'Chill'),
+                //     _QuickChip(label: 'Workout'),
+                //     _QuickChip(label: 'Party'),
+                //   ],
+                // ),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          SizedBox(
-            width: 96,
-            height: 96,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                color: theme.colorScheme.primary.withValues(alpha: 0.15),
-                child: const Icon(Icons.graphic_eq, size: 48),
-              ),
-            ),
+          BlocBuilder<PlayerCubit, PlayerViewState>(
+            builder: (context, state) {
+              final isPlaying = state.playing;
+              return SizedBox(
+                width: 96,
+                height: 96,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                    alignment: Alignment.center,
+                    child: isPlaying
+                        ? PlayingBarsAnimation(
+                            width: 48,
+                            height: 48,
+                            barCount: 5,
+                            barWidth: 4,
+                            gap: 3,
+                            color: IconTheme.of(context).color ?? Colors.white,
+                            isPlaying: true,
+                            centerAlign: true,
+                          )
+                        : const Icon(Icons.graphic_eq, size: 48),
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -1218,23 +1232,23 @@ class _ArtistAvatarsSection extends StatelessWidget {
                     child: ClipOval(
                       child:
                           artist.avatarUrl != null &&
-                                  artist.avatarUrl!.isNotEmpty
-                              ? RetryingNetworkImage(
-                                  url: artist.avatarUrl!,
-                                  fit: BoxFit.cover,
-                                  fallback: _buildFallback(
-                                    context,
-                                    theme,
-                                    avatarSize,
-                                    artist.name,
-                                  ),
-                                )
-                              : _buildFallback(
-                                  context,
-                                  theme,
-                                  avatarSize,
-                                  artist.name,
-                                ),
+                              artist.avatarUrl!.isNotEmpty
+                          ? RetryingNetworkImage(
+                              url: artist.avatarUrl!,
+                              fit: BoxFit.cover,
+                              fallback: _buildFallback(
+                                context,
+                                theme,
+                                avatarSize,
+                                artist.name,
+                              ),
+                            )
+                          : _buildFallback(
+                              context,
+                              theme,
+                              avatarSize,
+                              artist.name,
+                            ),
                     ),
                   ),
                   const SizedBox(height: 8),

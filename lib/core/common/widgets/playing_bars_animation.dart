@@ -9,6 +9,7 @@ class PlayingBarsAnimation extends StatefulWidget {
   final double gap;
   final Color? color;
   final bool isPlaying;
+  final bool centerAlign;
 
   const PlayingBarsAnimation({
     super.key,
@@ -19,6 +20,7 @@ class PlayingBarsAnimation extends StatefulWidget {
     this.gap = 2,
     this.color,
     this.isPlaying = true,
+    this.centerAlign = false,
   });
 
   @override
@@ -77,6 +79,7 @@ class _PlayingBarsAnimationState extends State<PlayingBarsAnimation>
               gap: widget.gap,
               color: themeColor,
               isPlaying: widget.isPlaying,
+              centerAlign: widget.centerAlign,
             ),
           );
         },
@@ -92,6 +95,7 @@ class _EqualizerPainter extends CustomPainter {
   final double gap;
   final Color color;
   final bool isPlaying;
+  final bool centerAlign;
 
   _EqualizerPainter({
     required this.animationValue,
@@ -100,6 +104,7 @@ class _EqualizerPainter extends CustomPainter {
     required this.gap,
     required this.color,
     required this.isPlaying,
+    required this.centerAlign,
   });
 
   @override
@@ -129,7 +134,7 @@ class _EqualizerPainter extends CustomPainter {
       final barHeight = size.height * heightRatio;
       
       final x = startX + i * (barWidth + gap);
-      final y = size.height - barHeight;
+      final y = centerAlign ? (size.height - barHeight) / 2 : size.height - barHeight;
 
       final rect = RRect.fromRectAndRadius(
         Rect.fromLTWH(x, y, barWidth, barHeight),
@@ -147,6 +152,7 @@ class _EqualizerPainter extends CustomPainter {
         oldDelegate.barWidth != barWidth ||
         oldDelegate.gap != gap ||
         oldDelegate.color != color ||
-        oldDelegate.isPlaying != isPlaying;
+        oldDelegate.isPlaying != isPlaying ||
+        oldDelegate.centerAlign != centerAlign;
   }
 }
