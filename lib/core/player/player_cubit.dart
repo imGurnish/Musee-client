@@ -703,6 +703,26 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
   }
 
+  /// Cancel every in-flight background cache download except those for the
+  /// given track IDs. Called the instant the user switches tracks so the
+  /// outgoing track's caching stops eating bandwidth while the new track is
+  /// buffering — instead of lingering until the switch fully completes. Unlike
+  /// [_cancelInactiveBackgroundCaches], this does not consult `state.track`
+  /// (which still points at the outgoing track at the start of a switch).
+  void _cancelBackgroundCachesExcept(Iterable<String> keepTrackIds) {
+    final keep = keepTrackIds.where((id) => id.isNotEmpty).toSet();
+    final toCancel = _backgroundCacheCancelTokens.keys
+        .where((id) => !keep.contains(id))
+        .toList();
+    for (final trackId in toCancel) {
+      if (kDebugMode) {
+        debugPrint('[PlayerCubit] Cancelling background cache for superseded track $trackId');
+      }
+      _backgroundCacheCancelTokens[trackId]?.cancel();
+      _backgroundCacheCancelTokens.remove(trackId);
+    }
+  }
+
   void _startBackgroundCache(String trackId, int? targetBitrate) {
     if (_audioCache == null || _trackCache == null || _musicProviderRegistry == null || kIsWeb) return;
 
@@ -976,7 +996,11 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (state.track?.trackId != null && state.track?.trackId != trackId) {
       _logCurrentTrackPlay(wasSkipped: true);
     }
-    _cancelInactiveBackgroundCaches();
+    // Immediately stop caching the outgoing track (and any other non-target
+    // track) so it stops competing for bandwidth while the new track buffers.
+    // Keep only the track we're about to play, in case it was already being
+    // prefetched as the "next" track.
+    _cancelBackgroundCachesExcept([trackId]);
 
     final queuedIndex = state.queue.indexWhere((q) => q.trackId == trackId);
     final queuedItem = queuedIndex >= 0 ? state.queue[queuedIndex] : null;
@@ -1013,6 +1037,18 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     await _stopPlaybackForTrackSwitch();
     await _ensurePlatformAudio();
+
+    // Halt the outgoing track's audio now. Its URL is already resolved, but the
+    // new track's URL still has to be fetched over the network (seconds, on a
+    // cold dashboard tap). Without an explicit stop the previous track keeps
+    // streaming until _loadAudioSource finally calls player.open(). We're about
+    // to await that network fetch regardless, so stopping here adds no startup
+    // latency to the new track — it just silences the old one immediately.
+    if (_platformAudioInitialized) {
+      try {
+        await _player.stop();
+      } catch (_) {}
+    }
 
     final repo = _repo;
     if (repo != null && !disableQueueOverwrite) {
