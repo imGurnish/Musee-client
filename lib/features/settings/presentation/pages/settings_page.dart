@@ -34,7 +34,8 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver {
+class _SettingsPageState extends State<SettingsPage>
+    with WidgetsBindingObserver {
   bool _clearingCache = false;
   bool _checkingForUpdate = false;
   AppUpdateInfo? _manualUpdateInfo;
@@ -93,13 +94,15 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
 
   Future<void> _handleBatteryOptimization() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
-    
+
     final status = await Permission.ignoreBatteryOptimizations.status;
     if (status.isGranted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Battery optimization is already set to Unrestricted.'),
+            content: Text(
+              'Battery optimization is already set to Unrestricted.',
+            ),
           ),
         );
       }
@@ -118,7 +121,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
           'Unrestricted.\n\n'
           '1. We will open settings.\n'
           '2. Tap "Battery" (or "Battery usage").\n'
-          '3. Select "Unrestricted" (or "Don\'t optimize").'
+          '3. Select "Unrestricted" (or "Don\'t optimize").',
         ),
         actions: [
           TextButton(
@@ -177,9 +180,9 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
       await Future<void>.delayed(const Duration(milliseconds: 600));
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Offline cache cleared')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Offline cache cleared')));
       }
     } finally {
       if (mounted) setState(() => _clearingCache = false);
@@ -203,7 +206,9 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
 
       if (updateInfo == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You are already on the latest version.')),
+          const SnackBar(
+            content: Text('You are already on the latest version.'),
+          ),
         );
         return;
       }
@@ -307,9 +312,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             Positioned.fill(
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                child: ColoredBox(
-                  color: Colors.black.withValues(alpha: 0.45),
-                ),
+                child: ColoredBox(color: Colors.black.withValues(alpha: 0.45)),
               ),
             ),
 
@@ -327,7 +330,10 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             // Layer 3: the settings card — absorbs taps so they don't fall through
             Center(
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 32,
+                  horizontal: 24,
+                ),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 560),
                   child: GestureDetector(
@@ -353,10 +359,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
     }
 
     // ─── Mobile: full-screen page ─────────────────────────────────────────
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      body: scrollContent,
-    );
+    return Scaffold(backgroundColor: colorScheme.surface, body: scrollContent);
   }
 
   // ─── Account Section ─────────────────────────────────────────────────────
@@ -366,7 +369,9 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
     return BlocBuilder<AppUserCubit, AppUserState>(
       builder: (context, state) {
         final name = state is AppUserLoggedIn ? state.user.name : '—';
-        final email = state is AppUserLoggedIn ? (state.user.email ?? '—') : '—';
+        final email = state is AppUserLoggedIn
+            ? (state.user.email ?? '—')
+            : '—';
         final user = state is AppUserLoggedIn ? state.user : null;
 
         return SettingsSection(
@@ -542,19 +547,15 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
                   'Automatically add recommended tracks when queue is low',
               value: settings.recommendationAutoFillEnabled,
               onChanged: (v) =>
-                  context
-                      .read<SettingsCubit>()
-                      .setRecommendationAutoFill(v),
+                  context.read<SettingsCubit>().setRecommendationAutoFill(v),
             ),
             SettingsToggleTile(
               icon: Icons.play_arrow_rounded,
               iconColor: Colors.green,
               title: 'Autoplay',
-              subtitle:
-                  'Automatically start playing when a track is selected',
+              subtitle: 'Automatically start playing when a track is selected',
               value: settings.autoPlayEnabled,
-              onChanged: (v) =>
-                  context.read<SettingsCubit>().setAutoPlay(v),
+              onChanged: (v) => context.read<SettingsCubit>().setAutoPlay(v),
             ),
             // SettingsToggleTile(
             //   icon: Icons.tune_rounded,
@@ -572,9 +573,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               subtitle: 'Allow tracks marked as explicit',
               value: settings.showExplicitContent,
               onChanged: (v) =>
-                  context
-                      .read<SettingsCubit>()
-                      .setShowExplicitContent(v),
+                  context.read<SettingsCubit>().setShowExplicitContent(v),
             ),
             SettingsDropdownTile<StreamingQuality>(
               icon: Icons.speed_rounded,
@@ -598,12 +597,16 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               if (defaultTargetPlatform == TargetPlatform.android) ...[
                 SettingsNavTile(
                   icon: Icons.battery_saver_rounded,
-                  iconColor: _batteryOptimizationsIgnored == true ? Colors.green : Colors.orange,
+                  iconColor: _batteryOptimizationsIgnored == true
+                      ? Colors.green
+                      : Colors.orange,
                   title: 'Android battery optimization',
                   subtitle: _batteryOptimizationsIgnored == true
                       ? 'Unrestricted (allows uninterrupted background playback)'
                       : 'Optimized (playback might get interrupted)',
-                  trailingLabel: _batteryOptimizationsIgnored == true ? 'Unrestricted' : 'Optimize',
+                  trailingLabel: _batteryOptimizationsIgnored == true
+                      ? 'Unrestricted'
+                      : 'Optimize',
                   onTap: _handleBatteryOptimization,
                 ),
                 Divider(
@@ -664,9 +667,7 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
               title: 'Max cache size',
               subtitle: 'Limit storage used for offline content',
               value: settings.maxCacheSize,
-              options: MaxCacheSize.values
-                  .map((s) => (s, s.label))
-                  .toList(),
+              options: MaxCacheSize.values.map((s) => (s, s.label)).toList(),
               onChanged: (v) =>
                   context.read<SettingsCubit>().setMaxCacheSize(v),
             ),
@@ -761,25 +762,21 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
           iconColor: Colors.blue,
           title: 'Playback logs',
           subtitle: 'View diagnostics for track interruptions',
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const DiagnosticsPage())),
+        ),
+        // // Dev-only: live player diagnostics (quality, network, buffer, logs).
+        // if (true)
+        SettingsNavTile(
+          icon: Icons.monitor_heart_outlined,
+          iconColor: Colors.deepPurple,
+          title: 'Player diagnostics (dev)',
+          subtitle: 'Live quality, network, buffer & queue state',
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => const DiagnosticsPage(),
-            ),
+            MaterialPageRoute(builder: (_) => const PlayerDiagnosticsPage()),
           ),
         ),
-        // Dev-only: live player diagnostics (quality, network, buffer, logs).
-        if (kDebugMode)
-          SettingsNavTile(
-            icon: Icons.monitor_heart_outlined,
-            iconColor: Colors.deepPurple,
-            title: 'Player diagnostics (dev)',
-            subtitle: 'Live quality, network, buffer & queue state',
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const PlayerDiagnosticsPage(),
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -796,7 +793,9 @@ class _SettingsHeader extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final isDesktop = MediaQuery.of(context).size.width >= 800;
     // On desktop the card has its own padding; on mobile we respect the status bar
-    final topPadding = isDesktop ? 8.0 : (MediaQuery.of(context).padding.top + 8.0);
+    final topPadding = isDesktop
+        ? 8.0
+        : (MediaQuery.of(context).padding.top + 8.0);
 
     return Container(
       decoration: BoxDecoration(
