@@ -135,6 +135,7 @@ import 'package:musee/features/user_onboarding/presentation/bloc/onboarding_bloc
 // New infrastructure services
 import 'package:musee/core/providers/providers.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';
+import 'package:musee/core/common/services/network_quality_service.dart';
 import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
@@ -156,6 +157,16 @@ Future<void> initDependencies() async {
   serviceLocator.registerLazySingleton(() => supabase.client);
   // Dio for REST backend
   serviceLocator.registerLazySingleton(() => Dio());
+
+  // Network quality estimator drives adaptive "Auto" streaming quality. An
+  // interceptor on the shared Dio turns background-cache segment downloads into
+  // live throughput samples.
+  serviceLocator.registerLazySingleton<NetworkQualityService>(
+    () => NetworkQualityService(),
+  );
+  serviceLocator<Dio>().interceptors.add(
+        NetworkQualityInterceptor(serviceLocator<NetworkQualityService>()),
+      );
 
   //core
   serviceLocator.registerLazySingleton(() => AppUserCubit());
@@ -256,6 +267,7 @@ Future<void> initDependencies() async {
         audioCache: serviceLocator<AudioCacheService>(),
         settingsCubit: serviceLocator<SettingsCubit>(),
         connectivityService: serviceLocator<ConnectivityService>(),
+        networkQuality: serviceLocator<NetworkQualityService>(),
       ),
     );
 

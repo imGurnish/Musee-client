@@ -176,7 +176,35 @@ class AudioCacheServiceImpl implements AudioCacheService {
             } else {
               request.response.headers.contentType = ContentType.binary;
             }
-            await file.openRead().pipe(request.response);
+
+            // Advertise and honour byte ranges so the player can seek within
+            // cached single-file audio (mp3/m4a) and resume mid-track instead of
+            // refetching the whole file. Without this, seeking on cached/
+            // downloaded tracks fails because every request returns the full 200.
+            final length = await file.length();
+            request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+
+            final rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
+            if (rangeHeader != null && rangeHeader.startsWith('bytes=') && length > 0) {
+              final spec = rangeHeader.substring(6).split('-');
+              final start = int.tryParse(spec[0]) ?? 0;
+              final end = (spec.length > 1 && spec[1].isNotEmpty)
+                  ? (int.tryParse(spec[1]) ?? length - 1)
+                  : length - 1;
+              final safeStart = start.clamp(0, length - 1);
+              final safeEnd = end.clamp(safeStart, length - 1);
+
+              request.response.statusCode = HttpStatus.partialContent;
+              request.response.headers.set(
+                HttpHeaders.contentRangeHeader,
+                'bytes $safeStart-$safeEnd/$length',
+              );
+              request.response.contentLength = safeEnd - safeStart + 1;
+              await file.openRead(safeStart, safeEnd + 1).pipe(request.response);
+            } else {
+              request.response.contentLength = length;
+              await file.openRead().pipe(request.response);
+            }
           } else {
             request.response.statusCode = HttpStatus.notFound;
             await request.response.close();

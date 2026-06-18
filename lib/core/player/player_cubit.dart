@@ -30,13 +30,19 @@ import 'package:musee/core/equalizer/equalizer_controller.dart';
 
 import 'player_state.dart';
 import 'playback_diagnostics.dart';
+import 'player_diagnostics_info.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
 import 'package:musee/core/common/services/connectivity_service.dart';
+import 'package:musee/core/common/services/network_quality_service.dart';
 
 class PlayerCubit extends Cubit<PlayerViewState> {
   static const int _queuePrefetchTarget = 20;
   static const int _queueMaxSize = 60;
+
+  /// Bitrates the backend always exposes as HLS variants. Used to resolve the
+  /// "Auto" streaming quality to a concrete variant for the current network.
+  static const List<int> _availableStreamBitrates = [96, 160, 320];
 
   late final Player _player;
   final PlayerRepository? _repo;
@@ -47,6 +53,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   final AudioCacheService? _audioCache;
   final SettingsCubit? _settingsCubit;
   final ConnectivityService? _connectivityService;
+  final NetworkQualityService? _networkQuality;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<Duration>? _durationSub;
   StreamSubscription<bool>? _playingSub;
@@ -77,6 +84,93 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
   bool get _isBusySwitching => _isTrackSwitchInProgress || _isAdvancingNext;
   bool get isUserPausedIntent => _userPaused;
+
+  /// Live snapshot of internal playback/network/cache state for the dev-only
+  /// diagnostics screen. Cheap and synchronous — safe to poll on a timer.
+  PlayerDiagnosticsInfo get diagnostics {
+    final s = state;
+    final track = s.track;
+    final setting =
+        _settingsCubit?.state.streamingQuality ?? StreamingQuality.auto;
+
+    var buffered = Duration.zero;
+    double? decodedBitrateKbps;
+    int? sampleRateHz;
+    int? channels;
+    if (_platformAudioInitialized) {
+      try {
+        buffered = _player.state.buffer;
+      } catch (_) {}
+      // Best-effort: these libmpv fields may not exist on every backend, so
+      // read them dynamically and swallow failures.
+      try {
+        final dynamic ps = _player.state;
+        final dynamic bitrate = ps.audioBitrate;
+        if (bitrate is num && bitrate > 0) {
+          decodedBitrateKbps = bitrate.toDouble() / 1000.0;
+        }
+        final dynamic params = ps.audioParams;
+        final dynamic sr = params?.sampleRate;
+        if (sr is int && sr > 0) sampleRateHz = sr;
+        final dynamic ch = params?.channelCount ?? params?.channels;
+        if (ch is int && ch > 0) channels = ch;
+      } catch (_) {}
+    }
+
+    final url = track?.url ?? '';
+    String source;
+    if (url.isEmpty) {
+      source = 'None';
+    } else if (url.startsWith('http://localhost') ||
+        url.startsWith('http://127.0.0.1') ||
+        url.startsWith('file:')) {
+      source = 'Local cache / offline';
+    } else if (url.contains('master.m3u8')) {
+      source = 'Network · HLS master (mpv picks max)';
+    } else if (url.toLowerCase().contains('.m3u8')) {
+      source = 'Network · HLS variant';
+    } else {
+      source = 'Network · progressive';
+    }
+
+    final trackId = track?.trackId;
+    final cachedEntry = trackId != null ? _urlCache[trackId] : null;
+
+    return PlayerDiagnosticsInfo(
+      trackId: trackId,
+      title: track?.title,
+      artist: track?.artist,
+      album: track?.album,
+      platformInitialized: _platformAudioInitialized,
+      playing: s.playing,
+      buffering: s.buffering,
+      resolvingUrl: s.resolvingUrl,
+      isTransitioning: s.isTransitioning,
+      userPausedIntent: _userPaused,
+      errorMessage: s.errorMessage,
+      position: s.position,
+      duration: s.duration,
+      buffered: buffered,
+      volume: s.volume,
+      streamingQualitySetting: setting.label,
+      streamingTargetKbps: cachedEntry?.$2,
+      recommendedKbps:
+          _networkQuality?.recommendedBitrate(_availableStreamBitrates),
+      decodedAudioBitrateKbps: decodedBitrateKbps,
+      sampleRateHz: sampleRateHz,
+      channels: channels,
+      playbackSource: source,
+      playbackUrl: url.isEmpty ? null : url,
+      connectionType: _networkQuality?.connectionType.name ?? 'unknown',
+      estimatedThroughputKbps: _networkQuality?.estimatedKbps,
+      isOnline: _connectivityService?.isOnline ?? true,
+      queueLength: s.queue.length,
+      currentIndex: s.currentIndex,
+      shuffleEnabled: s.shuffleEnabled,
+      repeatMode: s.repeatMode.name,
+      activeBackgroundCaches: _backgroundCacheCancelTokens.length,
+    );
+  }
 
 
   String? _currentSourceId() {
@@ -212,6 +306,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     AudioCacheService? audioCache,
     SettingsCubit? settingsCubit,
     ConnectivityService? connectivityService,
+    NetworkQualityService? networkQuality,
   }) : _repo = repository,
        _musicProviderRegistry = musicProviderRegistry,
        _listeningHistoryRepository = listeningHistoryRepository,
@@ -220,6 +315,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
        _audioCache = audioCache,
        _settingsCubit = settingsCubit,
        _connectivityService = connectivityService,
+       _networkQuality = networkQuality,
        super(const PlayerViewState()) {
     if (kDebugMode) {
       debugPrint('[PlayerCubit] Instance created ($hashCode)');
@@ -240,12 +336,33 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     _player = Player();
     if (!kIsWeb && _player.platform is NativePlayer) {
       final dynamic nativePlayer = _player.platform;
-      try {
-        await nativePlayer.setProperty('demuxer-max-bytes', '1048576');
-        await nativePlayer.setProperty('demuxer-max-back-bytes', '1048576');
-        await nativePlayer.setProperty('demuxer-readahead-secs', '5');
-      } catch (e) {
-        PlaybackDiagnostics.log('Failed to set native player properties: $e');
+      // Tune libmpv for resilient HLS audio streamed directly from blob storage
+      // (no CDN). Larger buffers let it read ahead so a single slow segment does
+      // not underrun (the cause of glitchy/"corrupt" playback); ffmpeg reconnect
+      // options recover dropped segment fetches instead of stalling or cutting
+      // out; network-timeout bounds dead connections so a stuck request can't
+      // wedge playback start forever ("track doesn't play at all").
+      const nativeProps = <String, String>{
+        'cache': 'yes',
+        'cache-secs': '60',
+        'demuxer-max-bytes': '67108864', // 64 MiB forward buffer
+        'demuxer-max-back-bytes': '33554432', // 32 MiB back buffer
+        'demuxer-readahead-secs': '30',
+        'network-timeout': '20',
+        // Reconnect on dropped/errored HTTP(S) reads (segments + playlists).
+        'stream-lavf-o':
+            'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=5',
+        'demuxer-lavf-o':
+            'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=5',
+      };
+      for (final entry in nativeProps.entries) {
+        try {
+          await nativePlayer.setProperty(entry.key, entry.value);
+        } catch (e) {
+          PlaybackDiagnostics.log(
+            'Failed to set native player property ${entry.key}: $e',
+          );
+        }
       }
     }
     _equalizerController.initialize(_player);
@@ -488,9 +605,21 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   /// Fetch the playable URL directly from the MusicProviderRegistry.
   /// Returns a cached URL if one was fetched within the last 50 minutes,
   /// otherwise fetches fresh and stores in cache.
+  /// Resolve the streaming-quality setting to a concrete target bitrate.
+  ///
+  /// For a fixed quality this is the configured bitrate. For "Auto" we pick a
+  /// variant for the current network via [NetworkQualityService] — libmpv can't
+  /// adapt HLS itself, so without this Auto would always lock onto the highest
+  /// variant. Returns null only when Auto is selected but no estimator is wired
+  /// (falls back to the server's master playlist).
+  int? _effectiveTargetBitrate(StreamingQuality quality) {
+    if (quality != StreamingQuality.auto) return quality.targetBitrate;
+    return _networkQuality?.recommendedBitrate(_availableStreamBitrates);
+  }
+
   Future<String?> _fetchPlayableUrl(String trackId) async {
     final streamingQuality = _settingsCubit?.state.streamingQuality ?? StreamingQuality.auto;
-    final targetBitrate = streamingQuality.targetBitrate;
+    final targetBitrate = _effectiveTargetBitrate(streamingQuality);
     final isOnline = _connectivityService?.isOnline ?? true;
 
     // 1. Check local audio cache first (for offline playback)
@@ -700,7 +829,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
 
     final nextTrackId = queue[nextIndex].trackId;
     final streamingQuality = _settingsCubit?.state.streamingQuality ?? StreamingQuality.auto;
-    final targetBitrate = streamingQuality.targetBitrate;
+    final targetBitrate = _effectiveTargetBitrate(streamingQuality);
 
     final cached = _urlCache[nextTrackId];
     if (cached != null &&

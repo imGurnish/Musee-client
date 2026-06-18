@@ -17,6 +17,7 @@ import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
 import 'package:musee/features/settings/presentation/pages/profile_edit_page.dart';
 import 'package:musee/features/settings/presentation/pages/diagnostics_page.dart';
+import 'package:musee/features/settings/presentation/pages/player_diagnostics_page.dart';
 import 'package:musee/features/settings/presentation/widgets/settings_section.dart';
 import 'package:musee/features/settings/presentation/widgets/settings_tile.dart';
 import 'package:musee/features/user_onboarding/presentation/bloc/onboarding_bloc.dart';
@@ -766,6 +767,19 @@ class _SettingsPageState extends State<SettingsPage> with WidgetsBindingObserver
             ),
           ),
         ),
+        // Dev-only: live player diagnostics (quality, network, buffer, logs).
+        if (kDebugMode)
+          SettingsNavTile(
+            icon: Icons.monitor_heart_outlined,
+            iconColor: Colors.deepPurple,
+            title: 'Player diagnostics (dev)',
+            subtitle: 'Live quality, network, buffer & queue state',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const PlayerDiagnosticsPage(),
+              ),
+            ),
+          ),
       ],
     );
   }
