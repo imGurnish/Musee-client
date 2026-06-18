@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:musee/core/common/widgets/bottom_nav_bar.dart';
 import 'package:musee/core/player/playback_diagnostics.dart';
 import 'package:musee/core/player/player_cubit.dart';
 import 'package:musee/core/player/player_diagnostics_info.dart';
@@ -85,6 +86,11 @@ class _PlayerDiagnosticsPageState extends State<PlayerDiagnosticsPage> {
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
+      // Reuse the app's real bottom bar — it bundles the floating mini-player
+      // (with play/pause/skip), so playback can be driven while watching the
+      // live diagnostics update. selectedIndex: -1 = no tab highlighted since
+      // this screen lives outside the navigation shell.
+      bottomNavigationBar: const BottomNavBar(selectedIndex: -1),
       body: Column(
         children: [
           // ── Gradient header ──
