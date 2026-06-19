@@ -34,9 +34,16 @@ add_definitions(-DUNICODE -D_UNICODE)
 
 # Serialize PDB file writes via the PDB server to prevent C1041 race conditions
 # ("cannot open program database") that occur during parallel MSVC compilation
-# when multiple cl.exe processes try to write to the same .pdb file.  
+# when multiple cl.exe processes try to write to the same .pdb file.
 if(MSVC)
   add_compile_options(/FS)
+
+  # Newer MSVC toolchains (VS 2022 17.13+ / VS 2026, MSVC 14.4x+) turn the
+  # deprecation of <experimental/coroutine> into a hard error (STL1011).
+  # Some plugins (e.g. permission_handler_windows via C++/WinRT) still include
+  # that header, which breaks the build — especially with /WX. Silence it
+  # globally so it propagates to every plugin target added below.
+  add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
 endif()
 
 # Compilation settings that should be applied to most targets.
