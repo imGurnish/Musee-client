@@ -8,8 +8,18 @@ enum StreamingQuality { auto, low, medium, high }
 
 enum MaxCacheSize { mb100, mb250, mb500, gb1 }
 
+enum AppThemeProfile {
+  sunsetGlow,
+  oceanBreeze,
+  forestEmerald,
+  royalAmethyst,
+  roseVelvet,
+  midnightGold,
+}
+
 class SettingsState extends Equatable {
   final ThemeMode themeMode;
+  final AppThemeProfile themeProfile;
   final DownloadQuality downloadQuality;
   final StreamingQuality streamingQuality;
   final bool wifiOnlyDownloads;
@@ -34,6 +44,7 @@ class SettingsState extends Equatable {
 
   const SettingsState({
     this.themeMode = ThemeMode.system,
+    this.themeProfile = AppThemeProfile.sunsetGlow,
     this.downloadQuality = DownloadQuality.high,
     this.streamingQuality = StreamingQuality.auto,
     this.wifiOnlyDownloads = true,
@@ -52,6 +63,7 @@ class SettingsState extends Equatable {
 
   SettingsState copyWith({
     ThemeMode? themeMode,
+    AppThemeProfile? themeProfile,
     DownloadQuality? downloadQuality,
     StreamingQuality? streamingQuality,
     bool? wifiOnlyDownloads,
@@ -69,6 +81,7 @@ class SettingsState extends Equatable {
   }) {
     return SettingsState(
       themeMode: themeMode ?? this.themeMode,
+      themeProfile: themeProfile ?? this.themeProfile,
       downloadQuality: downloadQuality ?? this.downloadQuality,
       streamingQuality: streamingQuality ?? this.streamingQuality,
       wifiOnlyDownloads: wifiOnlyDownloads ?? this.wifiOnlyDownloads,
@@ -90,6 +103,7 @@ class SettingsState extends Equatable {
   Map<String, dynamic> toJson() {
     return {
       'themeMode': themeMode.index,
+      'themeProfile': themeProfile.index,
       'downloadQuality': downloadQuality.index,
       'streamingQuality': streamingQuality.index,
       'wifiOnlyDownloads': wifiOnlyDownloads,
@@ -119,6 +133,7 @@ class SettingsState extends Equatable {
     final preset = json['equalizerPreset'] as String? ?? 'normal';
     return SettingsState(
       themeMode: ThemeMode.values[json['themeMode'] as int? ?? 0],
+      themeProfile: AppThemeProfile.values[json['themeProfile'] as int? ?? 0],
       downloadQuality: DownloadQuality.values[json['downloadQuality'] as int? ?? 2],
       streamingQuality: StreamingQuality.values[json['streamingQuality'] as int? ?? 0],
       wifiOnlyDownloads: json['wifiOnlyDownloads'] as bool? ?? true,
@@ -139,6 +154,7 @@ class SettingsState extends Equatable {
   @override
   List<Object?> get props => [
     themeMode,
+    themeProfile,
     downloadQuality,
     streamingQuality,
     wifiOnlyDownloads,

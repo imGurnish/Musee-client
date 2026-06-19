@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
 
 class AppColors {
   // Private constructor to prevent instantiation.
@@ -65,4 +66,62 @@ class AppColors {
     onInverseSurface: Color(0xFF362F2D),
     inversePrimary: Color(0xFFB33B00),
   );
+
+  static ColorScheme getLightScheme(AppThemeProfile profile) {
+    if (profile == AppThemeProfile.sunsetGlow) {
+      return lightColorScheme;
+    }
+    return ColorScheme.fromSeed(
+      seedColor: profile.seedColor,
+      brightness: Brightness.light,
+    );
+  }
+
+  static ColorScheme getDarkScheme(AppThemeProfile profile) {
+    if (profile == AppThemeProfile.sunsetGlow) {
+      return darkColorScheme;
+    }
+    return ColorScheme.fromSeed(
+      seedColor: profile.seedColor,
+      brightness: Brightness.dark,
+    ).copyWith(
+      surface: const Color(0xFF121212),
+    );
+  }
+}
+
+extension AppThemeProfileExtension on AppThemeProfile {
+  String get label {
+    switch (this) {
+      case AppThemeProfile.sunsetGlow:
+        return 'Sunset Glow';
+      case AppThemeProfile.oceanBreeze:
+        return 'Ocean Breeze';
+      case AppThemeProfile.forestEmerald:
+        return 'Forest Emerald';
+      case AppThemeProfile.royalAmethyst:
+        return 'Royal Amethyst';
+      case AppThemeProfile.roseVelvet:
+        return 'Rose Velvet';
+      case AppThemeProfile.midnightGold:
+        return 'Midnight Gold';
+    }
+  }
+
+  Color get seedColor {
+    switch (this) {
+      case AppThemeProfile.sunsetGlow:
+        return const Color(0xFFFF7643);
+      case AppThemeProfile.oceanBreeze:
+        return const Color(0xFF0F60FF);
+      case AppThemeProfile.forestEmerald:
+        return const Color(0xFF0A9B5D);
+      case AppThemeProfile.royalAmethyst:
+        return const Color(0xFF7C3AED);
+      case AppThemeProfile.roseVelvet:
+        return const Color(0xFFE11D48);
+      case AppThemeProfile.midnightGold:
+        return const Color(0xFFC5A85C);
+    }
+  }
 }

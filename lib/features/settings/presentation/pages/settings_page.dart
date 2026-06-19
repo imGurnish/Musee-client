@@ -13,6 +13,7 @@ import 'package:musee/core/update/app_update_info.dart';
 import 'package:musee/core/update/app_update_service.dart';
 import 'package:musee/core/update/widgets/app_update_overlay.dart';
 import 'package:musee/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:musee/core/theme/app_colors.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
 import 'package:musee/features/settings/presentation/pages/profile_edit_page.dart';
@@ -492,6 +493,17 @@ class _SettingsPageState extends State<SettingsPage>
               ],
               onChanged: (v) => context.read<SettingsCubit>().setThemeMode(v),
             ),
+            Divider(
+              height: 1,
+              thickness: 1,
+              indent: 54,
+              color: colorScheme.outlineVariant.withValues(alpha: 0.35),
+            ),
+            ThemeProfileSelector(
+              selectedProfile: settings.themeProfile,
+              onChanged: (profile) =>
+                  context.read<SettingsCubit>().setThemeProfile(profile),
+            ),
           ],
         );
       },
@@ -847,6 +859,133 @@ class _SettingsHeader extends StatelessWidget {
             'Customize your listening experience',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ThemeProfileSelector extends StatelessWidget {
+  final AppThemeProfile selectedProfile;
+  final ValueChanged<AppThemeProfile> onChanged;
+
+  const ThemeProfileSelector({
+    super.key,
+    required this.selectedProfile,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.color_lens_outlined,
+                  size: 18,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Text(
+                'Color Profile',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: SizedBox(
+              height: 85,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                itemCount: AppThemeProfile.values.length,
+                separatorBuilder: (context, index) => const SizedBox(width: 16),
+                itemBuilder: (context, index) {
+                  final profile = AppThemeProfile.values[index];
+                  final isSelected = profile == selectedProfile;
+                  final seedColor = profile.seedColor;
+
+                  return GestureDetector(
+                    onTap: () => onChanged(profile),
+                    child: SizedBox(
+                      width: 68,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeInOut,
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: seedColor,
+                              border: Border.all(
+                                color: isSelected
+                                    ? (colorScheme.brightness == Brightness.dark
+                                        ? Colors.white
+                                        : colorScheme.primary)
+                                    : Colors.transparent,
+                                width: isSelected ? 3 : 0,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: seedColor.withValues(alpha: isSelected ? 0.5 : 0.2),
+                                  blurRadius: isSelected ? 12 : 6,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: isSelected
+                                ? Icon(
+                                    Icons.check_rounded,
+                                    color: seedColor.computeLuminance() > 0.5
+                                        ? Colors.black87
+                                        : Colors.white,
+                                    size: 22,
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            profile.label,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 10,
+                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                              color: isSelected ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],

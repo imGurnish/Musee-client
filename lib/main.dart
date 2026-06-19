@@ -186,14 +186,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       },
       child: BlocBuilder<SettingsCubit, SettingsState>(
         builder: (context, settings) {
+          final lightScheme = AppColors.getLightScheme(settings.themeProfile);
+          final darkScheme = AppColors.getDarkScheme(settings.themeProfile);
+
           return MaterialApp.router(
             title: 'Musee',
             debugShowCheckedModeBanner: false,
             routerConfig: _router,
             builder: (context, child) => _buildAppFrame(child),
             theme: ThemeData(
-              cardColor: AppColors.lightColorScheme.secondary.withAlpha(10),
-              colorScheme: AppColors.lightColorScheme,
+              cardColor: lightScheme.secondary.withAlpha(10),
+              colorScheme: lightScheme,
               useMaterial3: true,
               scrollbarTheme: ScrollbarThemeData(
                 thickness: const WidgetStatePropertyAll(4.0),
@@ -201,11 +204,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 thumbColor: WidgetStateProperty.resolveWith((states) {
                   if (states.contains(WidgetState.hovered) ||
                       states.contains(WidgetState.dragged)) {
-                    return AppColors.lightColorScheme.onSurface.withValues(
+                    return lightScheme.onSurface.withValues(
                       alpha: 0.45,
                     );
                   }
-                  return AppColors.lightColorScheme.onSurface.withValues(
+                  return lightScheme.onSurface.withValues(
                     alpha: 0.2,
                   );
                 }),
@@ -214,8 +217,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             ),
             // Dark Theme
             darkTheme: ThemeData(
-              cardColor: AppColors.darkColorScheme.secondary.withAlpha(10),
-              colorScheme: AppColors.darkColorScheme,
+              cardColor: darkScheme.secondary.withAlpha(10),
+              colorScheme: darkScheme,
               useMaterial3: true,
               scrollbarTheme: ScrollbarThemeData(
                 thickness: const WidgetStatePropertyAll(4.0),
@@ -223,11 +226,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 thumbColor: WidgetStateProperty.resolveWith((states) {
                   if (states.contains(WidgetState.hovered) ||
                       states.contains(WidgetState.dragged)) {
-                    return AppColors.darkColorScheme.onSurface.withValues(
+                    return darkScheme.onSurface.withValues(
                       alpha: 0.45,
                     );
                   }
-                  return AppColors.darkColorScheme.onSurface.withValues(
+                  return darkScheme.onSurface.withValues(
                     alpha: 0.2,
                   );
                 }),

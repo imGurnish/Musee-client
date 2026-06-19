@@ -10,6 +10,10 @@ class SettingsCubit extends HydratedCubit<SettingsState> {
     emit(state.copyWith(themeMode: mode));
   }
 
+  void setThemeProfile(AppThemeProfile profile) {
+    emit(state.copyWith(themeProfile: profile));
+  }
+
   void setDownloadQuality(DownloadQuality quality) {
     emit(state.copyWith(downloadQuality: quality));
   }
