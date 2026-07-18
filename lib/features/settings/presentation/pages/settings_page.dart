@@ -289,8 +289,10 @@ class _SettingsPageState extends State<SettingsPage>
                 const SizedBox(height: 24),
                 _buildPlaybackSection(context),
                 const SizedBox(height: 24),
-                _buildDownloadsSection(context),
-                const SizedBox(height: 24),
+                if (!kIsWeb) ...[
+                  _buildDownloadsSection(context),
+                  const SizedBox(height: 24),
+                ],
                 _buildMusicPreferencesSection(context),
                 const SizedBox(height: 24),
                 _buildAboutSection(context),

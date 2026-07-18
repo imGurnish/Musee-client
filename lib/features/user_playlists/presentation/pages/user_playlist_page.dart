@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/cupertino.dart';
@@ -1174,37 +1175,39 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                     tooltip: 'Queue all',
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                SizedBox(
-                                  width: 40,
-                                  height: 40,
-                                  child: IconButton.filled(
-                                    onPressed: playlist.tracks.isEmpty
-                                        ? null
-                                        : () {
-                                            downloadAllTracks();
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  'Added $trackCount tracks to downloads',
+                                if (!kIsWeb) ...[
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    width: 40,
+                                    height: 40,
+                                    child: IconButton.filled(
+                                      onPressed: playlist.tracks.isEmpty
+                                          ? null
+                                          : () {
+                                              downloadAllTracks();
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Added $trackCount tracks to downloads',
+                                                  ),
                                                 ),
-                                              ),
-                                            );
-                                          },
-                                    style: IconButton.styleFrom(
-                                      backgroundColor:
-                                          theme.colorScheme.primary,
-                                      foregroundColor:
-                                          theme.colorScheme.onPrimary,
+                                              );
+                                            },
+                                      style: IconButton.styleFrom(
+                                        backgroundColor:
+                                            theme.colorScheme.primary,
+                                        foregroundColor:
+                                            theme.colorScheme.onPrimary,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.download_for_offline_rounded,
+                                        size: 19,
+                                      ),
+                                      tooltip: 'Download all tracks',
                                     ),
-                                    icon: const Icon(
-                                      Icons.download_for_offline_rounded,
-                                      size: 19,
-                                    ),
-                                    tooltip: 'Download all tracks',
                                   ),
-                                ),
+                                ],
                               ],
                             ),
                           ],
@@ -1550,19 +1553,20 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                                             'queue',
                                                           ),
                                                     ),
-                                                    ListTile(
-                                                      leading: const Icon(
-                                                        Icons.download_rounded,
+                                                    if (!kIsWeb)
+                                                      ListTile(
+                                                        leading: const Icon(
+                                                          Icons.download_rounded,
+                                                        ),
+                                                        title: const Text(
+                                                          'Download',
+                                                        ),
+                                                        onTap: () =>
+                                                            Navigator.pop(
+                                                              context,
+                                                              'download',
+                                                            ),
                                                       ),
-                                                      title: const Text(
-                                                        'Download',
-                                                      ),
-                                                      onTap: () =>
-                                                          Navigator.pop(
-                                                            context,
-                                                            'download',
-                                                          ),
-                                                    ),
                                                     if (canRemoveTrack) ...[
                                                       ListTile(
                                                         leading: const Icon(

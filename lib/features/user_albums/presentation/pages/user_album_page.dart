@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
@@ -400,38 +401,40 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                                     tooltip: 'Queue all',
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                SizedBox(
-                                  width: 40,
-                                  height: 40,
-                                  child: IconButton.filled(
-                                    onPressed: album.tracks.isEmpty
-                                        ? null
-                                        : () {
-                                            downloadAllTracks();
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  'Added $trackCount tracks to downloads',
+                                if (!kIsWeb) ...[
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    width: 40,
+                                    height: 40,
+                                    child: IconButton.filled(
+                                      onPressed: album.tracks.isEmpty
+                                          ? null
+                                          : () {
+                                              downloadAllTracks();
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Added $trackCount tracks to downloads',
+                                                  ),
                                                 ),
-                                              ),
-                                            );
-                                          },
-                                    style: IconButton.styleFrom(
-                                      backgroundColor:
-                                          theme.colorScheme.primary,
-                                      foregroundColor:
-                                          theme.colorScheme.onPrimary,
+                                              );
+                                            },
+                                      style: IconButton.styleFrom(
+                                        backgroundColor:
+                                            theme.colorScheme.primary,
+                                        foregroundColor:
+                                            theme.colorScheme.onPrimary,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.download_for_offline_rounded,
+                                        size: 19,
+                                      ),
+                                      tooltip: 'Download all tracks',
                                     ),
-                                    icon: const Icon(
-                                      Icons.download_for_offline_rounded,
-                                      size: 19,
-                                    ),
-                                    tooltip: 'Download all tracks',
                                   ),
-                                ),
+                                ],
                               ],
                             ),
                           ],
@@ -663,18 +666,19 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                                                       'playlist',
                                                     ),
                                                   ),
-                                                  ListTile(
-                                                    leading: const Icon(
-                                                      Icons.download_rounded,
+                                                  if (!kIsWeb)
+                                                    ListTile(
+                                                      leading: const Icon(
+                                                        Icons.download_rounded,
+                                                      ),
+                                                      title: const Text(
+                                                        'Download',
+                                                      ),
+                                                      onTap: () => Navigator.pop(
+                                                        context,
+                                                        'download',
+                                                      ),
                                                     ),
-                                                    title: const Text(
-                                                      'Download',
-                                                    ),
-                                                    onTap: () => Navigator.pop(
-                                                      context,
-                                                      'download',
-                                                    ),
-                                                  ),
                                                 ],
                                               ),
                                             );

@@ -186,6 +186,12 @@ class AppGoRouter {
                     GoRoute(
                       path: 'downloads',
                       name: 'downloads',
+                      redirect: (context, state) {
+                        if (kIsWeb) {
+                          return Routes.forbidden;
+                        }
+                        return null;
+                      },
                       builder: (context, state) => const DownloadsPage(),
                     ),
                     GoRoute(

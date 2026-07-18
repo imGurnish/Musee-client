@@ -613,9 +613,10 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                if (state.track?.trackId != null)
-                                  _DownloadButton(trackId: state.track!.trackId!),
-                                const SizedBox(width: 4),
+                                 if (state.track?.trackId != null && !kIsWeb) ...[
+                                   _DownloadButton(trackId: state.track!.trackId!),
+                                   const SizedBox(width: 4),
+                                 ],
                                 // Track like button
                                 if (state.track?.trackId != null)
                                   IconButton(

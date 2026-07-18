@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:musee/features/user_playlists/domain/entities/user_playlist.dart';
@@ -65,20 +66,21 @@ class _UserLibraryPageState extends State<UserLibraryPage> {
           ),
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: [
-            // ── Downloads ───────────────────────────────────────────
-            _LibraryTile(
-              onTap: () => context.push('/library/downloads'),
-              icon: CupertinoIcons.arrow_down_circle_fill,
-              gradient: LinearGradient(
-                colors: [Colors.purple.shade800, Colors.blue.shade800],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+            if (!kIsWeb) ...[
+              // ── Downloads ───────────────────────────────────────────
+              _LibraryTile(
+                onTap: () => context.push('/library/downloads'),
+                icon: CupertinoIcons.arrow_down_circle_fill,
+                gradient: LinearGradient(
+                  colors: [Colors.purple.shade800, Colors.blue.shade800],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                title: 'Downloads',
+                subtitle: 'Tracks available for offline playback',
               ),
-              title: 'Downloads',
-              subtitle: 'Tracks available for offline playback',
-            ),
-
-            const Divider(indent: 16, endIndent: 16, height: 16),
+              const Divider(indent: 16, endIndent: 16, height: 16),
+            ],
 
             // ── Liked Songs ─────────────────────────────────────────
             _LibraryTile(

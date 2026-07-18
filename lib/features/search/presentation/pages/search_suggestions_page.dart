@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -1450,11 +1451,12 @@ class _TrackTile extends StatelessWidget {
               title: const Text('Add to playlist'),
               onTap: () => Navigator.pop(context, 'playlist'),
             ),
-            ListTile(
-              leading: const Icon(Icons.download_rounded),
-              title: const Text('Download'),
-              onTap: () => Navigator.pop(context, 'download'),
-            ),
+            if (!kIsWeb)
+              ListTile(
+                leading: const Icon(Icons.download_rounded),
+                title: const Text('Download'),
+                onTap: () => Navigator.pop(context, 'download'),
+              ),
           ],
         );
       },
@@ -1750,11 +1752,12 @@ class _AlbumTile extends StatelessWidget {
               title: const Text('Add to queue'),
               onTap: () => Navigator.pop(context, 'queue'),
             ),
-            ListTile(
-              leading: const Icon(Icons.download_rounded),
-              title: const Text('Download'),
-              onTap: () => Navigator.pop(context, 'download'),
-            ),
+            if (!kIsWeb)
+              ListTile(
+                leading: const Icon(Icons.download_rounded),
+                title: const Text('Download'),
+                onTap: () => Navigator.pop(context, 'download'),
+              ),
           ],
         );
       },
