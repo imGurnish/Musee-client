@@ -38,10 +38,10 @@
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="https" android:host="musee-web.vercel.app" android:pathPrefix="/tracks/"/>
-                <data android:scheme="https" android:host="musee-web.vercel.app" android:pathPrefix="/track/"/>
-                <data android:scheme="http" android:host="musee-web.vercel.app" android:pathPrefix="/tracks/"/>
-                <data android:scheme="http" android:host="musee-web.vercel.app" android:pathPrefix="/track/"/>
+                <data android:scheme="https" android:host="musee.gurnishsingh.in" android:pathPrefix="/tracks/"/>
+                <data android:scheme="https" android:host="musee.gurnishsingh.in" android:pathPrefix="/track/"/>
+                <data android:scheme="http" android:host="musee.gurnishsingh.in" android:pathPrefix="/tracks/"/>
+                <data android:scheme="http" android:host="musee.gurnishsingh.in" android:pathPrefix="/track/"/>
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
