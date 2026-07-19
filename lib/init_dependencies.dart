@@ -105,6 +105,7 @@ import 'package:musee/features/user__dashboard/domain/repository/user_dashboard_
 import 'package:musee/features/user__dashboard/domain/usecases/list_albums_for_you.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_made_for_you.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_trending.dart';
+import 'package:musee/features/user__dashboard/domain/usecases/list_undiscovered_gems.dart';
 import 'package:musee/features/user__dashboard/presentation/bloc/user_dashboard_cubit.dart';
 import 'package:musee/features/search/data/datasources/search_remote_data_source.dart';
 import 'package:musee/features/search/data/repositories/search_repository_impl.dart';
@@ -740,12 +741,16 @@ void _initUserDashboard() {
     ..registerFactory(
       () => ListTrending(serviceLocator<UserDashboardRepository>()),
     )
+    ..registerFactory(
+      () => ListUndiscoveredGems(serviceLocator<UserDashboardRepository>()),
+    )
     // cubit
     ..registerFactory(
       () => UserDashboardCubit(
         serviceLocator<ListMadeForYou>(),
         serviceLocator<ListAlbumsForYou>(),
         serviceLocator<ListTrending>(),
+        serviceLocator<ListUndiscoveredGems>(),
         trackCache: serviceLocator<TrackCacheService>(),
         dashboardCache: serviceLocator<UserDashboardCacheService>(),
       ),

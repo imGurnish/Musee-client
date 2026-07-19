@@ -4,4 +4,5 @@ abstract interface class UserDashboardRepository {
   Future<PagedDashboardItems> getMadeForYou({int page, int limit});
   Future<PagedDashboardItems> getAlbumsForYou({int page, int limit});
   Future<PagedDashboardItems> getTrending({int page, int limit});
+  Future<PagedDashboardItems> getUndiscoveredGems({int page, int limit});
 }

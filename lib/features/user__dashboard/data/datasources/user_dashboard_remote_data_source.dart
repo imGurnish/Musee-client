@@ -117,6 +117,10 @@ abstract interface class UserDashboardRemoteDataSource {
     int limit = 20,
   });
   Future<PagedDashboardItemsDTO> getTrending({int page = 0, int limit = 20});
+  Future<PagedDashboardItemsDTO> getUndiscoveredGems({
+    int page = 0,
+    int limit = 20,
+  });
 }
 
 class UserDashboardRemoteDataSourceImpl
@@ -197,5 +201,13 @@ class UserDashboardRemoteDataSourceImpl
     int limit = 20,
   }) async {
     return _getPaged('trending', page: page, limit: limit);
+  }
+
+  @override
+  Future<PagedDashboardItemsDTO> getUndiscoveredGems({
+    int page = 0,
+    int limit = 20,
+  }) async {
+    return _getPaged('undiscovered-gems', page: page, limit: limit);
   }
 }

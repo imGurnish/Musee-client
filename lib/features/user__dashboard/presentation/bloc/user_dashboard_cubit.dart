@@ -6,6 +6,7 @@ import 'package:musee/features/user__dashboard/data/services/user_dashboard_cach
 import 'package:musee/features/user__dashboard/domain/usecases/list_albums_for_you.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_made_for_you.dart';
 import 'package:musee/features/user__dashboard/domain/usecases/list_trending.dart';
+import 'package:musee/features/user__dashboard/domain/usecases/list_undiscovered_gems.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
 import 'dart:math';
@@ -14,13 +15,18 @@ class UserDashboardState extends Equatable {
   final bool loadingMadeForYou;
   final bool loadingTrending;
   final bool loadingAlbumsForYou;
+  final bool loadingUndiscoveredGems;
+  final bool loadingInfiniteSuggestedTracks;
   final bool hasRetryableError;
   final List<DashboardItem> madeForYou;
   final List<DashboardItem> trending;
   final List<DashboardItem> albumsForYou;
+  final List<DashboardItem> undiscoveredGems;
+  final List<DashboardItem> infiniteSuggestedTracks;
   final String? errorMadeForYou;
   final String? errorTrending;
   final String? errorAlbumsForYou;
+  final String? errorUndiscoveredGems;
 
   /// Recently played tracks from local cache
   final List<CachedTrack> recentlyPlayed;
@@ -39,13 +45,18 @@ class UserDashboardState extends Equatable {
     this.loadingMadeForYou = false,
     this.loadingTrending = false,
     this.loadingAlbumsForYou = false,
+    this.loadingUndiscoveredGems = false,
+    this.loadingInfiniteSuggestedTracks = false,
     this.hasRetryableError = false,
     this.madeForYou = const [],
     this.trending = const [],
     this.albumsForYou = const [],
+    this.undiscoveredGems = const [],
+    this.infiniteSuggestedTracks = const [],
     this.errorMadeForYou,
     this.errorTrending,
     this.errorAlbumsForYou,
+    this.errorUndiscoveredGems,
     this.recentlyPlayed = const [],
     this.mostPlayed = const [],
     this.lastUpdated,
@@ -57,13 +68,18 @@ class UserDashboardState extends Equatable {
     bool? loadingMadeForYou,
     bool? loadingTrending,
     bool? loadingAlbumsForYou,
+    bool? loadingUndiscoveredGems,
+    bool? loadingInfiniteSuggestedTracks,
     bool? hasRetryableError,
     List<DashboardItem>? madeForYou,
     List<DashboardItem>? trending,
     List<DashboardItem>? albumsForYou,
+    List<DashboardItem>? undiscoveredGems,
+    List<DashboardItem>? infiniteSuggestedTracks,
     String? errorMadeForYou,
     String? errorTrending,
     String? errorAlbumsForYou,
+    String? errorUndiscoveredGems,
     List<CachedTrack>? recentlyPlayed,
     List<CachedTrack>? mostPlayed,
     DateTime? lastUpdated,
@@ -74,13 +90,21 @@ class UserDashboardState extends Equatable {
       loadingMadeForYou: loadingMadeForYou ?? this.loadingMadeForYou,
       loadingTrending: loadingTrending ?? this.loadingTrending,
       loadingAlbumsForYou: loadingAlbumsForYou ?? this.loadingAlbumsForYou,
+      loadingUndiscoveredGems:
+          loadingUndiscoveredGems ?? this.loadingUndiscoveredGems,
+      loadingInfiniteSuggestedTracks:
+          loadingInfiniteSuggestedTracks ?? this.loadingInfiniteSuggestedTracks,
       hasRetryableError: hasRetryableError ?? this.hasRetryableError,
       madeForYou: madeForYou ?? this.madeForYou,
       trending: trending ?? this.trending,
       albumsForYou: albumsForYou ?? this.albumsForYou,
+      undiscoveredGems: undiscoveredGems ?? this.undiscoveredGems,
+      infiniteSuggestedTracks:
+          infiniteSuggestedTracks ?? this.infiniteSuggestedTracks,
       errorMadeForYou: errorMadeForYou,
       errorTrending: errorTrending,
       errorAlbumsForYou: errorAlbumsForYou,
+      errorUndiscoveredGems: errorUndiscoveredGems,
       recentlyPlayed: recentlyPlayed ?? this.recentlyPlayed,
       mostPlayed: mostPlayed ?? this.mostPlayed,
       lastUpdated: lastUpdated ?? this.lastUpdated,
@@ -94,13 +118,18 @@ class UserDashboardState extends Equatable {
     loadingMadeForYou,
     loadingTrending,
     loadingAlbumsForYou,
+    loadingUndiscoveredGems,
+    loadingInfiniteSuggestedTracks,
     hasRetryableError,
     madeForYou,
     trending,
     albumsForYou,
+    undiscoveredGems,
+    infiniteSuggestedTracks,
     errorMadeForYou,
     errorTrending,
     errorAlbumsForYou,
+    errorUndiscoveredGems,
     recentlyPlayed,
     mostPlayed,
     lastUpdated,
@@ -115,13 +144,21 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
   final ListMadeForYou _listMadeForYou;
   final ListAlbumsForYou _listAlbumsForYou;
   final ListTrending _listTrending;
+  final ListUndiscoveredGems _listUndiscoveredGems;
   final TrackCacheService? _trackCache;
   final UserDashboardCacheService? _dashboardCache;
+
+  int _loadedSectionIndex = 1;
+  int _infiniteSuggestedTracksPage = 0;
+  bool _hasReachedInfiniteEnd = false;
+
+  int get loadedSectionIndex => _loadedSectionIndex;
 
   UserDashboardCubit(
     this._listMadeForYou,
     this._listAlbumsForYou,
-    this._listTrending, {
+    this._listTrending,
+    this._listUndiscoveredGems, {
     TrackCacheService? trackCache,
     UserDashboardCacheService? dashboardCache,
   }) : _trackCache = trackCache,
@@ -130,20 +167,41 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
 
   Future<void> load({
     int page = 0,
-    int limit = 20,
+    int limit = 72,
     bool forceRefresh = false,
   }) async {
     final usePersistentCache = !forceRefresh && _dashboardCache != null;
 
+    _loadedSectionIndex = 1;
+    _infiniteSuggestedTracksPage = 0;
+    _hasReachedInfiniteEnd = false;
+
+    if (forceRefresh && _dashboardCache != null) {
+      try {
+        await _dashboardCache.clearMadeForYou();
+        await _dashboardCache.clearTrending();
+        await _dashboardCache.clearAlbumsForYou();
+        await _dashboardCache.clearUndiscoveredGems();
+      } catch (_) {}
+    }
+
     emit(
       state.copyWith(
         loadingMadeForYou: !usePersistentCache,
-        loadingTrending: !usePersistentCache,
-        loadingAlbumsForYou: true,
+        loadingTrending: false,
+        loadingAlbumsForYou: false,
+        loadingUndiscoveredGems: false,
+        loadingInfiniteSuggestedTracks: false,
         hasRetryableError: false,
         errorMadeForYou: null,
         errorTrending: null,
         errorAlbumsForYou: null,
+        errorUndiscoveredGems: null,
+        madeForYou: forceRefresh ? const [] : state.madeForYou,
+        trending: forceRefresh ? const [] : state.trending,
+        albumsForYou: forceRefresh ? const [] : state.albumsForYou,
+        undiscoveredGems: forceRefresh ? const [] : state.undiscoveredGems,
+        infiniteSuggestedTracks: const [],
       ),
     );
 
@@ -185,49 +243,6 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
       }
     }
 
-    List<DashboardItem>? trending;
-    String? trendingError;
-    if (usePersistentCache) {
-      try {
-        trending = await _dashboardCache.getTrending(
-          page: page,
-          limit: limit,
-          ttl: _madeForYouCacheTtl,
-        );
-      } catch (_) {
-        trending = null;
-      }
-    }
-
-    if (trending == null) {
-      try {
-        final trendingResult = await _listTrending(page: page, limit: limit);
-        trending = trendingResult.items;
-        await _dashboardCache?.cacheTrending(
-          page: page,
-          limit: limit,
-          items: trending,
-        );
-      } catch (e) {
-        final appError = e.toAppError();
-        trendingError = appError.userMessage;
-        hasRetryableError = hasRetryableError || appError.isRetryable;
-      }
-    }
-
-    List<DashboardItem>? albumsForYou;
-    String? albumsForYouError;
-    try {
-      final albumsResult = await _listAlbumsForYou(page: page, limit: limit);
-      albumsForYou = albumsResult.items
-          .where((item) => item.type == DashboardItemType.album)
-          .toList();
-    } catch (e) {
-      final appError = e.toAppError();
-      albumsForYouError = appError.userMessage;
-      hasRetryableError = hasRetryableError || appError.isRetryable;
-    }
-
     final effectiveBackendMadeForYou =
         backendMadeForYou ??
         state.madeForYou.where((item) {
@@ -239,9 +254,6 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
     final decoratedMadeForYou = await _decorateWithCacheState(
       effectiveBackendMadeForYou,
     );
-    final decoratedTrending = await _decorateWithCacheState(
-      trending ?? state.trending,
-    );
 
     final mixedMadeForYou = _mixMadeForYouWithRecommendations(
       decoratedMadeForYou,
@@ -251,21 +263,163 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
     emit(
       state.copyWith(
         loadingMadeForYou: false,
-        loadingTrending: false,
-        loadingAlbumsForYou: false,
         hasRetryableError: hasRetryableError,
         madeForYou: mixedMadeForYou.isNotEmpty
             ? mixedMadeForYou
             : decoratedMadeForYou,
-        trending: decoratedTrending,
-        albumsForYou: await _decorateWithCacheState(
-          albumsForYou ?? state.albumsForYou,
-        ),
         errorMadeForYou: madeForYouError,
-        errorTrending: trendingError,
-        errorAlbumsForYou: albumsForYouError,
       ),
     );
+  }
+
+  Future<void> loadNextSection() async {
+    if (state.loadingMadeForYou ||
+        state.loadingTrending ||
+        state.loadingAlbumsForYou ||
+        state.loadingUndiscoveredGems ||
+        state.loadingInfiniteSuggestedTracks) {
+      return; // Already loading a section
+    }
+
+    if (_loadedSectionIndex == 1) {
+      // Load Section 2: Trending Picks
+      emit(state.copyWith(
+        loadingTrending: true,
+        errorTrending: null,
+      ));
+      try {
+        final trendingResult = await _listTrending(page: 0, limit: 60);
+        final decoratedTrending = await _decorateWithCacheState(
+          trendingResult.items,
+        );
+        await _dashboardCache?.cacheTrending(
+          page: 0,
+          limit: 60,
+          items: decoratedTrending,
+        );
+        _loadedSectionIndex = 2;
+        emit(state.copyWith(
+          loadingTrending: false,
+          trending: decoratedTrending,
+        ));
+      } catch (e) {
+        final appError = e.toAppError();
+        emit(state.copyWith(
+          loadingTrending: false,
+          errorTrending: state.trending.isEmpty ? appError.userMessage : null,
+          hasRetryableError: appError.isRetryable,
+        ));
+      }
+    } else if (_loadedSectionIndex == 2) {
+      // Load Section 3: Albums For You
+      emit(state.copyWith(
+        loadingAlbumsForYou: true,
+        errorAlbumsForYou: null,
+      ));
+      try {
+        final albumsResult = await _listAlbumsForYou(page: 0, limit: 30);
+        final albums = albumsResult.items
+            .where((item) => item.type == DashboardItemType.album)
+            .toList();
+        final decoratedAlbums = await _decorateWithCacheState(albums);
+        await _dashboardCache?.cacheAlbumsForYou(
+          page: 0,
+          limit: 30,
+          items: decoratedAlbums,
+        );
+        _loadedSectionIndex = 3;
+        emit(state.copyWith(
+          loadingAlbumsForYou: false,
+          albumsForYou: decoratedAlbums,
+        ));
+      } catch (e) {
+        final appError = e.toAppError();
+        emit(state.copyWith(
+          loadingAlbumsForYou: false,
+          errorAlbumsForYou:
+              state.albumsForYou.isEmpty ? appError.userMessage : null,
+          hasRetryableError: appError.isRetryable,
+        ));
+      }
+    } else if (_loadedSectionIndex == 3) {
+      // Section 4 (Playlists & Artists) are derived from the already loaded State list items!
+      // No server API request is required. We advance loaded index immediately and trigger next section loading (Section 5).
+      _loadedSectionIndex = 4;
+      await loadNextSection();
+    } else if (_loadedSectionIndex == 4) {
+      // Load Section 5: Undiscovered Gems
+      emit(state.copyWith(
+        loadingUndiscoveredGems: true,
+        errorUndiscoveredGems: null,
+      ));
+      try {
+        final undiscoveredGemsResult = await _listUndiscoveredGems(
+          page: 0,
+          limit: 30,
+        );
+        final decoratedGems = await _decorateWithCacheState(
+          undiscoveredGemsResult.items,
+        );
+        await _dashboardCache?.cacheUndiscoveredGems(
+          page: 0,
+          limit: 30,
+          items: decoratedGems,
+        );
+        _loadedSectionIndex = 5;
+        emit(state.copyWith(
+          loadingUndiscoveredGems: false,
+          undiscoveredGems: decoratedGems,
+        ));
+      } catch (e) {
+        final appError = e.toAppError();
+        emit(state.copyWith(
+          loadingUndiscoveredGems: false,
+          errorUndiscoveredGems:
+              state.undiscoveredGems.isEmpty ? appError.userMessage : null,
+          hasRetryableError: appError.isRetryable,
+        ));
+      }
+    } else if (_loadedSectionIndex == 5) {
+      _loadedSectionIndex = 6;
+      await loadMoreSuggestedTracks();
+    }
+  }
+
+  Future<void> loadMoreSuggestedTracks() async {
+    if (state.loadingInfiniteSuggestedTracks || _hasReachedInfiniteEnd) return;
+
+    emit(state.copyWith(loadingInfiniteSuggestedTracks: true));
+    try {
+      final items = await fetchSuggestedTracks(
+        page: _infiniteSuggestedTracksPage,
+        limit: 20,
+      );
+      _infiniteSuggestedTracksPage++;
+
+      if (items.isEmpty) {
+        _hasReachedInfiniteEnd = true;
+      } else {
+        final currentList = List<DashboardItem>.from(
+          state.infiniteSuggestedTracks,
+        );
+        final seenIds = currentList.map((i) => i.id).toSet();
+        final newItems = items.where((i) => seenIds.add(i.id)).toList();
+
+        if (newItems.isEmpty && items.length < 20) {
+          _hasReachedInfiniteEnd = true;
+        }
+
+        emit(
+          state.copyWith(
+            infiniteSuggestedTracks: [...currentList, ...newItems],
+          ),
+        );
+      }
+    } catch (_) {
+      // Non-fatal infinite scroll errors, just let it allow retry on next scroll trigger
+    } finally {
+      emit(state.copyWith(loadingInfiniteSuggestedTracks: false));
+    }
   }
 
   Future<List<DashboardItem>> _decorateWithCacheState(
@@ -333,14 +487,64 @@ class UserDashboardCubit extends Cubit<UserDashboardState> {
   }
 
   Future<void> _loadFromCache() async {
-    if (_trackCache == null) return;
-
     try {
-      final recentlyPlayed = await _trackCache.getRecentlyPlayed(limit: 10);
-      final mostPlayed = await _trackCache.getMostPlayed(limit: 10);
+      final recentlyPlayed =
+          _trackCache != null
+              ? await _trackCache.getRecentlyPlayed(limit: 10)
+              : const <CachedTrack>[];
+      final mostPlayed =
+          _trackCache != null
+              ? await _trackCache.getMostPlayed(limit: 10)
+              : const <CachedTrack>[];
+
+      List<DashboardItem> cachedMadeForYou = const [];
+      List<DashboardItem> cachedTrending = const [];
+      List<DashboardItem> cachedAlbums = const [];
+      List<DashboardItem> cachedUndiscovered = const [];
+
+      if (_dashboardCache != null) {
+        cachedMadeForYou =
+            await _dashboardCache.getMadeForYou(
+              page: 0,
+              limit: 72,
+              ttl: _madeForYouCacheTtl,
+            ) ??
+            const [];
+
+        cachedTrending =
+            await _dashboardCache.getTrending(
+              page: 0,
+              limit: 60,
+              ttl: _madeForYouCacheTtl,
+            ) ??
+            const [];
+
+        cachedAlbums =
+            await _dashboardCache.getAlbumsForYou(
+              page: 0,
+              limit: 30,
+              ttl: _madeForYouCacheTtl,
+            ) ??
+            const [];
+
+        cachedUndiscovered =
+            await _dashboardCache.getUndiscoveredGems(
+              page: 0,
+              limit: 30,
+              ttl: _madeForYouCacheTtl,
+            ) ??
+            const [];
+      }
 
       emit(
-        state.copyWith(recentlyPlayed: recentlyPlayed, mostPlayed: mostPlayed),
+        state.copyWith(
+          recentlyPlayed: recentlyPlayed,
+          mostPlayed: mostPlayed,
+          madeForYou: cachedMadeForYou,
+          trending: cachedTrending,
+          albumsForYou: cachedAlbums,
+          undiscoveredGems: cachedUndiscovered,
+        ),
       );
     } catch (_) {
       // Cache errors are non-fatal, just continue

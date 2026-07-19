@@ -29,4 +29,12 @@ class UserDashboardRepositoryImpl implements UserDashboardRepository {
   }) async {
     return _remote.getTrending(page: page, limit: limit);
   }
+
+  @override
+  Future<PagedDashboardItems> getUndiscoveredGems({
+    int page = 0,
+    int limit = 20,
+  }) async {
+    return _remote.getUndiscoveredGems(page: page, limit: limit);
+  }
 }

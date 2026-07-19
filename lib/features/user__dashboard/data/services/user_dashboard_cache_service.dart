@@ -40,9 +40,37 @@ abstract class UserDashboardCacheService {
     required List<DashboardItem> items,
   });
 
+  Future<List<DashboardItem>?> getAlbumsForYou({
+    required int page,
+    required int limit,
+    required Duration ttl,
+  });
+
+  Future<void> cacheAlbumsForYou({
+    required int page,
+    required int limit,
+    required List<DashboardItem> items,
+  });
+
+  Future<List<DashboardItem>?> getUndiscoveredGems({
+    required int page,
+    required int limit,
+    required Duration ttl,
+  });
+
+  Future<void> cacheUndiscoveredGems({
+    required int page,
+    required int limit,
+    required List<DashboardItem> items,
+  });
+
   Future<void> clearMadeForYou({int? page, int? limit});
 
   Future<void> clearTrending({int? page, int? limit});
+
+  Future<void> clearAlbumsForYou({int? page, int? limit});
+
+  Future<void> clearUndiscoveredGems({int? page, int? limit});
 
   Future<void> clearRecommendations({String? artistName});
 }
@@ -87,6 +115,16 @@ class UserDashboardCacheServiceImpl implements UserDashboardCacheService {
   String _trendingCacheKey({required int page, required int limit}) {
     final userId = _supabase.auth.currentUser?.id ?? 'anonymous';
     return 'trending:$userId:$page:$limit';
+  }
+
+  String _albumsCacheKey({required int page, required int limit}) {
+    final userId = _supabase.auth.currentUser?.id ?? 'anonymous';
+    return 'albums_for_you:$userId:$page:$limit';
+  }
+
+  String _undiscoveredCacheKey({required int page, required int limit}) {
+    final userId = _supabase.auth.currentUser?.id ?? 'anonymous';
+    return 'undiscovered_gems:$userId:$page:$limit';
   }
 
   String _recommendationsKey({required String artistName}) {
@@ -219,6 +257,86 @@ class UserDashboardCacheServiceImpl implements UserDashboardCacheService {
   }
 
   @override
+  Future<List<DashboardItem>?> getAlbumsForYou({
+    required int page,
+    required int limit,
+    required Duration ttl,
+  }) async {
+    final key = _albumsCacheKey(page: page, limit: limit);
+    final raw = _cacheBox.get(key);
+    if (raw is! Map) return null;
+
+    final payload = Map<String, dynamic>.from(raw);
+    final cachedAtIso = payload['cached_at']?.toString();
+    if (cachedAtIso == null || cachedAtIso.isEmpty) return null;
+
+    final cachedAt = DateTime.tryParse(cachedAtIso);
+    if (cachedAt == null) return null;
+    if (DateTime.now().difference(cachedAt) >= ttl) return null;
+
+    final rawItems = payload['items'];
+    if (rawItems is! List) return null;
+
+    return rawItems
+        .whereType<Map>()
+        .map((entry) => _itemFromMap(Map<String, dynamic>.from(entry)))
+        .toList();
+  }
+
+  @override
+  Future<void> cacheAlbumsForYou({
+    required int page,
+    required int limit,
+    required List<DashboardItem> items,
+  }) async {
+    final key = _albumsCacheKey(page: page, limit: limit);
+    await _cacheBox.put(key, {
+      'cached_at': DateTime.now().toIso8601String(),
+      'items': items.map(_itemToMap).toList(),
+    });
+  }
+
+  @override
+  Future<List<DashboardItem>?> getUndiscoveredGems({
+    required int page,
+    required int limit,
+    required Duration ttl,
+  }) async {
+    final key = _undiscoveredCacheKey(page: page, limit: limit);
+    final raw = _cacheBox.get(key);
+    if (raw is! Map) return null;
+
+    final payload = Map<String, dynamic>.from(raw);
+    final cachedAtIso = payload['cached_at']?.toString();
+    if (cachedAtIso == null || cachedAtIso.isEmpty) return null;
+
+    final cachedAt = DateTime.tryParse(cachedAtIso);
+    if (cachedAt == null) return null;
+    if (DateTime.now().difference(cachedAt) >= ttl) return null;
+
+    final rawItems = payload['items'];
+    if (rawItems is! List) return null;
+
+    return rawItems
+        .whereType<Map>()
+        .map((entry) => _itemFromMap(Map<String, dynamic>.from(entry)))
+        .toList();
+  }
+
+  @override
+  Future<void> cacheUndiscoveredGems({
+    required int page,
+    required int limit,
+    required List<DashboardItem> items,
+  }) async {
+    final key = _undiscoveredCacheKey(page: page, limit: limit);
+    await _cacheBox.put(key, {
+      'cached_at': DateTime.now().toIso8601String(),
+      'items': items.map(_itemToMap).toList(),
+    });
+  }
+
+  @override
   Future<void> clearMadeForYou({int? page, int? limit}) async {
     if (page != null && limit != null) {
       await _cacheBox.delete(_cacheKey(page: page, limit: limit));
@@ -240,6 +358,32 @@ class UserDashboardCacheServiceImpl implements UserDashboardCacheService {
 
     final userId = _supabase.auth.currentUser?.id ?? 'anonymous';
     final prefix = 'trending:$userId:';
+    final keys = _cacheBox.keys.where((k) => k.toString().startsWith(prefix));
+    await _cacheBox.deleteAll(keys);
+  }
+
+  @override
+  Future<void> clearAlbumsForYou({int? page, int? limit}) async {
+    if (page != null && limit != null) {
+      await _cacheBox.delete(_albumsCacheKey(page: page, limit: limit));
+      return;
+    }
+
+    final userId = _supabase.auth.currentUser?.id ?? 'anonymous';
+    final prefix = 'albums_for_you:$userId:';
+    final keys = _cacheBox.keys.where((k) => k.toString().startsWith(prefix));
+    await _cacheBox.deleteAll(keys);
+  }
+
+  @override
+  Future<void> clearUndiscoveredGems({int? page, int? limit}) async {
+    if (page != null && limit != null) {
+      await _cacheBox.delete(_undiscoveredCacheKey(page: page, limit: limit));
+      return;
+    }
+
+    final userId = _supabase.auth.currentUser?.id ?? 'anonymous';
+    final prefix = 'undiscovered_gems:$userId:';
     final keys = _cacheBox.keys.where((k) => k.toString().startsWith(prefix));
     await _cacheBox.deleteAll(keys);
   }

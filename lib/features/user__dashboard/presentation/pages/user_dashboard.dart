@@ -43,12 +43,14 @@ class _UserDashboardState extends State<UserDashboard> {
   late final ConnectivityService _connectivityService;
   Timer? _backendRecoveryTimer;
   StreamSubscription<ConnectivityStatus>? _connectivitySubscription;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _dashboardCubit = GetIt.I<UserDashboardCubit>()..load(limit: 32);
+    _dashboardCubit = GetIt.I<UserDashboardCubit>()..load(limit: 72);
     _connectivityService = serviceLocator<ConnectivityService>();
+    _scrollController.addListener(_onScroll);
     if (kDebugMode) {
       debugPrint("UserDashboard initialized");
     }
@@ -68,10 +70,25 @@ class _UserDashboardState extends State<UserDashboard> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _connectivitySubscription?.cancel();
     _backendRecoveryTimer?.cancel();
     _dashboardCubit.close();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (maxScroll - currentScroll <= 400) {
+      if (_dashboardCubit.loadedSectionIndex >= 6) {
+        _dashboardCubit.loadMoreSuggestedTracks();
+      } else {
+        _dashboardCubit.loadNextSection();
+      }
+    }
   }
 
   Future<void> _checkAndShowOnboardingIfMissing() async {
@@ -390,13 +407,16 @@ class _UserDashboardState extends State<UserDashboard> {
                     return previous.errorMadeForYou !=
                             current.errorMadeForYou ||
                         previous.errorTrending != current.errorTrending ||
-                        previous.errorAlbumsForYou != current.errorAlbumsForYou;
+                        previous.errorAlbumsForYou != current.errorAlbumsForYou ||
+                        previous.errorUndiscoveredGems !=
+                            current.errorUndiscoveredGems;
                   },
                   listener: (context, state) {
                     final message =
                         state.errorMadeForYou ??
                         state.errorTrending ??
-                        state.errorAlbumsForYou;
+                        state.errorAlbumsForYou ??
+                        state.errorUndiscoveredGems;
                     if (message == null) return;
                     if (state.hasRetryableError) {
                       _startBackendRecoveryMonitor();
@@ -415,7 +435,7 @@ class _UserDashboardState extends State<UserDashboard> {
                       final suggestedTrackItems = _collectUniqueItems(
                         state,
                         type: DashboardItemType.track,
-                        limit: 12,
+                        limit: 24,
                       ).map((item) => _toMediaItem(context, item)).toList();
 
                       final albumsForYouItems = state.albumsForYou
@@ -425,19 +445,29 @@ class _UserDashboardState extends State<UserDashboard> {
                       final playlistItems = _collectUniqueItems(
                         state,
                         type: DashboardItemType.playlist,
-                        limit: 8,
+                        limit: 16,
                       ).map((item) => _toMediaItem(context, item)).toList();
 
                       final trendingItems = _collectUniqueItems(
                         state,
-                        limit: 10,
+                        limit: 20,
                       ).map((item) => _toMediaItem(context, item)).toList();
 
-                      final topArtists = _collectTopArtists(state, limit: 10);
+                      final topArtists = _collectTopArtists(state, limit: 15);
+
+                      final undiscoveredGemsItems = state.undiscoveredGems
+                          .map((item) => _toMediaItem(context, item))
+                          .toList();
+
+                      final infiniteSuggestedTrackItems = state.infiniteSuggestedTracks
+                          .map((item) => _toMediaItem(context, item))
+                          .toList();
+
                       return RefreshIndicator(
                         onRefresh: () =>
                             _dashboardCubit.load(forceRefresh: true),
                         child: CustomScrollView(
+                          controller: _scrollController,
                           physics: const AlwaysScrollableScrollPhysics(),
                           slivers: [
                             SliverToBoxAdapter(
@@ -540,128 +570,221 @@ class _UserDashboardState extends State<UserDashboard> {
                                 ),
                               ),
 
-                            SliverToBoxAdapter(
-                              child: SizedBox(height: isCompact ? 10 : 14),
-                            ),
-                            SliverToBoxAdapter(
-                              child: SectionHeader(
-                                title: 'Trending picks',
-                                onSeeAll: () =>
-                                    _openTrendingPicks(context, state),
-                              ),
-                            ),
-                            if (state.loadingTrending)
-                              SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16.0,
-                                  ),
-                                  child: const _CompactFeedSkeleton(),
-                                ),
-                              )
-                            else if (state.errorTrending != null)
-                              SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16.0),
-                                  child: _SectionError(
-                                    message: state.errorTrending!,
-                                    onRetry: state.hasRetryableError
-                                        ? null
-                                        : () => context
-                                              .read<UserDashboardCubit>()
-                                              .load(forceRefresh: true),
-                                  ),
-                                ),
-                              )
-                            else
-                              SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                  ),
-                                  child: _CompactFeedSection(
-                                    items: trendingItems,
-                                  ),
-                                ),
-                              ),
-
-                            SliverToBoxAdapter(
-                              child: SizedBox(height: isCompact ? 10 : 14),
-                            ),
-                            SliverToBoxAdapter(
-                              child: SectionHeader(
-                                title: 'Albums for you',
-                                onSeeAll: () =>
-                                    _openAlbumsForYou(context, state),
-                              ),
-                            ),
-                            if (state.loadingAlbumsForYou &&
-                                albumsForYouItems.isEmpty)
-                              SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16.0,
-                                  ),
-                                  child: _HorizontalSectionSkeleton(
-                                    cardWidth: isCompact ? 128 : 142,
-                                  ),
-                                ),
-                              )
-                            else if (state.errorAlbumsForYou != null &&
-                                albumsForYouItems.isEmpty)
-                              SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16.0),
-                                  child: _SectionError(
-                                    message: state.errorAlbumsForYou!,
-                                    onRetry: state.hasRetryableError
-                                        ? null
-                                        : () => context
-                                              .read<UserDashboardCubit>()
-                                              .load(forceRefresh: true),
-                                  ),
-                                ),
-                              )
-                            else
-                              SliverToBoxAdapter(
-                                child: HorizontalMediaSection(
-                                  title: '',
-                                  items: albumsForYouItems,
-                                  cardWidth: isCompact ? 128 : 142,
-                                ),
-                              ),
-
-                            if (playlistItems.isNotEmpty)
+                            if (state.trending.isNotEmpty ||
+                                state.loadingTrending ||
+                                _dashboardCubit.loadedSectionIndex >= 2) ...[
                               SliverToBoxAdapter(
                                 child: SizedBox(height: isCompact ? 10 : 14),
                               ),
-                            if (playlistItems.isNotEmpty)
                               SliverToBoxAdapter(
-                                child: const SectionHeader(
-                                  title: 'Playlists to try',
+                                child: SectionHeader(
+                                  title: 'Trending picks',
+                                  onSeeAll: () =>
+                                      _openTrendingPicks(context, state),
                                 ),
                               ),
-                            if (playlistItems.isNotEmpty)
-                              SliverToBoxAdapter(
-                                child: HorizontalMediaSection(
-                                  title: '',
-                                  items: playlistItems,
-                                  cardWidth: isCompact ? 128 : 142,
+                              if (state.loadingTrending && state.trending.isEmpty)
+                                const SliverToBoxAdapter(
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 16.0,
+                                    ),
+                                    child: _CompactFeedSkeleton(),
+                                  ),
+                                )
+                              else if (state.errorTrending != null &&
+                                  state.trending.isEmpty)
+                                SliverToBoxAdapter(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: _SectionError(
+                                      message: state.errorTrending!,
+                                      onRetry: state.hasRetryableError
+                                          ? null
+                                          : () => _dashboardCubit.loadNextSection(),
+                                    ),
+                                  ),
+                                )
+                              else
+                                SliverToBoxAdapter(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    child: _CompactFeedSection(
+                                      items: trendingItems,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                            ],
 
-                            if (topArtists.isNotEmpty)
+                            if (state.albumsForYou.isNotEmpty ||
+                                state.loadingAlbumsForYou ||
+                                _dashboardCubit.loadedSectionIndex >= 3) ...[
+                              SliverToBoxAdapter(
+                                child: SizedBox(height: isCompact ? 10 : 14),
+                              ),
+                              SliverToBoxAdapter(
+                                child: SectionHeader(
+                                  title: 'Albums for you',
+                                  onSeeAll: () =>
+                                      _openAlbumsForYou(context, state),
+                                ),
+                              ),
+                              if (state.loadingAlbumsForYou &&
+                                  albumsForYouItems.isEmpty)
+                                SliverToBoxAdapter(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16.0,
+                                    ),
+                                    child: _HorizontalSectionSkeleton(
+                                      cardWidth: isCompact ? 128 : 142,
+                                    ),
+                                  ),
+                                )
+                              else if (state.errorAlbumsForYou != null &&
+                                  albumsForYouItems.isEmpty)
+                                SliverToBoxAdapter(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: _SectionError(
+                                      message: state.errorAlbumsForYou!,
+                                      onRetry: state.hasRetryableError
+                                          ? null
+                                          : () => _dashboardCubit.loadNextSection(),
+                                    ),
+                                  ),
+                                )
+                              else
+                                SliverToBoxAdapter(
+                                  child: HorizontalMediaSection(
+                                    title: '',
+                                    items: albumsForYouItems,
+                                    cardWidth: isCompact ? 128 : 142,
+                                  ),
+                                ),
+                            ],
+
+                            if (_dashboardCubit.loadedSectionIndex >= 4) ...[
+                              if (playlistItems.isNotEmpty) ...[
+                                SliverToBoxAdapter(
+                                  child: SizedBox(height: isCompact ? 10 : 14),
+                                ),
+                                SliverToBoxAdapter(
+                                  child: const SectionHeader(
+                                    title: 'Playlists to try',
+                                  ),
+                                ),
+                                SliverToBoxAdapter(
+                                  child: HorizontalMediaSection(
+                                    title: '',
+                                    items: playlistItems,
+                                    cardWidth: isCompact ? 128 : 142,
+                                  ),
+                                ),
+                              ],
+                              if (topArtists.isNotEmpty) ...[
+                                SliverToBoxAdapter(
+                                  child: SizedBox(height: isCompact ? 10 : 14),
+                                ),
+                                SliverToBoxAdapter(
+                                  child: const SectionHeader(
+                                    title: 'Artists to explore',
+                                  ),
+                                ),
+                                SliverToBoxAdapter(
+                                  child: _ArtistAvatarsSection(
+                                    artists: topArtists,
+                                  ),
+                                ),
+                              ],
+                            ],
+
+                            if (state.undiscoveredGems.isNotEmpty ||
+                                state.loadingUndiscoveredGems ||
+                                _dashboardCubit.loadedSectionIndex >= 5) ...[
+                              SliverToBoxAdapter(
+                                child: SizedBox(height: isCompact ? 10 : 14),
+                              ),
                               SliverToBoxAdapter(
                                 child: const SectionHeader(
-                                  title: 'Artists to explore',
+                                  title: 'Undiscovered gems',
                                 ),
                               ),
-                            if (topArtists.isNotEmpty)
+                              if (state.loadingUndiscoveredGems &&
+                                  undiscoveredGemsItems.isEmpty)
+                                SliverToBoxAdapter(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16.0,
+                                    ),
+                                    child: _HorizontalSectionSkeleton(
+                                      cardWidth: isCompact ? 132 : 148,
+                                    ),
+                                  ),
+                                )
+                              else if (state.errorUndiscoveredGems != null &&
+                                  undiscoveredGemsItems.isEmpty)
+                                SliverToBoxAdapter(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: _SectionError(
+                                      message: state.errorUndiscoveredGems!,
+                                      onRetry: state.hasRetryableError
+                                          ? null
+                                          : () => _dashboardCubit.loadNextSection(),
+                                    ),
+                                  ),
+                                )
+                              else
+                                SliverToBoxAdapter(
+                                  child: HorizontalMediaSection(
+                                    title: '',
+                                    items: undiscoveredGemsItems,
+                                    cardWidth: isCompact ? 132 : 148,
+                                  ),
+                                ),
+                            ],
+
+                            if (state.infiniteSuggestedTracks.isNotEmpty ||
+                                state.loadingInfiniteSuggestedTracks ||
+                                _dashboardCubit.loadedSectionIndex >= 6) ...[
                               SliverToBoxAdapter(
-                                child: _ArtistAvatarsSection(
-                                  artists: topArtists,
+                                child: SizedBox(height: isCompact ? 10 : 14),
+                              ),
+                              const SliverToBoxAdapter(
+                                child: SectionHeader(
+                                  title: 'More suggested tracks',
                                 ),
                               ),
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  child: _CompactFeedSection(
+                                    items: infiniteSuggestedTrackItems,
+                                  ),
+                                ),
+                              ),
+                              if (state.loadingInfiniteSuggestedTracks)
+                                SliverToBoxAdapter(
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final width = constraints.maxWidth;
+                                      final columns = (width / 420).ceil();
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16.0,
+                                          vertical: 12.0,
+                                        ),
+                                        child: _CompactFeedSkeleton(
+                                          itemCount: columns,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                            ],
 
                             SliverBottomBarSpacing(
                               mobileHeight: isCompact ? 24 : 32,
@@ -858,21 +981,6 @@ class _HeroBanner extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _QuickChip extends StatelessWidget {
-  final String label;
-  const _QuickChip({required this.label});
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Chip(
-      label: Text(label),
-      backgroundColor: theme.colorScheme.surfaceContainerHighest,
-      side: BorderSide.none,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
     );
   }
 }
@@ -1100,7 +1208,8 @@ class _HorizontalSectionSkeleton extends StatelessWidget {
 }
 
 class _CompactFeedSkeleton extends StatelessWidget {
-  const _CompactFeedSkeleton();
+  final int itemCount;
+  const _CompactFeedSkeleton({this.itemCount = 6});
 
   @override
   Widget build(BuildContext context) {
@@ -1112,7 +1221,7 @@ class _CompactFeedSkeleton extends StatelessWidget {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: 6,
+      itemCount: itemCount,
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 420,
         mainAxisExtent: 88,
