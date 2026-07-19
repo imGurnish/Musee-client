@@ -4,10 +4,6 @@ name: Build and Deploy Flutter Web to Netlify
 #   push:
 #     branches: [main]
 #   workflow_dispatch:
-on:
-  push:
-    tags:
-      - 'v*'
 
 jobs:
   build:
@@ -42,6 +38,7 @@ jobs:
             static const String supabaseUrl = "${{ secrets.SUPABASE_URL }}";
             static const String supabaseAnonKey = "${{ secrets.SUPABASE_ANON_KEY }}";
             static const String backendUrl = "${{ secrets.BACKEND_URL }}";
+            static const String webUrl = "https://musee.gurnishsingh.in";
 
             // External Music API
             static const String externalMusicBaseUrl = "${{ secrets.EXTERNAL_MUSIC_BASE_URL }}";

@@ -101,6 +101,9 @@ jobs:
             static const String backendUrl =
                 "${{ secrets.BACKEND_URL }}";
 
+            static const String webUrl =
+              "https://musee.gurnishsingh.in";
+
             // External Music API
 
             static const String externalMusicBaseUrl =
