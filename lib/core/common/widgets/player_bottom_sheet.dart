@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
@@ -12,8 +13,11 @@ import 'package:musee/core/download/download_manager.dart';
 import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
 import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
+import 'package:musee/core/secrets/app_secrets.dart';
+import 'package:musee/core/utils/show_snackbar.dart';
 import 'package:musee/features/user_playlists/presentation/widgets/add_to_playlist_sheet.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
+import 'package:share_plus/share_plus.dart';
 
 bool _isPlayerSheetOpen = false;
 DateTime? _lastPlayerSheetOpenAt;
@@ -922,7 +926,28 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                   const Spacer(),
                   IconButton(
                     tooltip: 'Share',
-                    onPressed: () {},
+                    onPressed: () async {
+                      final state = context.read<PlayerCubit>().state;
+                      final track = state.track;
+                      final trackId = track?.trackId;
+
+                      if (track == null || trackId == null || trackId.isEmpty) {
+                        return;
+                      }
+
+                      final baseUrl = kIsWeb ? Uri.base.origin : AppSecrets.webUrl;
+                      final shareUrl = '$baseUrl/tracks/$trackId';
+
+                      try {
+                        await Share.share(shareUrl);
+                      } catch (_) {
+                        await Clipboard.setData(ClipboardData(text: shareUrl));
+                        if (!context.mounted) {
+                          return;
+                        }
+                        showSnackBar(context, 'Link copied to clipboard!');
+                      }
+                    },
                     icon: const Icon(Icons.share_rounded),
                   ),
                   const SizedBox(width: 8),

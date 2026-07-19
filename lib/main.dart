@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hydrated_bloc/hydrated_bloc.dart';
+import 'package:app_links/app_links.dart';
 import 'package:musee/core/common/cubit/app_user_cubit.dart';
 import 'package:musee/core/common/navigation/app_go_router.dart';
 import 'package:musee/core/theme/app_colors.dart';
@@ -71,6 +72,8 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   late final GoRouter _router;
   late final AppUpdateService _updateService;
+  late final AppLinks _appLinks;
+  StreamSubscription<Uri>? _deepLinkSubscription;
   bool _hasInitializedAuth = false;
   bool _logoutStopHandled = false;
   AppUpdateInfo? _updateInfo;
@@ -84,6 +87,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     _updateService = AppUpdateService();
     // Initialize router with AppUserCubit
     _router = AppGoRouter.createRouter(serviceLocator<AppUserCubit>());
+    _appLinks = AppLinks();
+    _deepLinkSubscription = _appLinks.uriLinkStream.listen(
+      _handleIncomingUri,
+      onError: (Object error) {
+        if (kDebugMode) {
+          debugPrint('[MyApp] Deep link stream error: $error');
+        }
+      },
+    );
+
+    unawaited(_handleInitialDeepLink());
 
     // Add AuthUserLoggedIn event after the first frame to check initial auth state
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -98,6 +112,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _deepLinkSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -128,6 +143,45 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     } finally {
       _isCheckingUpdate = false;
     }
+  }
+
+  Future<void> _handleInitialDeepLink() async {
+    try {
+      final uri = await _appLinks.getInitialLink();
+      if (uri != null) {
+        _handleIncomingUri(uri);
+      }
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('[MyApp] Failed to read initial deep link: $error');
+      }
+    }
+  }
+
+  void _handleIncomingUri(Uri uri) {
+    final path = _normalizeIncomingPath(uri);
+    if (path == null || path.isEmpty) {
+      return;
+    }
+
+    _router.go(path);
+  }
+
+  String? _normalizeIncomingPath(Uri uri) {
+    if (uri.scheme == 'musee') {
+      if (uri.host.isEmpty) {
+        return uri.path.isEmpty ? null : uri.path;
+      }
+
+      final normalizedPath = '/${uri.host}${uri.path}';
+      return normalizedPath == '/' ? null : normalizedPath;
+    }
+
+    if (uri.scheme == 'http' || uri.scheme == 'https') {
+      return uri.path.isEmpty ? '/' : '${uri.path}${uri.hasQuery ? '?${uri.query}' : ''}';
+    }
+
+    return null;
   }
 
   Widget _buildAppFrame(Widget? child) {

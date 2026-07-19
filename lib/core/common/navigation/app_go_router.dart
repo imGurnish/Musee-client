@@ -42,6 +42,7 @@ import 'package:musee/features/user_albums/presentation/pages/user_album_page.da
 import 'package:musee/features/user_playlists/presentation/pages/user_playlist_page.dart';
 import 'package:musee/features/user_playlists/presentation/pages/create_playlist_page.dart';
 import 'package:musee/features/user_playlists/presentation/pages/join_playlist_page.dart';
+import 'package:musee/features/player/presentation/pages/play_track_page.dart';
 import 'package:musee/features/search/presentation/pages/search_suggestions_page.dart';
 import 'package:musee/features/search/presentation/bloc/search_bloc.dart';
 import 'package:musee/features/user_artists/presentation/pages/user_artist_page.dart';
@@ -118,6 +119,24 @@ class AppGoRouter {
                 appState is AppUserLoggedIn &&
                 appState.user.userType == UserType.admin;
             return isAdmin ? Routes.adminArtists : Routes.dashboard;
+          },
+        ),
+
+        GoRoute(
+          path: Routes.playTrackTracks,
+          name: 'play_track_tracks',
+          builder: (context, state) {
+            final id = state.pathParameters['id'] ?? '';
+            return PlayTrackPage(trackId: id);
+          },
+        ),
+
+        GoRoute(
+          path: Routes.playTrackTrack,
+          name: 'play_track_track',
+          builder: (context, state) {
+            final id = state.pathParameters['id'] ?? '';
+            return PlayTrackPage(trackId: id);
           },
         ),
 

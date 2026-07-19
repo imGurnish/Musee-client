@@ -39,6 +39,10 @@ class Routes {
   // User album details
   static const String userAlbum = '/albums/:id';
 
+  // Track playback links
+  static const String playTrackTracks = '/tracks/:id';
+  static const String playTrackTrack = '/track/:id';
+
   // User playlist details
   static const String userPlaylist = '/playlists/:id';
 
