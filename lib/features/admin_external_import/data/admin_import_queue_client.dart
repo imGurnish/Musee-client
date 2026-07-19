@@ -156,4 +156,30 @@ class AdminImportQueueClient {
       );
     }).toList();
   }
+
+  Future<List<Map<String, dynamic>>> getBrokenTracks() async {
+    final response = await _dio.get(
+      '$_baseUrl/broken',
+      options: dio.Options(headers: _authHeaders()),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Failed to fetch broken tracks');
+    }
+    final data = response.data as Map<String, dynamic>;
+    final tracksList = data['tracks'] as List;
+    return tracksList.map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<List<dynamic>> rerunBrokenTracks(List<String> trackIds) async {
+    final response = await _dio.post(
+      '$_baseUrl/rerun-broken',
+      data: {'trackIds': trackIds},
+      options: dio.Options(headers: _authHeaders()),
+    );
+    if (response.statusCode != 202) {
+      throw Exception('Failed to rerun broken tracks');
+    }
+    final data = response.data as Map<String, dynamic>;
+    return data['jobs'] as List<dynamic>;
+  }
 }
