@@ -1,5 +1,10 @@
 import 'dart:async';
 import 'package:musee/core/common/cubit/app_user_cubit.dart';
+import 'package:musee/features/admin_logs/data/datasources/admin_logs_remote_data_source.dart';
+import 'package:musee/features/admin_logs/data/repositories/admin_logs_repository_impl.dart';
+import 'package:musee/features/admin_logs/domain/repository/admin_logs_repository.dart';
+import 'package:musee/features/admin_logs/domain/usecases/stream_logs_usecase.dart';
+import 'package:musee/features/admin_logs/presentation/bloc/admin_logs_cubit.dart';
 import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:dio/dio.dart';
 import 'package:musee/features/auth/data/datasources/auth_remote_data_source.dart';
@@ -355,6 +360,8 @@ Future<void> initDependencies() async {
   _initAdminTracks();
   // admin playlists
   _initAdminPlaylists();
+  // admin logs
+  _initAdminLogs();
 
   serviceLocator.registerLazySingleton<JioSaavnApiClient>(
     () => JioSaavnApiClient(),
@@ -833,6 +840,36 @@ void _initUserOnboarding() {
             serviceLocator<SaveOnboardingPreferencesUseCase>(),
         getUserOnboardingPreferencesUseCase:
             serviceLocator<GetUserOnboardingPreferencesUseCase>(),
+      ),
+    );
+}
+
+void _initAdminLogs() {
+  serviceLocator
+    // remote datasource
+    ..registerLazySingleton<AdminLogsRemoteDataSource>(
+      () => AdminLogsRemoteDataSourceImpl(
+        dio: serviceLocator<Dio>(),
+        baseUrl: AppSecrets.backendUrl,
+        supabaseClient: serviceLocator<SupabaseClient>(),
+      ),
+    )
+    // repository
+    ..registerLazySingleton<AdminLogsRepository>(
+      () => AdminLogsRepositoryImpl(
+        remoteDataSource: serviceLocator<AdminLogsRemoteDataSource>(),
+      ),
+    )
+    // use case
+    ..registerFactory(
+      () => StreamLogsUseCase(
+        repository: serviceLocator<AdminLogsRepository>(),
+      ),
+    )
+    // cubit
+    ..registerFactory(
+      () => AdminLogsCubit(
+        streamLogsUseCase: serviceLocator<StreamLogsUseCase>(),
       ),
     );
 }

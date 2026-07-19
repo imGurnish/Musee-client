@@ -59,7 +59,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 ),
                 const SizedBox(height: 20),
 
-                // Cards grid
                 Expanded(
                   child: GridView.builder(
                     gridDelegate:
@@ -69,7 +68,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                       crossAxisSpacing: 16,
                       mainAxisExtent: 188,
                     ),
-                    itemCount: 12,
+                    itemCount: 13,
                     itemBuilder: (context, index) {
                       final cards = [
                         (
@@ -155,6 +154,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           Icons.dns_rounded,
                           Colors.purpleAccent,
                           Routes.adminStatus,
+                        ),
+                        (
+                          'Server Logs',
+                          'Real-time console output',
+                          Icons.terminal_rounded,
+                          Colors.blueGrey,
+                          Routes.adminLogs,
                         ),
                       ];
 

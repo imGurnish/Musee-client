@@ -32,6 +32,7 @@ import 'package:musee/features/admin_countries/presentation/pages/admin_countrie
 import 'package:musee/features/admin_regions/presentation/pages/admin_regions_page.dart';
 import 'package:musee/features/admin__dashboard/presentation/pages/admin_engagement_page.dart';
 import 'package:musee/features/admin__dashboard/presentation/pages/admin_system_status_page.dart';
+import 'package:musee/features/admin_logs/presentation/pages/admin_logs_page.dart';
 import 'package:musee/init_dependencies.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -408,6 +409,12 @@ class AppGoRouter {
           path: Routes.adminStatus,
           name: 'admin_status',
           builder: (context, state) => const AdminSystemStatusPage(),
+        ),
+
+        GoRoute(
+          path: Routes.adminLogs,
+          name: 'admin_logs',
+          builder: (context, state) => const AdminLogsPage(),
         ),
 
         GoRoute(

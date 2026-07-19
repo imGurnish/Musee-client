@@ -52,6 +52,7 @@ class AdminSidebar extends StatelessWidget {
           _item(context, Icons.map, 'Regions', Routes.adminRegions),
           _item(context, Icons.music_note, 'Tracks', '/admin/tracks'),
           _item(context, Icons.dns_rounded, 'System Status', Routes.adminStatus),
+          _item(context, Icons.terminal_rounded, 'Server Logs', Routes.adminLogs),
           const Spacer(),
           ListTile(
             leading: const Icon(Icons.dashboard_customize),
