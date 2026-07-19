@@ -6,6 +6,7 @@ import 'package:musee/core/secrets/app_secrets.dart';
 import 'package:pointycastle/api.dart';
 import 'package:pointycastle/block/des_base.dart';
 import 'package:pointycastle/block/modes/ecb.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class JioSaavnSearchItem {
   final String id;
@@ -149,18 +150,20 @@ class JioSaavnPlaylistDetail {
 
 class JioSaavnApiClient {
   static const _timeout = Duration(seconds: 20);
+  final SupabaseClient _supabase;
 
-  static const _headers = {
-    'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-    'Accept': 'application/json,text/plain,*/*',
-    'Origin': AppSecrets.externalMusicOrigin,
-    'Referer': AppSecrets.externalMusicReferer,
-    'Cookie': 'L=english',
-  };
+  JioSaavnApiClient(this._supabase);
+
+  Map<String, String> get _headers {
+    final token = _supabase.auth.currentSession?.accessToken;
+    return {
+      'Accept': 'application/json,text/plain,*/*',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
 
   Uri _uri(Map<String, String> query) {
-    return Uri.parse(AppSecrets.externalMusicBaseUrl).replace(queryParameters: {
+    return Uri.parse('${AppSecrets.backendUrl}/api/admin/import/proxy').replace(queryParameters: {
       ...query,
       '_format': 'json',
       '_marker': '0',
@@ -413,6 +416,8 @@ class JioSaavnApiClient {
     }
     return (response.bodyBytes, '${song.id}.mp3');
   }
+
+  String? getPlayableUrl(JioSaavnSongDetail song) => _getPlayableUrl(song);
 
   String? _getPlayableUrl(JioSaavnSongDetail song) {
     if (song.encryptedMediaUrl != null && song.encryptedMediaUrl!.isNotEmpty) {

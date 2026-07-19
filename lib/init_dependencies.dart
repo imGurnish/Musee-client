@@ -365,7 +365,7 @@ Future<void> initDependencies() async {
   _initAdminLogs();
 
   serviceLocator.registerLazySingleton<JioSaavnApiClient>(
-    () => JioSaavnApiClient(),
+    () => JioSaavnApiClient(serviceLocator<SupabaseClient>()),
   );
   serviceLocator.registerLazySingleton<AdminImportQueueClient>(
     () => AdminImportQueueClient(
