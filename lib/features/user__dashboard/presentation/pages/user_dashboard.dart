@@ -54,6 +54,11 @@ class _UserDashboardState extends State<UserDashboard> {
     if (kDebugMode) {
       debugPrint("UserDashboard initialized");
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _checkScrollOrLoadMore(_dashboardCubit.state);
+      }
+    });
 
     _connectivitySubscription = _connectivityService.statusStream.listen((
       status,
@@ -76,6 +81,27 @@ class _UserDashboardState extends State<UserDashboard> {
     _backendRecoveryTimer?.cancel();
     _dashboardCubit.close();
     super.dispose();
+  }
+
+  void _checkScrollOrLoadMore(UserDashboardState state) {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_scrollController.hasClients) {
+        final position = _scrollController.position;
+        if (position.maxScrollExtent == 0 ||
+            (position.maxScrollExtent - position.pixels <= 400)) {
+          if (_dashboardCubit.loadedSectionIndex < 6 &&
+              !state.loadingMadeForYou &&
+              !state.loadingTrending &&
+              !state.loadingAlbumsForYou &&
+              !state.loadingUndiscoveredGems &&
+              !state.loadingInfiniteSuggestedTracks) {
+            _dashboardCubit.loadNextSection();
+          }
+        }
+      }
+    });
   }
 
   void _onScroll() {
@@ -404,14 +430,18 @@ class _UserDashboardState extends State<UserDashboard> {
 
                 return BlocListener<UserDashboardCubit, UserDashboardState>(
                   listenWhen: (previous, current) {
-                    return previous.errorMadeForYou !=
-                            current.errorMadeForYou ||
+                    return previous.errorMadeForYou != current.errorMadeForYou ||
                         previous.errorTrending != current.errorTrending ||
                         previous.errorAlbumsForYou != current.errorAlbumsForYou ||
-                        previous.errorUndiscoveredGems !=
-                            current.errorUndiscoveredGems;
+                        previous.errorUndiscoveredGems != current.errorUndiscoveredGems ||
+                        previous.loadingMadeForYou != current.loadingMadeForYou ||
+                        previous.loadingTrending != current.loadingTrending ||
+                        previous.loadingAlbumsForYou != current.loadingAlbumsForYou ||
+                        previous.loadingUndiscoveredGems != current.loadingUndiscoveredGems;
                   },
                   listener: (context, state) {
+                    _checkScrollOrLoadMore(state);
+
                     final message =
                         state.errorMadeForYou ??
                         state.errorTrending ??
@@ -432,6 +462,7 @@ class _UserDashboardState extends State<UserDashboard> {
                   },
                   child: BlocBuilder<UserDashboardCubit, UserDashboardState>(
                     builder: (context, state) {
+                      _checkScrollOrLoadMore(state);
                       final suggestedTrackItems = _collectUniqueItems(
                         state,
                         type: DashboardItemType.track,
