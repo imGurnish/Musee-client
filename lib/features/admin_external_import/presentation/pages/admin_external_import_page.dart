@@ -31,6 +31,27 @@ class _AdminExternalImportPageState extends State<AdminExternalImportPage> {
   int get _activeJobsCount => _jobs.values.where((job) => !job.isTerminal).length;
 
   @override
+  void initState() {
+    super.initState();
+    _loadRecentJobs();
+  }
+
+  Future<void> _loadRecentJobs() async {
+    try {
+      final jobs = await _queueClient.getRecentJobs();
+      if (!mounted) return;
+      setState(() {
+        for (final job in jobs) {
+          _jobs[job.jobId] = job;
+        }
+      });
+      _ensurePolling();
+    } catch (_) {
+      // Ignore initial load errors or handle gracefully
+    }
+  }
+
+  @override
   void dispose() {
     _pollTimer?.cancel();
     _queryCtrl.dispose();

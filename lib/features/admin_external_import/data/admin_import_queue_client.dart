@@ -29,7 +29,7 @@ class ImportJobStatus {
     this.result,
   });
 
-  bool get isTerminal => status == 'success' || status == 'failed' || status == 'not_found';
+  bool get isTerminal => status == 'success' || status == 'completed' || status == 'failed' || status == 'not_found';
 
   factory ImportJobStatus.fromJson(Map<String, dynamic> json) {
     DateTime? toDate(dynamic value) {
@@ -130,5 +130,30 @@ class AdminImportQueueClient {
 
     final payload = response.data as Map<String, dynamic>;
     return ImportJobStatus.fromJson(payload);
+  }
+
+  Future<List<ImportJobStatus>> getRecentJobs() async {
+    final response = await _supabase
+        .from('import_jobs')
+        .select()
+        .order('created_at', ascending: false)
+        .limit(20);
+
+    return (response as List).map((json) {
+      DateTime? toDate(dynamic value) {
+        if (value == null) return null;
+        return DateTime.tryParse(value.toString());
+      }
+      return ImportJobStatus(
+        jobId: json['job_id']?.toString() ?? '',
+        type: json['type']?.toString() ?? '',
+        sourceId: json['source_id']?.toString() ?? '',
+        status: json['status']?.toString() ?? 'queued',
+        progress: int.tryParse('${json['progress'] ?? 0}') ?? 0,
+        error: json['error']?.toString(),
+        createdAt: toDate(json['created_at']),
+        finishedAt: toDate(json['finished_at']),
+      );
+    }).toList();
   }
 }
