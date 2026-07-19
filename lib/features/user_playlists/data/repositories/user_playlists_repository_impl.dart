@@ -388,6 +388,7 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
                   artistId: entry['artist_id']?.toString() ?? '',
                   name: entry['name']?.toString(),
                   avatarUrl: entry['avatar_url']?.toString(),
+                  role: entry['role']?.toString(),
                 ),
               )
               .toList()
@@ -402,6 +403,7 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
                   artistId: entry['artist_id']?.toString() ?? '',
                   name: entry['name']?.toString(),
                   avatarUrl: entry['avatar_url']?.toString(),
+                  role: entry['role']?.toString(),
                 ),
               )
               .toList()
@@ -419,6 +421,7 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
                           artistId: artist['artist_id']?.toString() ?? '',
                           name: artist['name']?.toString(),
                           avatarUrl: artist['avatar_url']?.toString(),
+                          role: artist['role']?.toString(),
                         ),
                       )
                       .toList()
@@ -572,6 +575,7 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
               artistId: a.artistId,
               name: a.name,
               avatarUrl: a.avatarUrl,
+              role: a.role,
             ),
           )
           .toList(),
@@ -590,6 +594,7 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
                       artistId: a.artistId,
                       name: a.name,
                       avatarUrl: a.avatarUrl,
+                      role: a.role,
                     ),
                   )
                   .toList(),
@@ -604,6 +609,7 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
               artistId: c.artistId,
               name: c.name,
               avatarUrl: c.avatarUrl,
+              role: c.role,
             ),
           )
           .toList(),
@@ -714,6 +720,7 @@ class UserPlaylistsRepositoryImpl implements UserPlaylistsRepository {
                 artistId: a.artistId,
                 name: a.name,
                 avatarUrl: a.avatarUrl,
+                role: a.role,
               ),
             )
             .toList(),

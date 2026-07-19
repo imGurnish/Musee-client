@@ -991,6 +991,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     String? albumId,
     String? playlistId,
     bool disableQueueOverwrite = false,
+    List<PlayerTrackArtist>? artistsList,
   }) async {
     _userPaused = false;
     if (state.track?.trackId != null && state.track?.trackId != trackId) {
@@ -1018,6 +1019,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       artistId: artistId,
       albumId: albumId,
       playlistId: playlistId,
+      artists: artistsList ?? queuedItem?.artistsList ?? const [],
     );
 
     emit(
@@ -1093,6 +1095,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
                   artistId: matchedItem?.artistId ?? artistId ?? state.track?.artistId,
                   albumId: matchedItem?.albumId ?? albumId ?? state.track?.albumId,
                   playlistId: matchedItem?.playlistId ?? playlistId ?? state.track?.playlistId,
+                  artists: matchedItem?.artistsList ?? state.track?.artists ?? const [],
                 )
               : state.track;
 
@@ -1138,6 +1141,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       artistId: artistId,
       albumId: albumId,
       playlistId: playlistId,
+      artists: artistsList ?? queuedItem?.artistsList ?? const [],
     );
 
     await playTrack(track);
@@ -1567,6 +1571,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       artistId: item.artistId,
       albumId: item.albumId,
       playlistId: item.playlistId,
+      artists: item.artistsList,
     );
     emit(
       state.copyWith(
@@ -1616,6 +1621,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       artistId: item.artistId,
       albumId: item.albumId,
       playlistId: item.playlistId,
+      artists: item.artistsList,
     );
 
     try {

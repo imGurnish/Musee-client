@@ -16,6 +16,7 @@ class PlayerTrack extends Equatable {
   final String? artistId;
   final String? albumId;
   final String? playlistId;
+  final List<PlayerTrackArtist> artists;
 
   const PlayerTrack({
     this.trackId,
@@ -30,6 +31,7 @@ class PlayerTrack extends Equatable {
     this.artistId,
     this.albumId,
     this.playlistId,
+    this.artists = const [],
   });
 
   PlayerTrack copyWith({
@@ -45,6 +47,7 @@ class PlayerTrack extends Equatable {
     String? artistId,
     String? albumId,
     String? playlistId,
+    List<PlayerTrackArtist>? artists,
   }) => PlayerTrack(
     trackId: trackId ?? this.trackId,
     url: url ?? this.url,
@@ -58,6 +61,7 @@ class PlayerTrack extends Equatable {
     artistId: artistId ?? this.artistId,
     albumId: albumId ?? this.albumId,
     playlistId: playlistId ?? this.playlistId,
+    artists: artists ?? this.artists,
   );
 
   @override
@@ -74,6 +78,7 @@ class PlayerTrack extends Equatable {
     artistId,
     albumId,
     playlistId,
+    artists,
   ];
 }
 

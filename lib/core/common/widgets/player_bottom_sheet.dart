@@ -13,9 +13,42 @@ import 'package:musee/core/cache/services/track_cache_service.dart';
 import 'package:musee/core/cache/models/cached_track.dart';
 import 'package:musee/features/listening_history/data/repositories/listening_history_repository.dart';
 import 'package:musee/features/user_playlists/presentation/widgets/add_to_playlist_sheet.dart';
+import 'package:musee/features/player/domain/entities/queue_item.dart';
 
 bool _isPlayerSheetOpen = false;
 DateTime? _lastPlayerSheetOpenAt;
+
+List<PlayerTrackArtist> _sortedArtists(List<PlayerTrackArtist> artists) {
+  final sorted = List<PlayerTrackArtist>.from(artists);
+  sorted.sort((a, b) {
+    final aRole = a.role?.toLowerCase();
+    final bRole = b.role?.toLowerCase();
+    if (aRole == 'owner' && bRole != 'owner') return -1;
+    if (bRole == 'owner' && aRole != 'owner') return 1;
+    return 0;
+  });
+  return sorted;
+}
+
+String _artistSubtitle(PlayerTrack? track) {
+  final artists = track?.artists ?? const <PlayerTrackArtist>[];
+  if (artists.isEmpty) return track?.artist ?? 'Unknown Artist';
+  return _sortedArtists(artists)
+      .map((artist) => artist.name)
+      .where((name) => name.isNotEmpty)
+      .join(', ');
+}
+
+String? _ownerArtistId(PlayerTrack? track) {
+  final artists = track?.artists ?? const <PlayerTrackArtist>[];
+  if (artists.isEmpty) return track?.artistId;
+  final sortedArtists = _sortedArtists(artists);
+  final ownerArtist = sortedArtists.firstWhere(
+    (artist) => artist.role?.toLowerCase() == 'owner',
+    orElse: () => sortedArtists.first,
+  );
+  return ownerArtist.id.isNotEmpty ? ownerArtist.id : track?.artistId;
+}
 
 /// Shows the full-screen player bottom sheet, styled similar to Spotify.
 Future<void> showPlayerBottomSheet(
@@ -33,6 +66,7 @@ Future<void> showPlayerBottomSheet(
   String? playlistId,
   bool openSheet = true,
   bool disableQueueOverwrite = false,
+  List<PlayerTrackArtist>? artistsList,
 }) async {
   final cubit = GetIt.I<PlayerCubit>();
 
@@ -57,6 +91,7 @@ Future<void> showPlayerBottomSheet(
           albumId: albumId,
           playlistId: playlistId,
           disableQueueOverwrite: disableQueueOverwrite,
+          artistsList: artistsList,
         );
         return;
       }
@@ -71,6 +106,7 @@ Future<void> showPlayerBottomSheet(
           localImagePath: localImagePath,
           headers: headers,
           trackId: trackId,
+          artists: artistsList ?? const [],
         );
 
         final currentUrl = cubit.state.track?.url;
@@ -367,6 +403,11 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                 title: const Text('Add to playlist'),
                 onTap: () => Navigator.pop(context, 'playlist'),
               ),
+              ListTile(
+                leading: const Icon(Icons.info_outline_rounded),
+                title: const Text('Artist Info'),
+                onTap: () => Navigator.pop(context, 'artist_info'),
+              ),
             ],
           ),
         );
@@ -383,7 +424,96 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
         artistNames: track.artist,
         imageUrl: track.imageUrl,
       );
+    } else if (action == 'artist_info') {
+      final destination = await _showArtistInfoSheet(context, track!);
+      if (destination != null) {
+        if (mounted) {
+          Navigator.of(context, rootNavigator: true).maybePop();
+          context.push(destination);
+        }
+      }
     }
+  }
+
+  Future<String?> _showArtistInfoSheet(BuildContext context, PlayerTrack track) async {
+    final theme = Theme.of(context);
+    final artists = track.artists;
+    final albumId = track.albumId;
+    final albumName = track.album;
+
+    return showModalBottomSheet<String>(
+      context: context,
+      useRootNavigator: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Artist Info',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (artists.isEmpty)
+                  ListTile(
+                    leading: const Icon(Icons.person_rounded),
+                    title: Text(track.artist),
+                    onTap: () {
+                      final artistId = track.artistId;
+                      if (artistId != null && artistId.isNotEmpty) {
+                        Navigator.pop(context, '/artists/$artistId');
+                      } else {
+                        Navigator.pop(context);
+                      }
+                    },
+                  )
+                else
+                  ...artists.map((artist) {
+                    return ListTile(
+                      leading: const Icon(Icons.person_rounded),
+                      title: Text(artist.name),
+                      subtitle: artist.role != null
+                          ? Text(artist.role![0].toUpperCase() +
+                              artist.role!.substring(1).toLowerCase())
+                          : null,
+                      onTap: () {
+                        Navigator.pop(context, '/artists/${artist.id}');
+                      },
+                    );
+                  }),
+                if (albumId != null &&
+                    albumId.isNotEmpty &&
+                    albumName != null &&
+                    albumName.isNotEmpty) ...[
+                  const Divider(),
+                  Text(
+                    'Album Info',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ListTile(
+                    leading: const Icon(Icons.album_rounded),
+                    title: Text(albumName),
+                    onTap: () {
+                      Navigator.pop(context, '/albums/$albumId');
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -407,9 +537,8 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
           // track changes.  The images are warmed into Flutter's image
           // cache so the next swipe animation shows artwork instantly.
           _preloadAdjacentImages(context, state);
-          final artist = state.track?.artist ?? 'Unknown Artist';
-            final subtitleText = artist;
-            final subtitleColor =
+          final subtitleText = _artistSubtitle(state.track);
+          final subtitleColor =
               theme.textTheme.bodyLarge?.color?.withValues(alpha: 0.85);
               final sourceTitle = state.track?.album?.trim() ?? '';
           final imageUrl = state.track?.imageUrl;
@@ -598,16 +727,17 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                                           color: subtitleColor,
                                         ),
                                         onTap: () {
-                                          final artistId = state.track?.artistId;
-                                          if (artistId != null) {
+                                          final ownerArtistId = _ownerArtistId(state.track);
+                                          if (ownerArtistId != null && ownerArtistId.isNotEmpty) {
                                             Navigator.of(
                                               context,
                                               rootNavigator: true,
                                             ).maybePop();
-                                            context.push('/artists/$artistId');
+                                            context.push('/artists/$ownerArtistId');
                                           }
                                         },
-                                        enabled: state.track?.artistId != null,
+                                        enabled: (state.track?.artists.isNotEmpty ?? false) ||
+                                            state.track?.artistId != null,
                                       ),
                                     ],
                                   ),

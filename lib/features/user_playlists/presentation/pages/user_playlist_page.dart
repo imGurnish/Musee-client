@@ -877,6 +877,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
               required String artist,
               String? imageUrl,
               String? artistId,
+              List<PlayerTrackArtist>? artistsList,
             }) async {
               if (!context.mounted) return;
               // Don't pre-fetch URL — showPlayerBottomSheet with trackId
@@ -893,6 +894,7 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                 playlistId: playlist.playlistId,
                 openSheet: false,
                 disableQueueOverwrite: true,
+                artistsList: artistsList,
               );
             }
 
@@ -965,21 +967,43 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                 onPressed: canPlayPlaylist
                                     ? () async {
                                         final first = playlist.tracks.first;
-                                        final firstArtist = first.artists.isNotEmpty
-                                            ? first.artists.first
+                                        final sortedFirstArtists = List<UserPlaylistArtist>.from(first.artists)
+                                          ..sort((a, b) {
+                                            final aRole = a.role?.toLowerCase();
+                                            final bRole = b.role?.toLowerCase();
+                                            if (aRole == 'owner' && bRole != 'owner') return -1;
+                                            if (bRole == 'owner' && aRole != 'owner') return 1;
+                                            return 0;
+                                          });
+                                        final firstArtist = sortedFirstArtists.isNotEmpty
+                                            ? sortedFirstArtists.first
                                             : null;
                                         final artists = firstArtist?.name ?? creatorName;
                                         // Replace queue with all playlist tracks
                                         final queueItems = playlist.tracks
                                             .map((track) {
+                                              final sortedArtists = List<UserPlaylistArtist>.from(track.artists)
+                                                ..sort((a, b) {
+                                                  final aRole = a.role?.toLowerCase();
+                                                  final bRole = b.role?.toLowerCase();
+                                                  if (aRole == 'owner' && bRole != 'owner') return -1;
+                                                  if (bRole == 'owner' && aRole != 'owner') return 1;
+                                                  return 0;
+                                                });
                                               final trackArtists =
-                                                  track.artists.isNotEmpty
-                                                      ? track.artists
+                                                  sortedArtists.isNotEmpty
+                                                      ? sortedArtists
                                                             .map((a) =>
                                                                 a.name ??
                                                                 'Unknown Artist')
                                                             .join(', ')
                                                       : creatorName;
+                                              final artistsList = sortedArtists.map((a) => PlayerTrackArtist(
+                                                id: a.artistId,
+                                                name: a.name ?? 'Unknown Artist',
+                                                role: a.role,
+                                              )).toList();
+                                              final ownerArtistId = sortedArtists.isNotEmpty ? sortedArtists.first.artistId : null;
                                               return QueueItem(
                                                 trackId: track.trackId,
                                                 title: track.title,
@@ -988,16 +1012,24 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                                 imageUrl: track.coverUrl,
                                                 durationSeconds: track.duration,
                                                 playlistId: playlist.playlistId,
+                                                artistId: ownerArtistId,
+                                                artistsList: artistsList,
                                               );
                                             })
                                             .toList();
                                         await playerCubit.replaceQueue(queueItems);
+                                        final firstArtistsList = sortedFirstArtists.map((a) => PlayerTrackArtist(
+                                          id: a.artistId,
+                                          name: a.name ?? 'Unknown Artist',
+                                          role: a.role,
+                                        )).toList();
                                         await playTrack(
                                           first.trackId,
                                           title: first.title,
                                           artist: artists,
                                           imageUrl: first.coverUrl,
                                           artistId: firstArtist?.artistId,
+                                          artistsList: firstArtistsList,
                                         );
                                       }
                                     : null,
@@ -1072,20 +1104,36 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                         ? () async {
                                             final randomTrack = playlist.tracks[
                                                 Random().nextInt(trackCount)];
-                                            final randomArtist = randomTrack.artists.isNotEmpty
-                                                ? randomTrack.artists.first
+                                            final sortedRandomArtists = List<UserPlaylistArtist>.from(randomTrack.artists)
+                                              ..sort((a, b) {
+                                                final aRole = a.role?.toLowerCase();
+                                                final bRole = b.role?.toLowerCase();
+                                                if (aRole == 'owner' && bRole != 'owner') return -1;
+                                                if (bRole == 'owner' && aRole != 'owner') return 1;
+                                                return 0;
+                                              });
+                                            final randomArtist = sortedRandomArtists.isNotEmpty
+                                                ? sortedRandomArtists.first
                                                 : null;
                                             final artists = randomArtist != null
-                                                ? randomTrack.artists
+                                                ? sortedRandomArtists
                                                       .map((a) => a.name ?? 'Unknown Artist')
                                                       .join(', ')
                                                 : creatorName;
                                             // Replace queue with all playlist tracks
                                             final queueItems = playlist.tracks
                                                 .map((track) {
+                                                  final sortedArtists = List<UserPlaylistArtist>.from(track.artists)
+                                                    ..sort((a, b) {
+                                                      final aRole = a.role?.toLowerCase();
+                                                      final bRole = b.role?.toLowerCase();
+                                                      if (aRole == 'owner' && bRole != 'owner') return -1;
+                                                      if (bRole == 'owner' && aRole != 'owner') return 1;
+                                                      return 0;
+                                                    });
                                                   final trackArtists =
-                                                      track.artists.isNotEmpty
-                                                      ? track.artists
+                                                      sortedArtists.isNotEmpty
+                                                      ? sortedArtists
                                                             .map(
                                                               (a) =>
                                                                   a.name ??
@@ -1093,6 +1141,11 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                                             )
                                                             .join(', ')
                                                       : creatorName;
+                                                  final artistsList = sortedArtists.map((a) => PlayerTrackArtist(
+                                                    id: a.artistId,
+                                                    name: a.name ?? 'Unknown Artist',
+                                                    role: a.role,
+                                                  )).toList();
                                                   return QueueItem(
                                                     trackId: track.trackId,
                                                     title: track.title,
@@ -1102,18 +1155,26 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                                     durationSeconds:
                                                         track.duration,
                                                     playlistId: playlist.playlistId,
+                                                    artistId: sortedArtists.isNotEmpty ? sortedArtists.first.artistId : null,
+                                                    artistsList: artistsList,
                                                   );
                                                 })
                                                 .toList();
                                             final clickedIndex = playlist.tracks.indexOf(randomTrack);
                                             await playerCubit
                                                 .replaceQueue(queueItems, initialIndex: clickedIndex >= 0 ? clickedIndex : 0);
+                                            final randomArtistsList = sortedRandomArtists.map((a) => PlayerTrackArtist(
+                                              id: a.artistId,
+                                              name: a.name ?? 'Unknown Artist',
+                                              role: a.role,
+                                            )).toList();
                                             await playTrack(
                                               randomTrack.trackId,
                                               title: randomTrack.title,
                                               artist: artists,
                                               imageUrl: randomTrack.coverUrl,
                                               artistId: randomArtist?.artistId,
+                                              artistsList: randomArtistsList,
                                             );
                                           }
                                         : null,
@@ -1248,8 +1309,16 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
                       final t = playlist.tracks[index];
-                      final artists = t.artists.isNotEmpty
-                          ? t.artists
+                      final tSortedArtists = List<UserPlaylistArtist>.from(t.artists)
+                        ..sort((a, b) {
+                          final aRole = a.role?.toLowerCase();
+                          final bRole = b.role?.toLowerCase();
+                          if (aRole == 'owner' && bRole != 'owner') return -1;
+                          if (bRole == 'owner' && aRole != 'owner') return 1;
+                          return 0;
+                        });
+                      final artists = tSortedArtists.isNotEmpty
+                          ? tSortedArtists
                               .map((a) => a.name ?? 'Unknown')
                               .join(', ')
                           : creatorName;
@@ -1276,14 +1345,27 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                               // Replace queue with all playlist tracks starting from this one
                               final queueItems = playlist.tracks
                                   .map((track) {
+                                    final sortedArtists = List<UserPlaylistArtist>.from(track.artists)
+                                      ..sort((a, b) {
+                                        final aRole = a.role?.toLowerCase();
+                                        final bRole = b.role?.toLowerCase();
+                                        if (aRole == 'owner' && bRole != 'owner') return -1;
+                                        if (bRole == 'owner' && aRole != 'owner') return 1;
+                                        return 0;
+                                      });
                                     final trackArtists =
-                                        track.artists.isNotEmpty
-                                            ? track.artists
+                                        sortedArtists.isNotEmpty
+                                            ? sortedArtists
                                                   .map((a) =>
                                                       a.name ??
                                                       'Unknown Artist')
                                                   .join(', ')
                                             : creatorName;
+                                    final artistsList = sortedArtists.map((a) => PlayerTrackArtist(
+                                      id: a.artistId,
+                                      name: a.name ?? 'Unknown Artist',
+                                      role: a.role,
+                                    )).toList();
                                     return QueueItem(
                                       trackId: track.trackId,
                                       title: track.title,
@@ -1292,19 +1374,33 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                       imageUrl: track.coverUrl,
                                       durationSeconds: track.duration,
                                       playlistId: playlist.playlistId,
+                                      artistId: sortedArtists.isNotEmpty ? sortedArtists.first.artistId : null,
+                                      artistsList: artistsList,
                                     );
                                   })
                                   .toList();
                               await playerCubit.replaceQueue(queueItems, initialIndex: index);
-                              final trackArtist = t.artists.isNotEmpty
-                                  ? t.artists.first
-                                  : null;
+                              final sortedT = List<UserPlaylistArtist>.from(t.artists)
+                                ..sort((a, b) {
+                                  final aRole = a.role?.toLowerCase();
+                                  final bRole = b.role?.toLowerCase();
+                                  if (aRole == 'owner' && bRole != 'owner') return -1;
+                                  if (bRole == 'owner' && aRole != 'owner') return 1;
+                                  return 0;
+                                });
+                              final trackArtist = sortedT.isNotEmpty ? sortedT.first : null;
+                              final trackArtistsList = sortedT.map((a) => PlayerTrackArtist(
+                                id: a.artistId,
+                                name: a.name ?? 'Unknown Artist',
+                                role: a.role,
+                              )).toList();
                               await playTrack(
                                 t.trackId,
                                 title: t.title,
                                 artist: artists,
                                         imageUrl: t.coverUrl,
                                 artistId: trackArtist?.artistId,
+                                artistsList: trackArtistsList,
                               );
                             },
                             child: Padding(
@@ -1485,14 +1581,27 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                       final queueItems = playlist.tracks
                                           .skip(index)
                                           .map((track) {
-                                            final trackArtists = track.artists
+                                            final sortedArtists = List<UserPlaylistArtist>.from(track.artists)
+                                              ..sort((a, b) {
+                                                final aRole = a.role?.toLowerCase();
+                                                final bRole = b.role?.toLowerCase();
+                                                if (aRole == 'owner' && bRole != 'owner') return -1;
+                                                if (bRole == 'owner' && aRole != 'owner') return 1;
+                                                return 0;
+                                              });
+                                            final trackArtists = sortedArtists
                                                     .isNotEmpty
-                                                ? track.artists
+                                                ? sortedArtists
                                                       .map((a) =>
                                                           a.name ??
                                                           'Unknown Artist')
                                                       .join(', ')
                                                 : creatorName;
+                                            final artistsList = sortedArtists.map((a) => PlayerTrackArtist(
+                                              id: a.artistId,
+                                              name: a.name ?? 'Unknown Artist',
+                                              role: a.role,
+                                            )).toList();
                                             return QueueItem(
                                               trackId: track.trackId,
                                               title: track.title,
@@ -1501,20 +1610,36 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                                 imageUrl: track.coverUrl,
                                               durationSeconds:
                                                   track.duration,
+                                              artistId: sortedArtists.isNotEmpty ? sortedArtists.first.artistId : null,
+                                              artistsList: artistsList,
                                             );
                                           })
                                           .toList();
                                       await playerCubit
                                           .replaceQueue(queueItems);
-                                      final trackArtist = t.artists.isNotEmpty
-                                          ? t.artists.first
+                                      final sortedCurrentArtists = List<UserPlaylistArtist>.from(t.artists)
+                                        ..sort((a, b) {
+                                          final aRole = a.role?.toLowerCase();
+                                          final bRole = b.role?.toLowerCase();
+                                          if (aRole == 'owner' && bRole != 'owner') return -1;
+                                          if (bRole == 'owner' && aRole != 'owner') return 1;
+                                          return 0;
+                                        });
+                                      final trackArtist = sortedCurrentArtists.isNotEmpty
+                                          ? sortedCurrentArtists.first
                                           : null;
+                                      final currentArtistsList = sortedCurrentArtists.map((a) => PlayerTrackArtist(
+                                        id: a.artistId,
+                                        name: a.name ?? 'Unknown Artist',
+                                        role: a.role,
+                                      )).toList();
                                       await playTrack(
                                         t.trackId,
                                         title: t.title,
                                         artist: artists,
                                         imageUrl: t.coverUrl,
                                         artistId: trackArtist?.artistId,
+                                        artistsList: currentArtistsList,
                                       );
                                     },
                                   ),
@@ -1756,9 +1881,22 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
                           final rec = displayedRecommendations[index];
-                        final recArtists = rec.artists.isNotEmpty
-                            ? rec.artists.map((a) => a.name ?? 'Unknown').join(', ')
+                        final recSortedArtists = List<UserPlaylistArtist>.from(rec.artists)
+                          ..sort((a, b) {
+                            final aRole = a.role?.toLowerCase();
+                            final bRole = b.role?.toLowerCase();
+                            if (aRole == 'owner' && bRole != 'owner') return -1;
+                            if (bRole == 'owner' && aRole != 'owner') return 1;
+                            return 0;
+                          });
+                        final recArtists = recSortedArtists.isNotEmpty
+                            ? recSortedArtists.map((a) => a.name ?? 'Unknown').join(', ')
                             : 'Unknown Artist';
+                        final recArtistsList = recSortedArtists.map((a) => PlayerTrackArtist(
+                          id: a.artistId,
+                          name: a.name ?? 'Unknown Artist',
+                          role: a.role,
+                        )).toList();
 
                         return Padding(
                           padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
@@ -1770,7 +1908,8 @@ class _UserPlaylistViewState extends State<_UserPlaylistView>
                                 title: rec.title,
                                 artist: recArtists,
                                 imageUrl: rec.coverUrl,
-                                artistId: rec.artists.isNotEmpty ? rec.artists.first.artistId : null,
+                                artistId: recSortedArtists.isNotEmpty ? recSortedArtists.first.artistId : null,
+                                artistsList: recArtistsList,
                               );
                             },
                             child: Container(

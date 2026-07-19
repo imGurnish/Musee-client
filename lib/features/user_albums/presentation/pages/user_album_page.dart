@@ -143,7 +143,7 @@ class _UserAlbumViewState extends State<_UserAlbumView>
             final album = state.album!;
             _loadPreference(album.albumId);
             final primaryArtist = album.artists.isNotEmpty
-                ? (album.artists.first.name ?? 'Unknown Artist')
+              ? (album.artists.first.name ?? 'Unknown Artist')
                 : 'Unknown Artist';
             final trackCount = album.tracks.length;
             final totalDuration = album.tracks.fold<int>(
@@ -168,6 +168,16 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                 final trackArtists = track.artists.isNotEmpty
                     ? track.artists.map((a) => a.name ?? 'Unknown Artist').join(', ')
                     : primaryArtist;
+
+                final artistsList = track.artists.map((a) => PlayerTrackArtist(
+                  id: a.artistId,
+                  name: a.name ?? 'Unknown Artist',
+                )).toList();
+
+                final trackArtistId = track.artists.isNotEmpty
+                    ? track.artists.first.artistId
+                    : null;
+
                 return QueueItem(
                   trackId: track.trackId,
                   title: track.title,
@@ -176,10 +186,13 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                   imageUrl: album.coverUrl,
                   durationSeconds: track.duration,
                   albumId: album.albumId,
+                  artistId: trackArtistId,
+                  artistsList: artistsList,
                 );
               }).toList();
 
               final clickedIndex = queueItems.indexWhere((q) => q.trackId == trackId);
+              final clickedQueueItem = clickedIndex >= 0 ? queueItems[clickedIndex] : queueItems.first;
               await playerCubit.replaceQueue(
                 queueItems,
                 initialIndex: clickedIndex >= 0 ? clickedIndex : 0,
@@ -193,14 +206,15 @@ class _UserAlbumViewState extends State<_UserAlbumView>
               await showPlayerBottomSheet(
                 context,
                 title: title,
-                artist: artist,
+                artist: clickedQueueItem.artist,
                 album: album.title,
                 imageUrl: album.coverUrl,
                 trackId: trackId,
-                artistId: artistId,
+                artistId: clickedQueueItem.artistId,
                 albumId: album.albumId,
                 openSheet: false,
                 disableQueueOverwrite: true,
+                artistsList: clickedQueueItem.artistsList,
               );
             }
 
@@ -263,10 +277,10 @@ class _UserAlbumViewState extends State<_UserAlbumView>
                                 onPressed: canPlayAlbum
                                     ? () async {
                                         final first = album.tracks.first;
-                                        final firstArtist = first.artists.isNotEmpty
-                                            ? first.artists.first
+                                    final firstArtist = first.artists.isNotEmpty
+                                      ? first.artists.first
                                             : null;
-                                        final artists = firstArtist?.name ?? primaryArtist;
+                                    final artists = firstArtist?.name ?? primaryArtist;
                                         await playTrack(
                                           first.trackId,
                                           title: first.title,

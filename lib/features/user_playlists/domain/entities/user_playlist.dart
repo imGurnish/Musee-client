@@ -65,15 +65,17 @@ class UserPlaylistArtist extends Equatable {
   final String artistId;
   final String? name;
   final String? avatarUrl;
+  final String? role;
 
   const UserPlaylistArtist({
     required this.artistId,
     this.name,
     this.avatarUrl,
+    this.role,
   });
 
   @override
-  List<Object?> get props => [artistId, name, avatarUrl];
+  List<Object?> get props => [artistId, name, avatarUrl, role];
 }
 
 class UserPlaylistTrack extends Equatable {

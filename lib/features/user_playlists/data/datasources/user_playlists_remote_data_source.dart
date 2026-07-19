@@ -59,11 +59,13 @@ class UserPlaylistArtistDTO {
   final String artistId;
   final String? name;
   final String? avatarUrl;
+  final String? role;
 
   UserPlaylistArtistDTO({
     required this.artistId,
     this.name,
     this.avatarUrl,
+    this.role,
   });
 
   factory UserPlaylistArtistDTO.fromJson(Map<String, dynamic> json) {
@@ -71,6 +73,7 @@ class UserPlaylistArtistDTO {
       artistId: json['artist_id'] as String? ?? json['creator_id'] as String,
       name: json['name'] as String?,
       avatarUrl: json['avatar_url'] as String?,
+      role: json['role'] as String?,
     );
   }
 }

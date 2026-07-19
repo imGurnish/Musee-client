@@ -239,6 +239,7 @@ class _FloatingPlayerPanelState extends State<FloatingPlayerPanel>
                     artistId: t.artistId,
                     albumId: t.albumId,
                     playlistId: t.playlistId,
+                    artistsList: t.artists,
                   );
                 }
               : null,
