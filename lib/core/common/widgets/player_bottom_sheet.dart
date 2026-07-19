@@ -387,6 +387,8 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
   Future<void> _showTrackActionsSheet(PlayerViewState state) async {
     final track = state.track;
     if (track?.trackId == null) return;
+    final currentTrack = track!;
+    final albumId = currentTrack.albumId;
 
     final action = await showModalBottomSheet<String>(
       context: context,
@@ -408,6 +410,12 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
                 title: const Text('Artist Info'),
                 onTap: () => Navigator.pop(context, 'artist_info'),
               ),
+              if (albumId != null && albumId.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.album_rounded),
+                  title: const Text('Album Info'),
+                  onTap: () => Navigator.pop(context, 'album_info'),
+                ),
             ],
           ),
         );
@@ -419,17 +427,24 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
     if (action == 'playlist') {
       await showAddToPlaylistSheet(
         context,
-        trackId: track!.trackId!,
-        trackTitle: track.title,
-        artistNames: track.artist,
-        imageUrl: track.imageUrl,
+        trackId: currentTrack.trackId!,
+        trackTitle: currentTrack.title,
+        artistNames: currentTrack.artist,
+        imageUrl: currentTrack.imageUrl,
       );
     } else if (action == 'artist_info') {
-      final destination = await _showArtistInfoSheet(context, track!);
+      final destination = await _showArtistInfoSheet(context, currentTrack);
       if (destination != null) {
         if (mounted) {
           Navigator.of(context, rootNavigator: true).maybePop();
           context.push(destination);
+        }
+      }
+    } else if (action == 'album_info') {
+      if (albumId != null && albumId.isNotEmpty) {
+        if (mounted) {
+          Navigator.of(context, rootNavigator: true).maybePop();
+          context.push('/albums/$albumId');
         }
       }
     }
