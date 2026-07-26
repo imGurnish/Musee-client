@@ -1,11 +1,11 @@
 {
-    "name": "musee",
-    "short_name": "musee",
+    "name": "Musee Music App - Gurnish Singh Sangha",
+    "short_name": "Musee",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "transparent",
-    "theme_color": "#ffffff",
-    "description": "A new Flutter project.",
+    "background_color": "#0d0e12",
+    "theme_color": "#0d0e12",
+    "description": "Musee is a modern web music player and music streaming app created by Gurnish Singh Sangha.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
