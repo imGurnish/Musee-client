@@ -154,21 +154,61 @@ class JioSaavnApiClient {
 
   JioSaavnApiClient(this._supabase);
 
+  /// Headers to send with each request.
+  ///
+  /// - **Web** (proxy route): includes the Musee `Authorization` header so
+  ///   the `authUser` middleware accepts the request.
+  /// - **Native** (direct JioSaavn): sends browser-like headers that
+  ///   JioSaavn expects. Our Musee JWT is NOT forwarded to JioSaavn.
   Map<String, String> get _headers {
-    final token = _supabase.auth.currentSession?.accessToken;
-    return {
+    if (kIsWeb) {
+      final token = _supabase.auth.currentSession?.accessToken;
+      return {
+        'Accept': 'application/json,text/plain,*/*',
+        if (token != null) 'Authorization': 'Bearer $token',
+      };
+    }
+
+    // Native: mimic a browser call to JioSaavn.
+    return const {
       'Accept': 'application/json,text/plain,*/*',
-      if (token != null) 'Authorization': 'Bearer $token',
+      'Accept-Language': 'en-IN,en;q=0.9,hi;q=0.8',
+      'Origin': 'https://www.jiosaavn.com',
+      'Referer': 'https://www.jiosaavn.com/',
     };
   }
 
+  /// Builds the request URI based on the current platform:
+  ///
+  /// - **Web**: routes through the Musee server proxy at
+  ///   `/api/user/jiosaavn/proxy`. The server injects Indian locale cookies
+  ///   (`ct=IN`, `DL=english`) so the response contains Indian catalogue
+  ///   regardless of the server's IP address.
+  ///
+  /// - **Native (Android / Linux / Windows)**: calls JioSaavn directly.
+  ///   The device is physically in India, so the request succeeds without
+  ///   a proxy. India query params (`cc=in`, `_marker=0`, `ctx=web6dot0`)
+  ///   are still included for correctness.
   Uri _uri(Map<String, String> query) {
-    return Uri.parse('${AppSecrets.backendUrl}/api/admin/import/proxy').replace(queryParameters: {
-      ...query,
+    // India locale params — always sent regardless of route.
+    const indiaParams = {
       '_format': 'json',
+      'cc': 'in',
       '_marker': '0',
       'ctx': 'web6dot0',
-    });
+    };
+
+    if (kIsWeb) {
+      // Web: proxy through the Musee backend so Indian cookies are injected
+      // server-side (the server's IP doesn't matter; the cookies do the work).
+      return Uri.parse('${AppSecrets.backendUrl}/api/user/jiosaavn/proxy')
+          .replace(queryParameters: {...query, ...indiaParams});
+    }
+
+    // Native (Android / Linux / Windows): call JioSaavn directly on-device.
+    // The device is in India, so the plain request already returns Indian content.
+    return Uri.parse(AppSecrets.externalMusicBaseUrl)
+        .replace(queryParameters: {...query, ...indiaParams});
   }
 
   Future<dynamic> _getJson(Map<String, String> query) async {
