@@ -21,6 +21,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
 import 'package:musee/features/cast/presentation/bloc/cast_bloc.dart';
+import 'package:musee/features/cast/presentation/bloc/cast_event.dart';
 import 'package:musee/features/cast/presentation/widgets/device_auth_confirm_sheet.dart';
 
 // Conditional import for web-specific plugins
@@ -174,6 +175,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         );
         return;
       }
+    }
+
+    if (uri.queryParameters.containsKey('code') &&
+        (uri.path.contains('cast') || uri.host == 'cast')) {
+      final code = uri.queryParameters['code']!;
+      serviceLocator<CastBloc>().add(
+        JoinCastSessionByCodeEvent(sessionCode: code),
+      );
+      return;
     }
 
     final path = _normalizeIncomingPath(uri);

@@ -35,6 +35,7 @@ class CastBloc extends Bloc<CastEvent, CastState> {
   StreamSubscription<dynamic>? _deviceAuthSub;
   StreamSubscription<List<CastReceiverDevice>>? _receiversSub;
   Timer? _positionTickTimer;
+  Timer? _dbSyncDebounceTimer;
 
   String? _activeSessionId;
   String? _lastSyncedTrackId;
@@ -179,6 +180,12 @@ class CastBloc extends Bloc<CastEvent, CastState> {
             'is_playing': isPlaying,
           },
         );
+        // Also update playing state and position in DB for newly joining receivers
+        _castRepository.updateSessionState(
+          sessionId: sessionId,
+          isPlaying: isPlaying,
+          positionMs: playerState.position.inMilliseconds,
+        );
       }
     });
 
@@ -198,16 +205,21 @@ class CastBloc extends Bloc<CastEvent, CastState> {
         },
       );
 
-      // Commit to DB state as well
-      add(SyncStateToReceiverEvent(
-        eqEnabled: settings.equalizerEnabled,
-        eqPreset: settings.equalizerPreset,
-        eqBands: settings.equalizerBands,
-        bassLevel: settings.bassLevel,
-        surroundLevel: settings.surroundLevel,
-        crossfadeEnabled: settings.crossfadeEnabled,
-        normalizeVolume: settings.normalizeVolume,
-      ));
+      // Debounce commit to DB state (500ms) to avoid spamming upserts during slider dragging
+      _dbSyncDebounceTimer?.cancel();
+      _dbSyncDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+        if (_activeSessionId != null) {
+          add(SyncStateToReceiverEvent(
+            eqEnabled: settings.equalizerEnabled,
+            eqPreset: settings.equalizerPreset,
+            eqBands: settings.equalizerBands,
+            bassLevel: settings.bassLevel,
+            surroundLevel: settings.surroundLevel,
+            crossfadeEnabled: settings.crossfadeEnabled,
+            normalizeVolume: settings.normalizeVolume,
+          ));
+        }
+      });
     });
 
     // 3. Periodic position tick every 2s
@@ -354,6 +366,7 @@ class CastBloc extends Bloc<CastEvent, CastState> {
   // ---------------------------------------------------------------------------
 
   Future<void> _onRemotePlay(RemotePlayEvent event, Emitter<CastState> emit) async {
+    await _playerCubit.ensurePlaying(ignoreUserPause: true);
     if (_activeSessionId == null) return;
     await _castRepository.broadcastEvent(
       sessionId: _activeSessionId!,
@@ -363,6 +376,7 @@ class CastBloc extends Bloc<CastEvent, CastState> {
   }
 
   Future<void> _onRemotePause(RemotePauseEvent event, Emitter<CastState> emit) async {
+    await _playerCubit.pause();
     if (_activeSessionId == null) return;
     await _castRepository.broadcastEvent(
       sessionId: _activeSessionId!,
@@ -372,6 +386,7 @@ class CastBloc extends Bloc<CastEvent, CastState> {
   }
 
   Future<void> _onRemoteSeek(RemoteSeekEvent event, Emitter<CastState> emit) async {
+    await _playerCubit.seek(Duration(milliseconds: event.positionMs));
     if (_activeSessionId == null) return;
     await _castRepository.broadcastEvent(
       sessionId: _activeSessionId!,
@@ -381,6 +396,7 @@ class CastBloc extends Bloc<CastEvent, CastState> {
   }
 
   Future<void> _onRemoteNext(RemoteNextEvent event, Emitter<CastState> emit) async {
+    await _playerCubit.next(userInitiated: true);
     if (_activeSessionId == null) return;
     await _castRepository.broadcastEvent(
       sessionId: _activeSessionId!,
@@ -390,6 +406,7 @@ class CastBloc extends Bloc<CastEvent, CastState> {
   }
 
   Future<void> _onRemotePrevious(RemotePreviousEvent event, Emitter<CastState> emit) async {
+    await _playerCubit.previous();
     if (_activeSessionId == null) return;
     await _castRepository.broadcastEvent(
       sessionId: _activeSessionId!,
@@ -416,10 +433,15 @@ class CastBloc extends Bloc<CastEvent, CastState> {
       emit(cur.copyWith(remoteState: updatedRemote));
     }
 
-    unawaited(_castRepository.updateSessionState(
-      sessionId: _activeSessionId!,
-      volume: event.volume,
-    ));
+    _dbSyncDebounceTimer?.cancel();
+    _dbSyncDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      if (_activeSessionId != null) {
+        _castRepository.updateSessionState(
+          sessionId: _activeSessionId!,
+          volume: event.volume,
+        );
+      }
+    });
   }
 
   Future<void> _onRemoteSetEqBands(RemoteSetEqBandsEvent event, Emitter<CastState> emit) async {
@@ -548,6 +570,11 @@ class CastBloc extends Bloc<CastEvent, CastState> {
       );
     }
 
+    // If remote is not playing, ensure paused
+    if (!remote.isPlaying && _playerCubit.state.playing) {
+      _playerCubit.pause();
+    }
+
     // 2. Apply volume
     _playerCubit.setVolume(remote.volume);
 
@@ -616,8 +643,10 @@ class CastBloc extends Bloc<CastEvent, CastState> {
       case 'position_tick':
         final targetMs = (payload['position_ms'] as num?)?.toInt() ?? 0;
         final currentMs = _playerCubit.state.position.inMilliseconds;
-        // Only seek if drift exceeds 2 seconds
-        if ((targetMs - currentMs).abs() > 2000) {
+        // Only seek if drift exceeds 2 seconds and player is not buffering
+        if ((targetMs - currentMs).abs() > 2000 &&
+            _playerCubit.state.duration > Duration.zero &&
+            !_playerCubit.state.buffering) {
           _playerCubit.seek(Duration(milliseconds: targetMs));
         }
         break;
@@ -627,7 +656,7 @@ class CastBloc extends Bloc<CastEvent, CastState> {
         break;
 
       case 'pause':
-        _playerCubit.togglePlayPause();
+        _playerCubit.pause();
         break;
 
       case 'seek':
@@ -666,6 +695,24 @@ class CastBloc extends Bloc<CastEvent, CastState> {
         _settingsCubit.setEqualizerEnabled(enabled);
         break;
 
+      case 'eq_update':
+        final enabled = payload['eq_enabled'] as bool? ?? true;
+        _settingsCubit.setEqualizerEnabled(enabled);
+        final rawBands = payload['eq_bands'];
+        if (rawBands is List) {
+          final bands = rawBands.map((e) => (e as num).toDouble()).toList();
+          _settingsCubit.setEqualizerBands(bands);
+        }
+        final bass = (payload['bass_level'] as num?)?.toInt();
+        if (bass != null) _settingsCubit.setBassLevel(bass);
+        final surround = (payload['surround_level'] as num?)?.toInt();
+        if (surround != null) _settingsCubit.setSurroundLevel(surround);
+        final crossfade = payload['crossfade_enabled'] as bool?;
+        if (crossfade != null) _settingsCubit.setCrossfade(crossfade);
+        final normalize = payload['normalize_volume'] as bool?;
+        if (normalize != null) _settingsCubit.setNormalizeVolume(normalize);
+        break;
+
       case 'session_ended':
         _cancelSubs();
         add(const EndCastSessionEvent());
@@ -697,6 +744,7 @@ class CastBloc extends Bloc<CastEvent, CastState> {
             .listen((updatedToken) {
           if (updatedToken.isApproved) {
             _deviceAuthSub?.cancel();
+            add(StartReceiverSessionEvent(deviceName: event.deviceName));
           }
         });
       },
@@ -731,6 +779,8 @@ class CastBloc extends Bloc<CastEvent, CastState> {
     _broadcastSub = null;
     _positionTickTimer?.cancel();
     _positionTickTimer = null;
+    _dbSyncDebounceTimer?.cancel();
+    _dbSyncDebounceTimer = null;
     _deviceAuthSub?.cancel();
     _deviceAuthSub = null;
     _receiversSub?.cancel();

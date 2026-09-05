@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS public.cast_session_receivers (
 CREATE INDEX IF NOT EXISTS idx_cast_receivers_session ON public.cast_session_receivers(session_id);
 
 -- 5. Enable Realtime on cast tables
+ALTER TABLE public.cast_session_state REPLICA IDENTITY FULL;
+ALTER TABLE public.device_auth_tokens REPLICA IDENTITY FULL;
+ALTER TABLE public.cast_session_receivers REPLICA IDENTITY FULL;
+
 DO $$
 BEGIN
   BEGIN

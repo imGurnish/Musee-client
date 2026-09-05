@@ -3,7 +3,7 @@ import 'package:musee/features/cast/domain/entities/cast_session.dart';
 class CastSessionModel extends CastSession {
   const CastSessionModel({
     required super.id,
-    required super.ownerId,
+    super.ownerId,
     super.sessionCode,
     super.deviceName,
     super.status,
@@ -13,14 +13,14 @@ class CastSessionModel extends CastSession {
 
   factory CastSessionModel.fromJson(Map<String, dynamic> json) {
     return CastSessionModel(
-      id: json['id'] as String,
-      ownerId: json['owner_id'] as String,
+      id: json['id'] as String? ?? '',
+      ownerId: json['owner_id'] as String?,
       sessionCode: json['session_code'] as String?,
       deviceName: json['device_name'] as String?,
       status: json['status'] as String? ?? 'active',
-      createdAt: DateTime.parse(json['created_at'] as String),
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ?? DateTime.now(),
       endedAt: json['ended_at'] != null
-          ? DateTime.parse(json['ended_at'] as String)
+          ? DateTime.tryParse(json['ended_at'] as String)
           : null,
     );
   }

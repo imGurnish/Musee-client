@@ -2,7 +2,7 @@ import 'package:equatable/equatable.dart';
 
 class CastSession extends Equatable {
   final String id;
-  final String ownerId;
+  final String? ownerId;
   final String? sessionCode;
   final String? deviceName;
   final String status; // active | ended
@@ -11,7 +11,7 @@ class CastSession extends Equatable {
 
   const CastSession({
     required this.id,
-    required this.ownerId,
+    this.ownerId,
     this.sessionCode,
     this.deviceName,
     this.status = 'active',

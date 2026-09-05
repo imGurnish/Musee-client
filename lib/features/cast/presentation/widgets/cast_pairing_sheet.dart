@@ -125,7 +125,7 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
                 else if (_isScanning)
                   _buildScannerView(context, cs)
                 else
-                  _buildConnectOptionsView(context, cs),
+                  _buildConnectOptionsView(context, cs, state),
               ],
             ),
           );
@@ -471,10 +471,37 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
     );
   }
 
-  Widget _buildConnectOptionsView(BuildContext context, ColorScheme cs) {
+  Widget _buildConnectOptionsView(
+    BuildContext context,
+    ColorScheme cs,
+    CastState state,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (state is CastError) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: cs.errorContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.error_outline_rounded, color: cs.error, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    state.message,
+                    style: TextStyle(color: cs.onErrorContainer, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
+
         // 1. Cast from this phone
         FilledButton.icon(
           icon: const Icon(Icons.wifi_tethering_rounded),
@@ -528,7 +555,7 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
               child: TextField(
                 controller: _codeController,
                 textCapitalization: TextCapitalization.characters,
-                maxLength: 6,
+                maxLength: 8,
                 decoration: InputDecoration(
                   counterText: '',
                   hintText: 'e.g. JAZZ42',
@@ -549,7 +576,10 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
               onPressed: () {
-                final code = _codeController.text.trim();
+                final code = _codeController.text
+                    .trim()
+                    .replaceAll(RegExp(r'[\s\-]'), '')
+                    .toUpperCase();
                 if (code.isNotEmpty) {
                   context.read<CastBloc>().add(JoinCastSessionByCodeEvent(sessionCode: code));
                 }
@@ -586,6 +616,31 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
           child: SizedBox(
             height: 260,
             child: MobileScanner(
+              errorBuilder: (context, error) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.no_photography_rounded, size: 36, color: cs.error),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Camera unavailable on this device.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: cs.onSurface, fontSize: 13),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Please use the session code above.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
               onDetect: (capture) {
                 final barcodes = capture.barcodes;
                 if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {

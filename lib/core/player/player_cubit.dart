@@ -1936,6 +1936,14 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     }
   }
 
+  Future<void> pause() async {
+    if (!_platformAudioInitialized) return;
+    _userPaused = true;
+    _playbackReassertTimer?.cancel();
+    _unexpectedPauseTimer?.cancel();
+    await _player.pause();
+  }
+
   Future<void> ensurePlaying({bool ignoreUserPause = false}) async {
     if (!_platformAudioInitialized) return;
     if (_isTrackSwitchInProgress) return;

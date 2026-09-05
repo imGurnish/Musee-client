@@ -17,10 +17,11 @@ class DeviceAuthTokenModel extends DeviceAuthToken {
       userId: json['user_id'] as String?,
       deviceName: json['device_name'] as String?,
       status: json['status'] as String? ?? 'pending',
-      createdAt: DateTime.parse(json['created_at'] as String),
-      expiresAt: DateTime.parse(json['expires_at'] as String),
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ?? DateTime.now(),
+      expiresAt: DateTime.tryParse(json['expires_at'] as String? ?? '') ??
+          DateTime.now().add(const Duration(minutes: 5)),
       approvedAt: json['approved_at'] != null
-          ? DateTime.parse(json['approved_at'] as String)
+          ? DateTime.tryParse(json['approved_at'] as String)
           : null,
     );
   }

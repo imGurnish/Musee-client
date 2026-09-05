@@ -54,6 +54,8 @@ abstract class CastRemoteDataSource {
 class CastRemoteDataSourceImpl implements CastRemoteDataSource {
   final SupabaseClient supabaseClient;
   final Map<String, RealtimeChannel> _activeChannels = {};
+  final Set<String> _subscribedChannels = {};
+  String? _currentReceiverRecordId;
 
   CastRemoteDataSourceImpl({required this.supabaseClient});
 
@@ -242,7 +244,12 @@ class CastRemoteDataSourceImpl implements CastRemoteDataSource {
     required String event,
     required Map<String, dynamic> payload,
   }) async {
-    final channel = _getOrCreateChannel('cast_broadcast:$sessionId');
+    final channelName = 'cast_broadcast:$sessionId';
+    final channel = _getOrCreateChannel(channelName);
+    if (!_subscribedChannels.contains(channelName)) {
+      channel.subscribe();
+      _subscribedChannels.add(channelName);
+    }
     await channel.sendBroadcastMessage(
       event: event,
       payload: payload,
@@ -284,21 +291,25 @@ class CastRemoteDataSourceImpl implements CastRemoteDataSource {
   Stream<Map<String, dynamic>> watchBroadcastEvents(String sessionId) {
     final controller = StreamController<Map<String, dynamic>>.broadcast();
 
-    final channel = _getOrCreateChannel('cast_broadcast:$sessionId');
-    channel
-        .onBroadcast(
-          event: '*',
-          callback: (payload) {
-            if (!controller.isClosed) {
-              controller.add(Map<String, dynamic>.from(payload));
-            }
-          },
-        )
-        .subscribe();
+    final channelName = 'cast_broadcast:$sessionId';
+    final channel = _getOrCreateChannel(channelName);
+    channel.onBroadcast(
+      event: '*',
+      callback: (payload) {
+        if (!controller.isClosed) {
+          controller.add(Map<String, dynamic>.from(payload));
+        }
+      },
+    );
+    if (!_subscribedChannels.contains(channelName)) {
+      channel.subscribe();
+      _subscribedChannels.add(channelName);
+    }
 
     controller.onCancel = () {
       supabaseClient.removeChannel(channel);
-      _activeChannels.remove('cast_broadcast:$sessionId');
+      _activeChannels.remove(channelName);
+      _subscribedChannels.remove(channelName);
     };
 
     return controller.stream;
@@ -379,7 +390,10 @@ class CastRemoteDataSourceImpl implements CastRemoteDataSource {
         if (_userId != null) 'user_id': _userId,
         'device_name': effectiveDeviceName,
       }).select().maybeSingle();
-      if (res != null) row = Map<String, dynamic>.from(res);
+      if (res != null) {
+        row = Map<String, dynamic>.from(res);
+        _currentReceiverRecordId = row['id'] as String?;
+      }
     } catch (_) {}
 
     // Broadcast instant receiver_joined event so controllers see the device in 0ms
@@ -400,7 +414,13 @@ class CastRemoteDataSourceImpl implements CastRemoteDataSource {
   @override
   Future<void> unregisterReceiver(String sessionId) async {
     try {
-      if (_userId != null) {
+      if (_currentReceiverRecordId != null) {
+        await supabaseClient
+            .from('cast_session_receivers')
+            .update({'left_at': DateTime.now().toIso8601String()})
+            .eq('id', _currentReceiverRecordId!);
+        _currentReceiverRecordId = null;
+      } else if (_userId != null) {
         await supabaseClient
             .from('cast_session_receivers')
             .update({'left_at': DateTime.now().toIso8601String()})

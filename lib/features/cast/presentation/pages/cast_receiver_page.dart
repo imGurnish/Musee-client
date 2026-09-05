@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -110,8 +111,10 @@ class _CastReceiverPageState extends State<CastReceiverPage> {
               errorMessage = castState.message;
             }
 
-            final origin = Uri.base.hasAuthority ? Uri.base.origin : 'http://localhost:3000';
-            final pairUrl = '$origin/cast?code=$code';
+            final hasWebOrigin = kIsWeb && Uri.base.hasAuthority && !Uri.base.origin.contains('localhost');
+            final pairUrl = hasWebOrigin
+                ? '${Uri.base.origin}/cast?code=$code'
+                : 'musee://cast?code=$code';
 
             return BlocBuilder<PlayerCubit, PlayerViewState>(
               bloc: playerCubit,
@@ -734,8 +737,12 @@ class _CastReceiverPageState extends State<CastReceiverPage> {
   }
 
   String _formatDuration(Duration d) {
+    final h = d.inHours;
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (h > 0) {
+      return '$h:$m:$s';
+    }
     return '$m:$s';
   }
 }

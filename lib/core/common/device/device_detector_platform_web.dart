@@ -188,12 +188,13 @@ DeviceProfile detectPlatformDevice() {
     );
   }
 
+  final isGenericTv = RegExp(r'\b(?:tv|smarttv|smart-tv|googletv|appletv|hbbtv|dtv)\b').hasMatch(ua);
   if (ua.contains('hbbtv') ||
       ua.contains('philips') ||
       ua.contains('aquos') ||
       ua.contains('opera tv') ||
       ua.contains('dtv') ||
-      (ua.contains('tv') && !ua.contains('ipad') && !ua.contains('iphone'))) {
+      (isGenericTv && !ua.contains('mobile') && !ua.contains('ipad') && !ua.contains('iphone'))) {
     return const DeviceProfile(
       formFactor: DeviceFormFactor.tv,
       displayName: 'Smart TV Browser',
