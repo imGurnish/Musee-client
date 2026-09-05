@@ -6,6 +6,11 @@ class Routes {
   static const String settings = '/settings';
   static const String equalizer = '/equalizer';
 
+  // Cast & Sync
+  static const String castDevices = '/cast';
+  static const String castReceiver = '/cast/receiver';
+  static const String castAuthQr = '/cast/auth-qr';
+
   // Admin dashboard
   static const String adminDashboard = '/admin';
   static const String adminUsers = '/admin/users';

@@ -18,6 +18,7 @@ import 'package:musee/core/utils/show_snackbar.dart';
 import 'package:musee/features/user_playlists/presentation/widgets/add_to_playlist_sheet.dart';
 import 'package:musee/features/player/domain/entities/queue_item.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:musee/features/cast/presentation/widgets/cast_button.dart';
 
 bool _isPlayerSheetOpen = false;
 DateTime? _lastPlayerSheetOpenAt;
@@ -918,11 +919,7 @@ class _PlayerSheetBodyState extends State<_PlayerSheetBody>
               // Footer actions
               Row(
                 children: [
-                  // IconButton(
-                  //   tooltip: 'Devices',
-                  //   onPressed: () {},
-                  //   icon: const Icon(Icons.cast_rounded),
-                  // ),
+                  const CastButton(),
                   const Spacer(),
                   IconButton(
                     tooltip: 'Share',

@@ -88,6 +88,7 @@ class PlayerViewState extends Equatable {
   final bool buffering;
   final bool resolvingUrl;
   final bool isTransitioning;
+  final bool requiresUserInteraction;
   final String? errorMessage;
   final Duration position;
   final Duration duration;
@@ -104,6 +105,7 @@ class PlayerViewState extends Equatable {
     this.buffering = false,
     this.resolvingUrl = false,
     this.isTransitioning = false,
+    this.requiresUserInteraction = false,
     this.errorMessage,
     this.position = Duration.zero,
     this.duration = Duration.zero,
@@ -121,6 +123,7 @@ class PlayerViewState extends Equatable {
     bool? buffering,
     bool? resolvingUrl,
     bool? isTransitioning,
+    bool? requiresUserInteraction,
     String? errorMessage,
     bool clearErrorMessage = false,
     Duration? position,
@@ -136,9 +139,11 @@ class PlayerViewState extends Equatable {
       track: track ?? this.track,
       playing: playing ?? this.playing,
       buffering: buffering ?? this.buffering,
-        resolvingUrl: resolvingUrl ?? this.resolvingUrl,
-        isTransitioning: isTransitioning ?? this.isTransitioning,
-        errorMessage: clearErrorMessage
+      resolvingUrl: resolvingUrl ?? this.resolvingUrl,
+      isTransitioning: isTransitioning ?? this.isTransitioning,
+      requiresUserInteraction:
+          requiresUserInteraction ?? this.requiresUserInteraction,
+      errorMessage: clearErrorMessage
           ? null
           : (errorMessage ?? this.errorMessage),
       position: position ?? this.position,
@@ -160,6 +165,7 @@ class PlayerViewState extends Equatable {
     buffering,
     resolvingUrl,
     isTransitioning,
+    requiresUserInteraction,
     errorMessage,
     position,
     duration,
