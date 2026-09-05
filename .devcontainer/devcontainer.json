@@ -1,0 +1,33 @@
+{
+  "name": "Musee (Flutter & Android SDK)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "FLUTTER_VERSION": "3.47.2"
+    }
+  },
+  "remoteUser": "vscode",
+  "mounts": [
+    "source=musee-gradle-cache,target=/home/vscode/.gradle,type=volume",
+    "source=musee-pub-cache,target=/home/vscode/.pub-cache,type=volume"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Dart-Code.flutter",
+        "Dart-Code.dart-code",
+        "vscjava.vscode-java-pack",
+        "redhat.vscode-xml",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "dart.flutterSdkPath": "/opt/flutter",
+        "java.jdt.ls.java.home": "/usr/lib/jvm/java-17-openjdk-amd64",
+        "java.home": "/usr/lib/jvm/java-17-openjdk-amd64",
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+  "forwardPorts": [3000],
+  "postCreateCommand": "bash .devcontainer/setup.sh"
+}
