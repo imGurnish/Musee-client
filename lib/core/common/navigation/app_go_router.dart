@@ -58,14 +58,16 @@ import 'package:musee/features/cast/presentation/pages/cast_device_picker_page.d
 import 'package:musee/features/cast/presentation/pages/cast_receiver_page.dart';
 import 'package:musee/features/cast/presentation/pages/device_auth_qr_page.dart';
 import 'package:musee/features/cast/presentation/bloc/cast_bloc.dart';
+import 'package:musee/core/common/device/device_detector.dart';
 
 class AppGoRouter {
   static GoRouter createRouter(AppUserCubit appUserCubit) {
     return GoRouter(
       debugLogDiagnostics: true,
-      // Start from dashboard; redirect callback will handle admin vs user
-      // and unauthenticated cases.
-      initialLocation: Routes.dashboard,
+      // TVs and Car displays open the Cast Receiver screen by default.
+      initialLocation: DeviceDetector.isReceiverDefault
+          ? Routes.castReceiver
+          : Routes.dashboard,
       refreshListenable: AppUserChangeNotifier(appUserCubit),
       redirect: (context, state) {
         final appState = appUserCubit.state;
@@ -79,6 +81,18 @@ class AppGoRouter {
         final isGoingToCast = intendedLocation.startsWith(Routes.castReceiver) ||
             intendedLocation.startsWith(Routes.castAuthQr) ||
             intendedLocation.startsWith(Routes.castDevices);
+
+        // Auto-detect TV or Car: If device is identified as a TV or Car display,
+        // automatically route to Cast Receiver screen by default!
+        if (DeviceDetector.isReceiverDefault && !isGoingToCast) {
+          if (!isAuthenticated ||
+              intendedLocation == Routes.root ||
+              intendedLocation == Routes.dashboard ||
+              isGoingToSignIn ||
+              isGoingToSignUp) {
+            return Routes.castReceiver;
+          }
+        }
 
         // If not authenticated, send to sign-in (unless already on auth or cast routes)
         if (!isAuthenticated &&
@@ -124,6 +138,7 @@ class AppGoRouter {
         GoRoute(
           path: Routes.root,
           redirect: (context, state) {
+            if (DeviceDetector.isReceiverDefault) return Routes.castReceiver;
             final appState = appUserCubit.state;
             final isAdmin =
                 appState is AppUserLoggedIn &&

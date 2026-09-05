@@ -11,6 +11,9 @@ import 'package:musee/features/cast/presentation/bloc/cast_event.dart';
 import 'package:musee/features/cast/presentation/bloc/cast_state.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
+import 'package:musee/core/common/device/device_detector.dart';
+import 'package:musee/core/common/navigation/routes.dart';
+import 'package:go_router/go_router.dart';
 import 'package:musee/init_dependencies.dart';
 
 class CastReceiverPage extends StatefulWidget {
@@ -39,13 +42,17 @@ class _CastReceiverPageState extends State<CastReceiverPage> {
     final digits = (rng.nextInt(90) + 10).toString();
     _fallbackCode = '$letters$digits';
 
-    // Dispatch receiver initialization
+    // Dispatch receiver initialization with auto-detected device name
     try {
       final bloc = serviceLocator<CastBloc>();
+      final deviceName = DeviceDetector.detectedDisplayName;
       if (widget.sessionId.isNotEmpty) {
-        bloc.add(JoinAsReceiverEvent(sessionId: widget.sessionId));
+        bloc.add(JoinAsReceiverEvent(
+          sessionId: widget.sessionId,
+          deviceName: deviceName,
+        ));
       } else {
-        bloc.add(const StartReceiverSessionEvent(deviceName: 'Web Receiver'));
+        bloc.add(StartReceiverSessionEvent(deviceName: deviceName));
       }
     } catch (_) {}
   }
@@ -224,10 +231,18 @@ class _CastReceiverPageState extends State<CastReceiverPage> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.cast_connected_rounded, size: 16, color: cs.primary),
+                    Icon(
+                      DeviceDetector.isCar
+                          ? Icons.directions_car_rounded
+                          : DeviceDetector.isTv
+                              ? Icons.tv_rounded
+                              : Icons.cast_connected_rounded,
+                      size: 16,
+                      color: cs.primary,
+                    ),
                     const SizedBox(width: 8),
                     Text(
-                      'RECEIVER READY',
+                      '${DeviceDetector.detectedDisplayName.toUpperCase()} READY',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
@@ -400,6 +415,15 @@ class _CastReceiverPageState extends State<CastReceiverPage> {
                   onPressed: () => setState(() => _forceShowQr = false),
                 ),
               ],
+              const SizedBox(height: 8),
+              TextButton.icon(
+                icon: const Icon(Icons.apps_rounded, size: 16),
+                label: const Text('Switch to Full Web App'),
+                onPressed: () {
+                  DeviceDetector.setDeviceMode('standard');
+                  context.go(Routes.dashboard);
+                },
+              ),
             ],
           ),
         ),
@@ -461,10 +485,18 @@ class _CastReceiverPageState extends State<CastReceiverPage> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.cast_connected_rounded, size: 16),
+                        Icon(
+                          DeviceDetector.isCar
+                              ? Icons.directions_car_rounded
+                              : DeviceDetector.isTv
+                                  ? Icons.tv_rounded
+                                  : Icons.cast_connected_rounded,
+                          size: 16,
+                          color: cs.primary,
+                        ),
                         const SizedBox(width: 6),
                         Text(
-                          'CASTING ACTIVE · $code',
+                          '${DeviceDetector.detectedDisplayName.toUpperCase()} · $code',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
@@ -487,7 +519,12 @@ class _CastReceiverPageState extends State<CastReceiverPage> {
                     tooltip: 'Exit Receiver',
                     onPressed: () {
                       castBloc.add(const EndCastSessionEvent());
-                      Navigator.of(context).pop();
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      } else {
+                        DeviceDetector.setDeviceMode('standard');
+                        context.go(Routes.dashboard);
+                      }
                     },
                   ),
                 ],
