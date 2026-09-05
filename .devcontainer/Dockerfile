@@ -2,12 +2,16 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu-22.04
 
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
+ARG FLUTTER_VERSION="3.47.2"
+ARG ANDROID_CMDLINE_TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
 
 # Environment variables for SDKs, Java, and Gradle
 ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk \
     FLUTTER_HOME=/opt/flutter \
     FLUTTER_ROOT=/opt/flutter \
+    FLUTTER_VERSION=${FLUTTER_VERSION} \
+    ANDROID_CMDLINE_TOOLS_URL=${ANDROID_CMDLINE_TOOLS_URL} \
     JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
     GRADLE_USER_HOME=/home/vscode/.gradle \
     PUB_CACHE=/home/vscode/.pub-cache \
@@ -54,14 +58,13 @@ RUN mkdir -p ${ANDROID_HOME} ${FLUTTER_HOME} /home/vscode/.gradle /home/vscode/.
 USER vscode
 
 # 4. Download and setup Android SDK as vscode user
-ARG ANDROID_CMDLINE_TOOLS_URL="https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
 RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
     && curl -fsSL -o /tmp/cmdline-tools.zip "${ANDROID_CMDLINE_TOOLS_URL}" \
     && unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools-unzip \
     && mv /tmp/cmdline-tools-unzip/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest \
     && rm -rf /tmp/cmdline-tools.zip /tmp/cmdline-tools-unzip \
     && yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses \
-    && ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager \
+    && ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --sdk_root=${ANDROID_HOME} \
        "platform-tools" \
        "platforms;android-35" \
        "platforms;android-34" \
@@ -69,7 +72,6 @@ RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
        "build-tools;34.0.0"
 
 # 5. Download and setup Flutter SDK as vscode user
-ARG FLUTTER_VERSION="3.47.2"
 RUN curl -fsSL -o /tmp/flutter.tar.xz "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz" \
     && tar -xf /tmp/flutter.tar.xz --no-same-owner -C /opt \
     && rm -f /tmp/flutter.tar.xz \
