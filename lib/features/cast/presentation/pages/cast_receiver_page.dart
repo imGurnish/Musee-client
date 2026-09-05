@@ -145,39 +145,63 @@ class _CastReceiverPageState extends State<CastReceiverPage> {
                         ? Duration(milliseconds: remoteState!.currentTrackDurationMs!)
                         : Duration.zero);
 
-                if (!hasTrack || _forceShowQr) {
-                  return _buildPairingView(
-                    context,
-                    theme,
-                    cs,
-                    bg,
-                    cardBg,
-                    textColor,
-                    subtextColor,
-                    code,
-                    pairUrl,
-                    errorMessage: errorMessage,
-                    hasTrack: hasTrack,
-                  );
-                }
-
-                return _buildNowPlayingView(
-                  context,
-                  theme,
-                  cs,
-                  settingsCubit,
-                  castBloc,
-                  playerState,
-                  title: title,
-                  artist: artist,
-                  album: album,
-                  imageUrl: imageUrl,
-                  effectiveDuration: effectiveDuration,
-                  isPlaying: isPlaying,
-                  code: code,
-                  bg: bg,
-                  textColor: textColor,
-                  subtextColor: subtextColor,
+                return Focus(
+                  autofocus: true,
+                  onKeyEvent: (node, event) {
+                    if (event is KeyDownEvent) {
+                      if (playerState.requiresUserInteraction) {
+                        playerCubit.resumeFromUserInteraction();
+                      }
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: Listener(
+                    behavior: HitTestBehavior.translucent,
+                    onPointerDown: (_) {
+                      if (playerState.requiresUserInteraction) {
+                        playerCubit.resumeFromUserInteraction();
+                      }
+                    },
+                    child: Stack(
+                      children: [
+                        if (!hasTrack || _forceShowQr)
+                          _buildPairingView(
+                            context,
+                            theme,
+                            cs,
+                            bg,
+                            cardBg,
+                            textColor,
+                            subtextColor,
+                            code,
+                            pairUrl,
+                            errorMessage: errorMessage,
+                            hasTrack: hasTrack,
+                          )
+                        else
+                          _buildNowPlayingView(
+                            context,
+                            theme,
+                            cs,
+                            settingsCubit,
+                            castBloc,
+                            playerState,
+                            title: title,
+                            artist: artist,
+                            album: album,
+                            imageUrl: imageUrl,
+                            effectiveDuration: effectiveDuration,
+                            isPlaying: isPlaying,
+                            code: code,
+                            bg: bg,
+                            textColor: textColor,
+                            subtextColor: subtextColor,
+                          ),
+                        if (playerState.requiresUserInteraction)
+                          _buildAutoplayBlockedBanner(context, cs, playerCubit),
+                      ],
+                    ),
+                  ),
                 );
               },
             );
@@ -744,5 +768,72 @@ class _CastReceiverPageState extends State<CastReceiverPage> {
       return '$h:$m:$s';
     }
     return '$m:$s';
+  }
+
+  Widget _buildAutoplayBlockedBanner(
+    BuildContext context,
+    ColorScheme cs,
+    PlayerCubit playerCubit,
+  ) {
+    return Positioned(
+      top: 20,
+      left: 20,
+      right: 20,
+      child: Center(
+        child: Material(
+          elevation: 12,
+          borderRadius: BorderRadius.circular(16),
+          color: cs.primary,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => playerCubit.resumeFromUserInteraction(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.volume_up_rounded, color: Colors.white, size: 28),
+                  const SizedBox(width: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Text(
+                        'Tap anywhere or press OK on remote to enable audio',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Web browsers require one user interaction before sound can play',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 18),
+                  FilledButton.tonal(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: cs.primary,
+                    ),
+                    onPressed: () => playerCubit.resumeFromUserInteraction(),
+                    child: const Text(
+                      'Enable Sound',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

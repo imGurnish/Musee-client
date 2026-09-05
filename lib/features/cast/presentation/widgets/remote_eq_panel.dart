@@ -33,14 +33,18 @@ class RemoteEqPanel extends StatelessWidget {
                 children: [
                   Icon(Icons.equalizer_rounded, color: cs.primary, size: 20),
                   const SizedBox(width: 8),
-                  Text(
-                    'Remote Equalizer',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurface,
+                  Expanded(
+                    child: Text(
+                      'Remote Equalizer',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   Switch(
                     value: eqEnabled,
                     onChanged: (val) {
@@ -85,8 +89,15 @@ class RemoteEqPanel extends StatelessWidget {
                         children: [
                           Icon(Icons.speaker_rounded, size: 16, color: cs.secondary),
                           const SizedBox(width: 6),
-                          Text('Bass', style: theme.textTheme.bodySmall),
-                          const Spacer(),
+                          Expanded(
+                            child: Text(
+                              'Bass',
+                              style: theme.textTheme.bodySmall,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                           Text('${settings.bassLevel}%', style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold)),
                         ],
                       ),
@@ -105,8 +116,15 @@ class RemoteEqPanel extends StatelessWidget {
                         children: [
                           Icon(Icons.spatial_audio_rounded, size: 16, color: cs.tertiary),
                           const SizedBox(width: 6),
-                          Text('Surround Widening', style: theme.textTheme.bodySmall),
-                          const Spacer(),
+                          Expanded(
+                            child: Text(
+                              'Surround Widening',
+                              style: theme.textTheme.bodySmall,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                           Text('${settings.surroundLevel}%', style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold)),
                         ],
                       ),

@@ -4,6 +4,7 @@ import 'package:musee/features/cast/data/models/cast_receiver_device_model.dart'
 import 'package:musee/features/cast/data/models/cast_session_model.dart';
 import 'package:musee/features/cast/data/models/cast_session_state_model.dart';
 import 'package:musee/features/cast/data/models/device_auth_token_model.dart';
+import 'package:musee/core/player/player_state.dart';
 
 void main() {
   group('CastSessionModel', () {
@@ -176,6 +177,22 @@ void main() {
       expect(model.status, 'pending');
       expect(model.createdAt, isA<DateTime>());
       expect(model.expiresAt, isA<DateTime>());
+    });
+  });
+
+  group('PlayerViewState Web Autoplay', () {
+    test('defaults requiresUserInteraction to false', () {
+      const state = PlayerViewState();
+      expect(state.requiresUserInteraction, isFalse);
+    });
+
+    test('copyWith updates requiresUserInteraction', () {
+      const state = PlayerViewState();
+      final updated = state.copyWith(requiresUserInteraction: true);
+      expect(updated.requiresUserInteraction, isTrue);
+
+      final cleared = updated.copyWith(requiresUserInteraction: false);
+      expect(cleared.requiresUserInteraction, isFalse);
     });
   });
 }

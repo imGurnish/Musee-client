@@ -60,6 +60,9 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.88,
@@ -68,7 +71,7 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
         color: cs.surfaceContainerHigh,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+      padding: EdgeInsets.fromLTRB(20, 14, 20, 28 + bottomPadding + bottomInset),
       child: BlocBuilder<CastBloc, CastState>(
         builder: (context, state) {
           final isCasting = state is CastActive;
@@ -99,14 +102,18 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
                       color: isCasting ? cs.primary : cs.onSurface,
                     ),
                     const SizedBox(width: 10),
-                    Text(
-                      isCasting ? 'Connected Cast Session' : 'Cast & Sync Playback',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: cs.onSurface,
+                    Expanded(
+                      child: Text(
+                        isCasting ? 'Connected Cast Session' : 'Cast & Sync Playback',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     IconButton(
                       icon: const Icon(Icons.close_rounded),
                       onPressed: () => Navigator.of(context).pop(),
@@ -162,30 +169,34 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
               ),
               child: Row(
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'SESSION CODE',
-                        style: TextStyle(
-                          fontSize: 10,
-                          letterSpacing: 1.2,
-                          fontWeight: FontWeight.w700,
-                          color: cs.primary,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'SESSION CODE',
+                          style: TextStyle(
+                            fontSize: 10,
+                            letterSpacing: 1.2,
+                            fontWeight: FontWeight.w700,
+                            color: cs.primary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        code.isNotEmpty ? code : session.id.substring(0, 6).toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 3,
+                        const SizedBox(height: 2),
+                        Text(
+                          code.isNotEmpty ? code : session.id.substring(0, 6).toUpperCase(),
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 3,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   IconButton.filledTonal(
                     icon: const Icon(Icons.copy_rounded, size: 18),
                     tooltip: 'Copy Code',
@@ -222,17 +233,21 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
                         color: receivers.isNotEmpty ? cs.primary : cs.onSurfaceVariant,
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        'CONNECTED RECEIVERS (${receivers.length})',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.1,
-                          color: receivers.isNotEmpty ? cs.primary : cs.onSurfaceVariant,
+                      Expanded(
+                        child: Text(
+                          'CONNECTED RECEIVERS (${receivers.length})',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                            color: receivers.isNotEmpty ? cs.primary : cs.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const Spacer(),
-                      if (receivers.isNotEmpty)
+                      if (receivers.isNotEmpty) ...[
+                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
@@ -259,6 +274,7 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
                             ],
                           ),
                         ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -291,6 +307,8 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
                                       fontSize: 14,
                                       fontWeight: FontWeight.w700,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
@@ -299,6 +317,8 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
                                       fontSize: 11,
                                       color: cs.onSurfaceVariant,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
@@ -358,16 +378,20 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
                         color: cs.primary,
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        'RECEIVER VOLUME',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.1,
-                          color: cs.primary,
+                      Expanded(
+                        child: Text(
+                          'RECEIVER VOLUME',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                            color: cs.primary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 8),
                       Text(
                         '${(currentVolume * 100).round()}%',
                         style: TextStyle(
@@ -597,13 +621,17 @@ class _CastPairingSheetState extends State<CastPairingSheet> {
       children: [
         Row(
           children: [
-            Text(
-              'Point camera at TV or Car display',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: cs.onSurfaceVariant,
-                  ),
+            Expanded(
+              child: Text(
+                'Point camera at TV or Car display',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: cs.onSurfaceVariant,
+                    ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            const Spacer(),
+            const SizedBox(width: 8),
             TextButton(
               onPressed: () => setState(() => _isScanning = false),
               child: const Text('Cancel'),

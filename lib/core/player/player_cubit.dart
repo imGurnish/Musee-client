@@ -71,6 +71,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   bool _isTrackSwitchInProgress = false;
   bool _isAdvancingNext = false;
   bool _userPaused = false;
+  bool _isAutoplayBlocked = false;
   int _trackSwitchToken = 0;
   bool _platformAudioInitialized = false;
   DateTime? _trackMediaOpenedAt; // guards against spurious completed events
@@ -451,6 +452,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       (playing) {
         if (playing) {
           _userPaused = false;
+          _isAutoplayBlocked = false;
           _unexpectedPauseTimer?.cancel();
         }
         PlaybackDiagnostics.log('PlayerState: playing=$playing');
@@ -460,6 +462,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
             playing: playing,
             buffering: isBuffering,
             isTransitioning: _isBusySwitching,
+            requiresUserInteraction: playing ? false : state.requiresUserInteraction,
           ),
         );
       },
@@ -506,9 +509,24 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     );
     _errorSub = _player.stream.error.listen(
       (error) {
-        PlaybackDiagnostics.log('[MPV ERROR] $error');
+        final errorStr = error.toString();
+        PlaybackDiagnostics.log('[MPV ERROR] $errorStr');
         if (kDebugMode) {
-          debugPrint('[PlayerCubit][MPV ERROR] $error');
+          debugPrint('[PlayerCubit][MPV ERROR] $errorStr');
+        }
+        if (errorStr.contains("didn't interact with the document") ||
+            errorStr.contains('NotAllowedError')) {
+          _isAutoplayBlocked = true;
+          _playbackReassertTimer?.cancel();
+          _playbackReassertTimer = null;
+          emit(
+            state.copyWith(
+              requiresUserInteraction: true,
+              buffering: false,
+              playing: false,
+              clearErrorMessage: true,
+            ),
+          );
         }
       },
     );
@@ -935,6 +953,22 @@ class PlayerCubit extends Cubit<PlayerViewState> {
                 resolvingUrl: false,
                 isTransitioning: false,
                 playing: false,
+                clearErrorMessage: true,
+              ),
+            );
+          }
+          return;
+        }
+        if (_isAutoplayBlocked) {
+          if (switchToken == _trackSwitchToken) {
+            emit(
+              state.copyWith(
+                track: track,
+                buffering: false,
+                resolvingUrl: false,
+                isTransitioning: false,
+                playing: false,
+                requiresUserInteraction: true,
                 clearErrorMessage: true,
               ),
             );
@@ -1670,6 +1704,23 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           }
           return;
         }
+        if (_isAutoplayBlocked) {
+          if (switchToken == _trackSwitchToken) {
+            emit(
+              state.copyWith(
+                track: track,
+                buffering: false,
+                resolvingUrl: false,
+                isTransitioning: false,
+                playing: false,
+                currentIndex: index,
+                requiresUserInteraction: true,
+                clearErrorMessage: true,
+              ),
+            );
+          }
+          return;
+        }
         throw StateError('Playback did not start after source switch');
       }
       if (switchToken == _trackSwitchToken) {
@@ -1716,6 +1767,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
   }) async {
     for (var attempt = 1; attempt <= maxAttempts; attempt += 1) {
       if (_userPaused) return false;
+      if (_isAutoplayBlocked) return false;
       if (_isActivelyPlaying) return true;
 
       try {
@@ -1723,7 +1775,23 @@ class PlayerCubit extends Cubit<PlayerViewState> {
         await _audioOperationHandler.executeAudioOperation(() => _player.play());
       } catch (e) {
         PlaybackDiagnostics.log('play() failed during attempt $attempt: $e');
+        final errorStr = e.toString();
+        if (errorStr.contains("didn't interact with the document") ||
+            errorStr.contains('NotAllowedError')) {
+          _isAutoplayBlocked = true;
+          emit(
+            state.copyWith(
+              requiresUserInteraction: true,
+              buffering: false,
+              playing: false,
+              clearErrorMessage: true,
+            ),
+          );
+          return false;
+        }
       }
+
+      if (_isAutoplayBlocked) return false;
 
       if (_userPaused) {
         await _player.pause();
@@ -1745,6 +1813,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
           return true;
         }
       } catch (_) {
+        if (_isAutoplayBlocked) return false;
         // Continue retry loop.
       }
     }
@@ -1808,6 +1877,7 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       if (switchToken != _trackSwitchToken) return;
       if (_isTrackSwitchInProgress) return;
       if (_userPaused) return;
+      if (_isAutoplayBlocked) return;
 
       final current = _player.state;
       final needsReassertion = !current.playing && !current.completed;
@@ -1931,8 +2001,19 @@ class PlayerCubit extends Cubit<PlayerViewState> {
       }
       if (state.track == null) return;
       _userPaused = false;
+      _isAutoplayBlocked = false;
+      emit(state.copyWith(requiresUserInteraction: false));
       _unexpectedPauseTimer?.cancel();
-      await _audioOperationHandler.executeAudioOperation(() => _player.play());
+      try {
+        await _audioOperationHandler.executeAudioOperation(() => _player.play());
+      } catch (e) {
+        final errorStr = e.toString();
+        if (errorStr.contains("didn't interact with the document") ||
+            errorStr.contains('NotAllowedError')) {
+          _isAutoplayBlocked = true;
+          emit(state.copyWith(requiresUserInteraction: true));
+        }
+      }
     }
   }
 
@@ -1948,11 +2029,48 @@ class PlayerCubit extends Cubit<PlayerViewState> {
     if (!_platformAudioInitialized) return;
     if (_isTrackSwitchInProgress) return;
     if (!ignoreUserPause && _userPaused) return;
+    if (_isAutoplayBlocked) return;
     if (state.track == null) return;
     if (_player.state.playing) return;
     _userPaused = false;
     _unexpectedPauseTimer?.cancel();
-    await _audioOperationHandler.executeAudioOperation(() => _player.play());
+    try {
+      await _audioOperationHandler.executeAudioOperation(() => _player.play());
+    } catch (e) {
+      final errorStr = e.toString();
+      if (errorStr.contains("didn't interact with the document") ||
+          errorStr.contains('NotAllowedError')) {
+        _isAutoplayBlocked = true;
+        emit(
+          state.copyWith(
+            requiresUserInteraction: true,
+            buffering: false,
+            playing: false,
+            clearErrorMessage: true,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Call this when the user interacts with the document (click, tap, keypress)
+  /// to unlock blocked web autoplay and start/resume playback.
+  Future<void> resumeFromUserInteraction() async {
+    _isAutoplayBlocked = false;
+    _userPaused = false;
+    emit(state.copyWith(requiresUserInteraction: false));
+    if (!_platformAudioInitialized) return;
+    if (state.track == null) return;
+    try {
+      await _audioOperationHandler.executeAudioOperation(() => _player.play());
+    } catch (e) {
+      final errorStr = e.toString();
+      if (errorStr.contains("didn't interact with the document") ||
+          errorStr.contains('NotAllowedError')) {
+        _isAutoplayBlocked = true;
+        emit(state.copyWith(requiresUserInteraction: true));
+      }
+    }
   }
 
   Future<void> seek(Duration position) async {
