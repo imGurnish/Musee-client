@@ -54,6 +54,10 @@ import 'package:musee/core/common/navigation/user_shell_page.dart';
 import 'package:musee/features/settings/presentation/pages/settings_page.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:musee/features/settings/presentation/pages/equalizer_page.dart';
+import 'package:musee/features/cast/presentation/pages/cast_device_picker_page.dart';
+import 'package:musee/features/cast/presentation/pages/cast_receiver_page.dart';
+import 'package:musee/features/cast/presentation/pages/device_auth_qr_page.dart';
+import 'package:musee/features/cast/presentation/bloc/cast_bloc.dart';
 
 class AppGoRouter {
   static GoRouter createRouter(AppUserCubit appUserCubit) {
@@ -72,9 +76,15 @@ class AppGoRouter {
         final intendedLocation = state.uri.toString();
         final isGoingToSignIn = intendedLocation.startsWith(Routes.signIn);
         final isGoingToSignUp = intendedLocation.startsWith(Routes.signUp);
+        final isGoingToCast = intendedLocation.startsWith(Routes.castReceiver) ||
+            intendedLocation.startsWith(Routes.castAuthQr) ||
+            intendedLocation.startsWith(Routes.castDevices);
 
-        // If not authenticated, send to sign-in (unless already on auth routes)
-        if (!isAuthenticated && !isGoingToSignIn && !isGoingToSignUp) {
+        // If not authenticated, send to sign-in (unless already on auth or cast routes)
+        if (!isAuthenticated &&
+            !isGoingToSignIn &&
+            !isGoingToSignUp &&
+            !isGoingToCast) {
           return '${Routes.signIn}?redirect=${Uri.encodeComponent(intendedLocation)}';
         }
 
@@ -520,6 +530,37 @@ class AppGoRouter {
             value: serviceLocator<SettingsCubit>(),
             child: const EqualizerPage(),
           ),
+        ),
+
+        GoRoute(
+          path: Routes.castDevices,
+          name: 'castDevices',
+          builder: (context, state) => BlocProvider.value(
+            value: serviceLocator<CastBloc>(),
+            child: const CastDevicePickerPage(),
+          ),
+        ),
+        GoRoute(
+          path: Routes.castReceiver,
+          name: 'castReceiver',
+          builder: (context, state) {
+            final sessionId = state.uri.queryParameters['sessionId'] ?? '';
+            return BlocProvider.value(
+              value: serviceLocator<CastBloc>(),
+              child: CastReceiverPage(sessionId: sessionId),
+            );
+          },
+        ),
+        GoRoute(
+          path: Routes.castAuthQr,
+          name: 'castAuthQr',
+          builder: (context, state) {
+            final deviceName = state.uri.queryParameters['deviceName'];
+            return BlocProvider.value(
+              value: serviceLocator<CastBloc>(),
+              child: DeviceAuthQrPage(deviceName: deviceName),
+            );
+          },
         ),
 
         GoRoute(

@@ -20,6 +20,8 @@ import 'package:musee/core/download/download_manager.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
+import 'package:musee/features/cast/presentation/bloc/cast_bloc.dart';
+import 'package:musee/features/cast/presentation/widgets/device_auth_confirm_sheet.dart';
 
 // Conditional import for web-specific plugins
 import 'web_url_strategy.dart'
@@ -51,6 +53,7 @@ void main() async {
         BlocProvider(create: (_) => serviceLocator<PlayerCubit>()),
         BlocProvider(create: (_) => serviceLocator<DownloadManager>()),
         BlocProvider(create: (_) => serviceLocator<SettingsCubit>()),
+        BlocProvider(create: (_) => serviceLocator<CastBloc>()),
       ],
       // child: DevicePreview(
       //   builder: (BuildContext context) {
@@ -159,6 +162,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void _handleIncomingUri(Uri uri) {
+    if (uri.queryParameters.containsKey('token') &&
+        (uri.path.contains('auth/device') || uri.host == 'auth')) {
+      final token = uri.queryParameters['token']!;
+      final context = _router.routerDelegate.navigatorKey.currentContext;
+      if (context != null) {
+        showModalBottomSheet(
+          context: context,
+          backgroundColor: Colors.transparent,
+          builder: (_) => DeviceAuthConfirmSheet(token: token),
+        );
+        return;
+      }
+    }
+
     final path = _normalizeIncomingPath(uri);
     if (path == null || path.isEmpty) {
       return;

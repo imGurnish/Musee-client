@@ -147,6 +147,16 @@ import 'package:musee/features/settings/presentation/cubit/settings_cubit.dart';
 import 'package:musee/features/settings/presentation/cubit/settings_state.dart';
 import 'package:musee/core/equalizer/equalizer_controller.dart';
 import 'package:musee/core/equalizer/headphone_service.dart';
+import 'package:musee/features/cast/data/datasources/cast_remote_data_source.dart';
+import 'package:musee/features/cast/data/repositories/cast_repository_impl.dart';
+import 'package:musee/features/cast/domain/repository/cast_repository.dart';
+import 'package:musee/features/cast/domain/usecases/approve_device_auth.dart';
+import 'package:musee/features/cast/domain/usecases/create_cast_session.dart';
+import 'package:musee/features/cast/domain/usecases/create_device_auth_token.dart';
+import 'package:musee/features/cast/domain/usecases/end_cast_session.dart';
+import 'package:musee/features/cast/domain/usecases/join_cast_session.dart';
+import 'package:musee/features/cast/domain/usecases/sync_playback_state.dart';
+import 'package:musee/features/cast/presentation/bloc/cast_bloc.dart';
 
 final serviceLocator = GetIt.instance;
 
@@ -381,6 +391,7 @@ Future<void> initDependencies() async {
   _initUserDashboard();
   _initSearch();
   _initUserOnboarding();
+  _initCast();
 }
 
 void _initAuth() {
@@ -878,3 +889,45 @@ void _initAdminLogs() {
       ),
     );
 }
+
+void _initCast() {
+  serviceLocator
+    // datasource
+    ..registerLazySingleton<CastRemoteDataSource>(
+      () => CastRemoteDataSourceImpl(
+        supabaseClient: serviceLocator<SupabaseClient>(),
+      ),
+    )
+    // repository
+    ..registerLazySingleton<CastRepository>(
+      () => CastRepositoryImpl(
+        remoteDataSource: serviceLocator<CastRemoteDataSource>(),
+      ),
+    )
+    // use cases
+    ..registerFactory(() => CreateCastSession(serviceLocator<CastRepository>()))
+    ..registerFactory(() => JoinCastSession(serviceLocator<CastRepository>()))
+    ..registerFactory(() => EndCastSession(serviceLocator<CastRepository>()))
+    ..registerFactory(() => SyncPlaybackState(serviceLocator<CastRepository>()))
+    ..registerFactory(
+      () => CreateDeviceAuthToken(serviceLocator<CastRepository>()),
+    )
+    ..registerFactory(
+      () => ApproveDeviceAuth(serviceLocator<CastRepository>()),
+    )
+    // bloc
+    ..registerLazySingleton(
+      () => CastBloc(
+        createCastSession: serviceLocator<CreateCastSession>(),
+        joinCastSession: serviceLocator<JoinCastSession>(),
+        endCastSession: serviceLocator<EndCastSession>(),
+        syncPlaybackState: serviceLocator<SyncPlaybackState>(),
+        createDeviceAuthToken: serviceLocator<CreateDeviceAuthToken>(),
+        approveDeviceAuth: serviceLocator<ApproveDeviceAuth>(),
+        castRepository: serviceLocator<CastRepository>(),
+        playerCubit: serviceLocator<PlayerCubit>(),
+        settingsCubit: serviceLocator<SettingsCubit>(),
+      ),
+    );
+}
+
